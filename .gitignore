@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment variables
+.env
+.env*.local
+
+# Next.js
+frontend/.next/
+frontend/out/
+
+# Build
+frontend/build/
+backend/dist/
+
+# Misc
+.DS_Store
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/

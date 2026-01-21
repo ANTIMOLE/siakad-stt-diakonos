@@ -1,0 +1,460 @@
+//// ------------------------------------------------------
+//// THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+//// ------------------------------------------------------
+
+Table users {
+  id Int [pk, increment]
+  password String [not null]
+  role Role [not null, default: 'MAHASISWA']
+  isActive Boolean [not null, default: true]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  mahasiswa mahasiswa
+  dosen dosen
+  krsApproved krs [not null]
+  paketKRSCreated paket_krs [not null]
+  nilaiInputted nilai [not null]
+  pembayaranVerified pembayaran [not null]
+}
+
+Table program_studi {
+  id Int [pk, increment]
+  kode String [unique, not null]
+  nama String [not null]
+  jenjang String [not null, default: 'S1']
+  isActive Boolean [not null, default: true]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  mahasiswa mahasiswa [not null]
+  dosen dosen [not null]
+  paketKRS paket_krs [not null]
+}
+
+Table mahasiswa {
+  id Int [pk, increment]
+  userId Int [unique, not null]
+  nim String [unique, not null]
+  namaLengkap String [not null]
+  tempatTanggalLahir String
+  jenisKelamin JenisKelamin
+  alamat String
+  prodiId Int [not null]
+  angkatan Int [not null]
+  status StatusMahasiswa [not null, default: 'AKTIF']
+  dosenWaliId Int
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  user users [not null]
+  prodi program_studi [not null]
+  dosenWali dosen
+  presensi presensi_detail [not null]
+  krs krs [not null]
+  khs khs [not null]
+  nilai nilai [not null]
+  pembayaran pembayaran [not null]
+}
+
+Table dosen {
+  id Int [pk, increment]
+  userId Int [unique, not null]
+  nidn String [unique, not null]
+  nuptk String [unique, not null]
+  namaLengkap String [not null]
+  prodiId Int
+  tempatLahir String
+  tanggalLahir DateTime
+  posisi String [not null]
+  jafung String [not null]
+  alumni String [not null]
+  lamaMengajar String [not null]
+  status StatusDosen [not null, default: 'AKTIF']
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  user users [not null]
+  prodi program_studi
+  mahasiswaBimbingan mahasiswa [not null]
+  kelasMataKuliah kelas_mata_kuliah [not null]
+}
+
+Table mata_kuliah {
+  id Int [pk, increment]
+  kodeMK String [unique, not null]
+  namaMK String [not null]
+  sks Int [not null]
+  semesterIdeal Int [not null]
+  isLintasProdi Boolean [not null, default: false]
+  deskripsi String
+  isActive Boolean [not null, default: true]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  kelasMataKuliah kelas_mata_kuliah [not null]
+}
+
+Table ruangan {
+  id Int [pk, increment]
+  nama String [unique, not null]
+  kapasitas Int [default: 30]
+  isActive Boolean [not null, default: true]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  kelasMataKuliah kelas_mata_kuliah [not null]
+}
+
+Table semester {
+  id Int [pk, increment]
+  tahunAkademik String [not null]
+  periode PeriodeSemester [not null]
+  tanggalMulai DateTime [not null]
+  tanggalSelesai DateTime [not null]
+  periodeKRSMulai DateTime [not null]
+  periodeKRSSelesai DateTime [not null]
+  periodePerbaikanKRSMulai DateTime [not null]
+  periodePerbaikanKRSSelesai DateTime [not null]
+  isActive Boolean [not null, default: false]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  kelasMataKuliah kelas_mata_kuliah [not null]
+  krs krs [not null]
+  khs khs [not null]
+  nilai nilai [not null]
+  pembayaranKRS pembayaran [not null]
+  paketKRS paket_krs [not null]
+
+  indexes {
+    (tahunAkademik, periode) [unique]
+  }
+}
+
+Table kelas_mata_kuliah {
+  id Int [pk, increment]
+  mkId Int [not null]
+  semesterId Int [not null]
+  dosenId Int [not null]
+  hari String [not null]
+  jamMulai String [not null]
+  jamSelesai String [not null]
+  ruanganId Int [not null]
+  kuotaMax Int [not null, default: 30]
+  keterangan String
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  mataKuliah mata_kuliah [not null]
+  semester semester [not null]
+  dosen dosen [not null]
+  ruangan ruangan [not null]
+  paketKRSDetail paket_krs_detail [not null]
+  krsDetail krs_detail [not null]
+  nilai nilai [not null]
+  presensi presensi [not null]
+}
+
+Table paket_krs {
+  id Int [pk, increment]
+  namaPaket String [not null]
+  angkatan Int [not null]
+  prodiId Int [not null]
+  semesterPaket Int [not null]
+  semesterId Int [not null]
+  totalSKS Int [not null, default: 0]
+  createdById Int [not null]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  semester semester [not null]
+  prodi program_studi [not null]
+  createdBy users [not null]
+  detail paket_krs_detail [not null]
+  krs krs [not null]
+}
+
+Table paket_krs_detail {
+  id Int [pk, increment]
+  paketKRSId Int [not null]
+  kelasMKId Int [not null]
+  createdAt DateTime [default: `now()`, not null]
+  paketKRS paket_krs [not null]
+  kelasMK kelas_mata_kuliah [not null]
+
+  indexes {
+    (paketKRSId, kelasMKId) [unique]
+  }
+}
+
+Table krs {
+  id Int [pk, increment]
+  mahasiswaId Int [not null]
+  semesterId Int [not null]
+  paketKRSId Int
+  status StatusKRS [not null, default: 'DRAFT']
+  totalSKS Int [not null, default: 0]
+  isModified Boolean [not null, default: false]
+  catatanAdmin String
+  tanggalSubmit DateTime
+  tanggalApproval DateTime
+  approvedById Int
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  mahasiswa mahasiswa [not null]
+  semester semester [not null]
+  paketKRS paket_krs
+  approvedBy users
+  detail krs_detail [not null]
+
+  indexes {
+    (mahasiswaId, semesterId) [unique]
+  }
+}
+
+Table krs_detail {
+  id Int [pk, increment]
+  krsId Int [not null]
+  kelasMKId Int [not null]
+  createdAt DateTime [default: `now()`, not null]
+  krs krs [not null]
+  kelasMK kelas_mata_kuliah [not null]
+
+  indexes {
+    (krsId, kelasMKId) [unique]
+  }
+}
+
+Table nilai {
+  id Int [pk, increment]
+  mahasiswaId Int [not null]
+  kelasMKId Int [not null]
+  semesterId Int [not null]
+  nilaiAngka Decimal
+  nilaiHuruf NilaiHuruf
+  bobot Decimal
+  isFinalized Boolean [not null, default: false]
+  inputById Int [not null]
+  tanggalInput DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  mahasiswa mahasiswa [not null]
+  kelasMK kelas_mata_kuliah [not null]
+  semester semester [not null]
+  inputBy users [not null]
+
+  indexes {
+    (mahasiswaId, kelasMKId, semesterId) [unique]
+  }
+}
+
+Table khs {
+  id Int [pk, increment]
+  mahasiswaId Int [not null]
+  semesterId Int [not null]
+  ips Decimal [not null]
+  ipk Decimal [not null]
+  totalSKSSemester Int [not null]
+  totalSKSKumulatif Int [not null]
+  tanggalGenerate DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  mahasiswa mahasiswa [not null]
+  semester semester [not null]
+
+  indexes {
+    (mahasiswaId, semesterId) [unique]
+  }
+}
+
+Table audit_log {
+  id Int [pk, increment]
+  userId Int
+  action String [not null]
+  tableName String [not null]
+  recordId Int
+  oldData Json
+  newData Json
+  ipAddress String
+  userAgent String
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table pembayaran {
+  id Int [pk, increment]
+  mahasiswaId Int [not null]
+  semesterId Int
+  jenisPembayaran JenisPembayaran [not null, default: 'KRS']
+  nominal Int [not null]
+  buktiUrl String [not null]
+  status StatusPembayaran [not null, default: 'PENDING']
+  catatan String
+  bulanPembayaran DateTime
+  uploadedAt DateTime [default: `now()`, not null]
+  verifiedAt DateTime
+  verifiedById Int
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  mahasiswa mahasiswa [not null]
+  semester semester
+  verifiedBy users
+}
+
+Table presensi {
+  id Int [pk, increment]
+  kelasMKId Int [not null]
+  tanggal DateTime [default: `now()`, not null]
+  pertemuan Int [not null]
+  materi String
+  catatan String
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  kelasMK kelas_mata_kuliah [not null]
+  detail presensi_detail [not null]
+
+  indexes {
+    (kelasMKId, pertemuan) [unique]
+  }
+}
+
+Table presensi_detail {
+  id Int [pk, increment]
+  presensiId Int [not null]
+  mahasiswaId Int [not null]
+  status StatusPresensi [not null, default: 'ALPHA']
+  keterangan String
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  presensi presensi [not null]
+  mahasiswa mahasiswa [not null]
+
+  indexes {
+    (presensiId, mahasiswaId) [unique]
+  }
+}
+
+Enum Role {
+  ADMIN
+  DOSEN
+  MAHASISWA
+  KEUANGAN
+}
+
+Enum JenisKelamin {
+  L
+  P
+}
+
+Enum StatusMahasiswa {
+  AKTIF
+  CUTI
+  NON_AKTIF
+  LULUS
+  DO
+}
+
+Enum StatusDosen {
+  AKTIF
+  NON_AKTIF
+}
+
+Enum PeriodeSemester {
+  GANJIL
+  GENAP
+}
+
+Enum StatusKRS {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+Enum NilaiHuruf {
+  A
+  AB
+  B
+  BC
+  C
+  CD
+  D
+  DE
+  E
+}
+
+Enum StatusPembayaran {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+Enum StatusPresensi {
+  HADIR
+  TIDAK_HADIR
+  IZIN
+  SAKIT
+  ALPHA
+}
+
+Enum JenisPembayaran {
+  KRS
+  TENGAH_SEMESTER
+  PPL
+  SKRIPSI
+  WISUDA
+  KOMITMEN_BULANAN
+}
+
+Ref: mahasiswa.userId - users.id [delete: Cascade]
+
+Ref: mahasiswa.prodiId > program_studi.id
+
+Ref: mahasiswa.dosenWaliId > dosen.id
+
+Ref: dosen.userId - users.id [delete: Cascade]
+
+Ref: dosen.prodiId > program_studi.id
+
+Ref: kelas_mata_kuliah.mkId > mata_kuliah.id [delete: Cascade]
+
+Ref: kelas_mata_kuliah.semesterId > semester.id [delete: Cascade]
+
+Ref: kelas_mata_kuliah.dosenId > dosen.id
+
+Ref: kelas_mata_kuliah.ruanganId > ruangan.id
+
+Ref: paket_krs.semesterId > semester.id
+
+Ref: paket_krs.prodiId > program_studi.id
+
+Ref: paket_krs.createdById > users.id
+
+Ref: paket_krs_detail.paketKRSId > paket_krs.id [delete: Cascade]
+
+Ref: paket_krs_detail.kelasMKId > kelas_mata_kuliah.id [delete: Cascade]
+
+Ref: krs.mahasiswaId > mahasiswa.id [delete: Cascade]
+
+Ref: krs.semesterId > semester.id
+
+Ref: krs.paketKRSId > paket_krs.id
+
+Ref: krs.approvedById > users.id
+
+Ref: krs_detail.krsId > krs.id [delete: Cascade]
+
+Ref: krs_detail.kelasMKId > kelas_mata_kuliah.id [delete: Cascade]
+
+Ref: nilai.mahasiswaId > mahasiswa.id [delete: Cascade]
+
+Ref: nilai.kelasMKId > kelas_mata_kuliah.id [delete: Cascade]
+
+Ref: nilai.semesterId > semester.id
+
+Ref: nilai.inputById > users.id
+
+Ref: khs.mahasiswaId > mahasiswa.id [delete: Cascade]
+
+Ref: khs.semesterId > semester.id
+
+Ref: pembayaran.mahasiswaId > mahasiswa.id [delete: Cascade]
+
+Ref: pembayaran.semesterId > semester.id
+
+Ref: pembayaran.verifiedById > users.id
+
+Ref: presensi.kelasMKId > kelas_mata_kuliah.id [delete: Cascade]
+
+Ref: presensi_detail.presensiId > presensi.id [delete: Cascade]
+
+Ref: presensi_detail.mahasiswaId > mahasiswa.id [delete: Cascade]

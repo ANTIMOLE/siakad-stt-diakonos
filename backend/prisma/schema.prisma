@@ -1,0 +1,597 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+// ============================================
+// PRISMA SCHEMA - SIAKAD STT DIAKONOS
+// Database: PostgreSQL
+// ============================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS (PostgreSQL Native)
+// ============================================
+
+enum Role {
+  ADMIN
+  DOSEN
+  MAHASISWA
+  KEUANGAN
+}
+
+enum JenisKelamin {
+  L // Laki-laki
+  P // Perempuan
+}
+
+enum StatusMahasiswa {
+  AKTIF
+  CUTI
+  NON_AKTIF
+  LULUS
+  DO
+}
+
+enum StatusDosen {
+  AKTIF
+  NON_AKTIF
+}
+
+enum PeriodeSemester {
+  GANJIL
+  GENAP
+}
+
+enum StatusKRS {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum NilaiHuruf {
+  A
+  AB
+  B
+  BC
+  C
+  CD
+  D
+  DE
+  E
+}
+
+// ============================================
+// 1. AUTHENTICATION & USER MANAGEMENT
+// ============================================
+
+model User {
+  id        Int      @id @default(autoincrement())
+  password  String // bcrypt hashed
+  role      Role     @default(MAHASISWA)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  mahasiswa Mahasiswa?
+  dosen     Dosen?
+
+  krsApproved     KRS[]      @relation("ApprovedBy")
+  paketKRSCreated PaketKRS[] @relation("CreatedBy")
+  nilaiInputted   Nilai[]    @relation("InputBy")
+  pembayaranVerified Pembayaran[] @relation("VerifiedPayment")
+
+  @@map("users")
+}
+
+// ============================================
+// 2. MASTER DATA - PROGRAM STUDI
+// ============================================
+
+model ProgramStudi {
+  id        Int      @id @default(autoincrement())
+  kode      String   @unique // "PAK", "TEOLOGI"
+  nama      String // "Pendidikan Agama Kristen", "Teologi"
+  jenjang   String   @default("S1")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  mahasiswa Mahasiswa[]
+  dosen     Dosen[]
+  paketKRS  PaketKRS[]
+
+  @@map("program_studi")
+}
+
+// ============================================
+// 3. MASTER DATA - MAHASISWA
+// ============================================
+
+model Mahasiswa {
+  id            Int          @id @default(autoincrement())
+  userId        Int          @unique
+  nim           String       @unique
+  namaLengkap   String
+  tempatTanggalLahir   String?
+  jenisKelamin  JenisKelamin?
+  alamat        String?
+
+  prodiId  Int
+  angkatan Int 
+  status   StatusMahasiswa @default(AKTIF)
+
+  dosenWaliId Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+
+  // Relations
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prodi     ProgramStudi @relation(fields: [prodiId], references: [id])
+  dosenWali Dosen?       @relation("DosenWali", fields: [dosenWaliId], references: [id])
+  presensi PresensiDetail[]
+  
+
+  krs   KRS[]
+  khs   KHS[]
+  nilai Nilai[]
+  pembayaran Pembayaran[]
+
+  @@index([nim])
+  @@index([prodiId])
+  @@index([angkatan])
+  @@index([dosenWaliId])
+  @@map("mahasiswa")
+}
+
+// ============================================
+// 4. MASTER DATA - DOSEN
+// ============================================
+
+model Dosen {
+  id          Int         @id @default(autoincrement())
+  userId      Int         @unique
+  nidn        String      @unique
+  nuptk       String      @unique
+  namaLengkap String
+  prodiId     Int? 
+
+  tempatLahir   String?
+  tanggalLahir  DateTime?
+  posisi        String
+  jafung        String
+  alumni        String
+  lamaMengajar  String
+  status      StatusDosen @default(AKTIF)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prodi ProgramStudi? @relation(fields: [prodiId], references: [id])
+
+  mahasiswaBimbingan Mahasiswa[]       @relation("DosenWali")
+  kelasMataKuliah    KelasMataKuliah[]
+
+  @@index([nidn])
+  @@index([prodiId])
+  @@map("dosen")
+}
+
+// ============================================
+// 5. MASTER DATA - MATA KULIAH
+// ============================================
+
+model MataKuliah {
+  id            Int     @id @default(autoincrement())
+  kodeMK        String  @unique
+  namaMK        String
+  sks           Int 
+  semesterIdeal Int 
+  isLintasProdi Boolean @default(false)
+  deskripsi     String?
+  isActive      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  kelasMataKuliah KelasMataKuliah[]
+
+  @@index([kodeMK])
+  @@index([semesterIdeal])
+  @@map("mata_kuliah")
+}
+
+
+// ============================================
+// 7. RUANGAN
+// ============================================
+
+model Ruangan {
+  id        Int     @id @default(autoincrement())
+  nama      String  @unique // "Teologi 1", "Teologi 2", "PAK 1", "PAK 2"
+  kapasitas Int?    @default(30)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  kelasMataKuliah KelasMataKuliah[]
+
+  @@map("ruangan")
+}
+
+// ============================================
+// 8. SEMESTER AKADEMIK
+// ============================================
+
+model Semester {
+  id            Int             @id @default(autoincrement())
+  tahunAkademik String // "2024/2025"
+  periode       PeriodeSemester // GANJIL, GENAP
+
+  tanggalMulai   DateTime
+  tanggalSelesai DateTime
+
+  periodeKRSMulai   DateTime
+  periodeKRSSelesai DateTime
+
+  periodePerbaikanKRSMulai   DateTime
+  periodePerbaikanKRSSelesai DateTime
+
+  isActive Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  kelasMataKuliah KelasMataKuliah[]
+  krs             KRS[]
+  khs             KHS[]
+  nilai           Nilai[]
+  pembayaranKRS Pembayaran[]
+  paketKRS        PaketKRS[] 
+
+  @@unique([tahunAkademik, periode])
+  @@index([isActive])
+  @@map("semester")
+}
+
+// ============================================
+// 9. KELAS MATA KULIAH (Jadwal + Dosen)
+// ============================================
+
+model KelasMataKuliah {
+  id         Int @id @default(autoincrement())
+  mkId       Int
+  semesterId Int
+  dosenId    Int
+
+  hari       String 
+  jamMulai   String 
+  jamSelesai String 
+
+  ruanganId  Int
+  kuotaMax   Int     @default(30)
+  keterangan String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  mataKuliah MataKuliah @relation(fields: [mkId], references: [id], onDelete: Cascade)
+  semester   Semester   @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  dosen      Dosen      @relation(fields: [dosenId], references: [id])
+  ruangan    Ruangan    @relation(fields: [ruanganId], references: [id])
+
+  paketKRSDetail PaketKRSDetail[]
+  krsDetail      KRSDetail[]
+  nilai          Nilai[]
+  presensi Presensi[]
+
+  @@index([semesterId])
+  @@index([dosenId])
+  @@index([hari, jamMulai])
+  @@map("kelas_mata_kuliah")
+}
+
+// ============================================
+// 10. PAKET KRS (Template per Angkatan)
+// ============================================
+
+model PaketKRS {
+  id            Int    @id @default(autoincrement())
+  namaPaket     String // "Paket Semester 1 PAK Angkatan 2024"
+  angkatan      Int // 2024, 2025
+  prodiId       Int
+  semesterPaket Int // 1-8
+  semesterId    Int
+  totalSKS      Int    @default(0)
+
+  createdById Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  semester  Semester     @relation(fields: [semesterId], references: [id])
+  prodi     ProgramStudi @relation(fields: [prodiId], references: [id])
+  createdBy User         @relation("CreatedBy", fields: [createdById], references: [id])
+
+  detail PaketKRSDetail[]
+  krs    KRS[]
+
+  @@index([angkatan, prodiId, semesterPaket])
+  @@map("paket_krs")
+}
+
+// ============================================
+// 11. PAKET KRS DETAIL (Mata Kuliah di Paket)
+// ============================================
+
+model PaketKRSDetail {
+  id         Int @id @default(autoincrement())
+  paketKRSId Int
+  kelasMKId  Int
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  paketKRS PaketKRS        @relation(fields: [paketKRSId], references: [id], onDelete: Cascade)
+  kelasMK  KelasMataKuliah @relation(fields: [kelasMKId], references: [id], onDelete: Cascade)
+
+  @@unique([paketKRSId, kelasMKId])
+  @@map("paket_krs_detail")
+}
+
+// ============================================
+// 12. KRS MAHASISWA
+// ============================================
+
+model KRS {
+  id          Int  @id @default(autoincrement())
+  mahasiswaId Int
+  semesterId  Int
+  paketKRSId  Int? // Reference ke paket yang dipakai
+
+  status     StatusKRS @default(DRAFT)
+  totalSKS   Int       @default(0)
+  isModified Boolean   @default(false) // true jika beda dari paket default
+
+  catatanAdmin String?
+
+  tanggalSubmit   DateTime?
+  tanggalApproval DateTime?
+  approvedById    Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  mahasiswa  Mahasiswa @relation(fields: [mahasiswaId], references: [id], onDelete: Cascade)
+  semester   Semester  @relation(fields: [semesterId], references: [id])
+  paketKRS   PaketKRS? @relation(fields: [paketKRSId], references: [id])
+  approvedBy User?     @relation("ApprovedBy", fields: [approvedById], references: [id])
+
+  detail KRSDetail[]
+
+  @@unique([mahasiswaId, semesterId])
+  @@index([status])
+  @@index([semesterId])
+  @@map("krs")
+}
+
+// ============================================
+// 13. KRS DETAIL (Mata Kuliah yang Diambil)
+// ============================================
+
+model KRSDetail {
+  id        Int @id @default(autoincrement())
+  krsId     Int
+  kelasMKId Int
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  krs     KRS             @relation(fields: [krsId], references: [id], onDelete: Cascade)
+  kelasMK KelasMataKuliah @relation(fields: [kelasMKId], references: [id], onDelete: Cascade)
+
+  @@unique([krsId, kelasMKId])
+  @@map("krs_detail")
+}
+
+// ============================================
+// 14. NILAI MAHASISWA
+// ============================================
+
+model Nilai {
+  id          Int @id @default(autoincrement())
+  mahasiswaId Int
+  kelasMKId   Int
+  semesterId  Int
+
+  nilaiAngka Decimal?    @db.Decimal(5, 2) 
+  nilaiHuruf NilaiHuruf?
+  bobot      Decimal?    @db.Decimal(3, 2) 
+
+  isFinalized Boolean @default(false)
+
+  inputById    Int
+  tanggalInput DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  mahasiswa Mahasiswa       @relation(fields: [mahasiswaId], references: [id], onDelete: Cascade)
+  kelasMK   KelasMataKuliah @relation(fields: [kelasMKId], references: [id], onDelete: Cascade)
+  semester  Semester        @relation(fields: [semesterId], references: [id])
+  inputBy   User            @relation("InputBy", fields: [inputById], references: [id])
+
+  @@unique([mahasiswaId, kelasMKId, semesterId])
+  @@index([semesterId])
+  @@index([kelasMKId])
+  @@map("nilai")
+}
+
+// ============================================
+// 15. KHS (Kartu Hasil Studi)
+// ============================================
+
+model KHS {
+  id          Int @id @default(autoincrement())
+  mahasiswaId Int
+  semesterId  Int
+
+  ips Decimal @db.Decimal(4, 2) 
+  ipk Decimal @db.Decimal(4, 2) 
+
+  totalSKSSemester  Int
+  totalSKSKumulatif Int
+
+  tanggalGenerate DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  mahasiswa Mahasiswa @relation(fields: [mahasiswaId], references: [id], onDelete: Cascade)
+  semester  Semester  @relation(fields: [semesterId], references: [id])
+
+  @@unique([mahasiswaId, semesterId])
+  @@index([semesterId])
+  @@map("khs")
+}
+
+model AuditLog {
+  id        Int     @id @default(autoincrement())
+  userId    Int?
+  action    String 
+  tableName String
+  recordId  Int?
+  oldData   Json?
+  newData   Json?
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([tableName, recordId])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+enum StatusPembayaran {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum StatusPresensi {
+  HADIR
+  TIDAK_HADIR
+  IZIN
+  SAKIT
+  ALPHA
+}
+
+
+enum JenisPembayaran {
+  KRS
+  TENGAH_SEMESTER
+  PPL
+  SKRIPSI
+  WISUDA
+  KOMITMEN_BULANAN
+}
+
+model Pembayaran {
+  id               Int      @id @default(autoincrement())
+  mahasiswaId      Int
+  semesterId       Int?    
+  jenisPembayaran  JenisPembayaran @default(KRS) 
+  nominal          Int
+  buktiUrl         String
+  status           StatusPembayaran @default(PENDING)
+  catatan          String?
+  
+  bulanPembayaran  DateTime?
+  
+  uploadedAt       DateTime @default(now())
+  verifiedAt       DateTime?
+  verifiedById     Int?
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+
+  mahasiswa        Mahasiswa @relation(fields: [mahasiswaId], references: [id], onDelete: Cascade)
+  semester         Semester? @relation(fields: [semesterId], references: [id]) // ✅ Nullable
+  verifiedBy       User?     @relation("VerifiedPayment", fields: [verifiedById], references: [id])
+
+  @@index([mahasiswaId])
+  @@index([semesterId])
+  @@index([status])
+  @@index([jenisPembayaran])
+  @@map("pembayaran") 
+}
+
+
+
+model Presensi {
+  id         Int      @id @default(autoincrement())
+  kelasMKId  Int
+  tanggal    DateTime @default(now()) 
+  pertemuan  Int     
+  
+  materi     String?  
+  catatan    String?  
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  kelasMK    KelasMataKuliah @relation(fields: [kelasMKId], references: [id], onDelete: Cascade)
+  detail     PresensiDetail[]
+
+  @@unique([kelasMKId, pertemuan])
+  @@index([kelasMKId])
+  @@index([tanggal])
+  @@map("presensi")
+}
+
+model PresensiDetail {
+  id          Int      @id @default(autoincrement())
+  presensiId  Int
+  mahasiswaId Int
+  status      StatusPresensi @default(ALPHA)
+  keterangan  String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+
+  presensi   Presensi  @relation(fields: [presensiId], references: [id], onDelete: Cascade)
+  mahasiswa  Mahasiswa @relation(fields: [mahasiswaId], references: [id], onDelete: Cascade)
+
+  @@unique([presensiId, mahasiswaId])
+  @@index([mahasiswaId])
+  @@map("presensi_detail")
+}
+
+
+
+generator dbml {
+  provider = "prisma-dbml-generator"
+  output   = "../dbml"
+}

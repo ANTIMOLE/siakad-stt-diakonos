@@ -1,0 +1,405 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft, Save } from 'lucide-react';
+
+import PageHeader from '@/components/shared/PageHeader';
+import LoadingSpinner from '@/components/shared/LoadingSpinner';
+import ErrorState from '@/components/shared/ErrorState';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
+
+import { semesterAPI } from '@/lib/api';
+
+const PERIODE_OPTIONS = ['GANJIL', 'GENAP', 'PENDEK'];
+
+export default function EditSemesterPage() {
+  const params = useParams();
+  const router = useRouter();
+  const semesterId = parseInt(params.id as string);
+
+  // ============================================
+  // STATE MANAGEMENT
+  // ============================================
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Form data
+  const [formData, setFormData] = useState({
+    tahunAkademik: '',
+    periode: '',
+    tanggalMulai: '',
+    tanggalSelesai: '',
+  });
+
+  // Original data to check if semester is active
+  const [isActive, setIsActive] = useState(false);
+
+  // Validation errors
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // ============================================
+  // FETCH DATA
+  // ============================================
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        // Fetch existing semester data
+        const response = await semesterAPI.getById(semesterId);
+        if (!response.success || !response.data) {
+          setError('Semester tidak ditemukan');
+          return;
+        }
+
+        const semester = response.data;
+        setIsActive(semester.isActive);
+
+        // Convert dates to YYYY-MM-DD format for input type="date"
+        const formatDateForInput = (dateString: string) => {
+          const date = new Date(dateString);
+          return date.toISOString().split('T')[0];
+        };
+
+        // Set form data from existing semester
+        setFormData({
+          tahunAkademik: semester.tahunAkademik || '',
+          periode: semester.periode || '',
+          tanggalMulai: formatDateForInput(semester.tanggalMulai),
+          tanggalSelesai: formatDateForInput(semester.tanggalSelesai),
+        });
+      } catch (err: any) {
+        console.error('Fetch error:', err);
+        setError(
+          err.response?.data?.message ||
+          err.message ||
+          'Terjadi kesalahan saat memuat data'
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (semesterId) {
+      fetchData();
+    }
+  }, [semesterId]);
+
+  // ============================================
+  // FORM HANDLERS
+  // ============================================
+  const handleChange = (field: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    // Clear error for this field
+    if (errors[field]) {
+      setErrors((prev) => ({ ...prev, [field]: '' }));
+    }
+  };
+
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.tahunAkademik.trim()) {
+      newErrors.tahunAkademik = 'Tahun Akademik harus diisi';
+    } else if (!/^\d{4}\/\d{4}$/.test(formData.tahunAkademik.trim())) {
+      newErrors.tahunAkademik = 'Format harus YYYY/YYYY (contoh: 2024/2025)';
+    }
+
+    if (!formData.periode) {
+      newErrors.periode = 'Periode harus dipilih';
+    }
+
+    if (!formData.tanggalMulai) {
+      newErrors.tanggalMulai = 'Tanggal mulai harus diisi';
+    }
+
+    if (!formData.tanggalSelesai) {
+      newErrors.tanggalSelesai = 'Tanggal selesai harus diisi';
+    }
+
+    // Validate date range
+    if (formData.tanggalMulai && formData.tanggalSelesai) {
+      if (new Date(formData.tanggalMulai) >= new Date(formData.tanggalSelesai)) {
+        newErrors.tanggalSelesai = 'Tanggal selesai harus lebih besar dari tanggal mulai';
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!validateForm()) {
+      toast.error('Mohon lengkapi semua field yang wajib diisi');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+
+      const payload = {
+        tahun_akademik: formData.tahunAkademik.trim(),
+        periode: formData.periode,
+        tanggal_mulai: formData.tanggalMulai,
+        tanggal_selesai: formData.tanggalSelesai,
+      };
+
+      const response = await semesterAPI.update(semesterId, payload);
+
+      if (response.success) {
+        toast.success('Semester berhasil diupdate');
+        router.push(`/admin/semester/${semesterId}`);
+      } else {
+        toast.error(response.message || 'Gagal mengupdate semester');
+      }
+    } catch (err: any) {
+      console.error('Submit error:', err);
+      toast.error(
+        err.response?.data?.message ||
+        err.message ||
+        'Terjadi kesalahan saat menyimpan data'
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRetry = () => {
+    window.location.reload();
+  };
+
+  // ============================================
+  // LOADING STATE
+  // ============================================
+  if (isLoading) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <LoadingSpinner size="lg" text="Memuat data semester..." />
+      </div>
+    );
+  }
+
+  // ============================================
+  // ERROR STATE
+  // ============================================
+  if (error) {
+    return (
+      <ErrorState
+        title="Gagal Memuat Data"
+        message={error}
+        onRetry={handleRetry}
+      />
+    );
+  }
+
+  // ============================================
+  // RENDER
+  // ============================================
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <PageHeader
+        title="Edit Semester"
+        description="Update informasi semester"
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/admin/dashboard' },
+          { label: 'Semester', href: '/admin/semester' },
+          { label: 'Edit' },
+        ]}
+      />
+
+      {/* Warning if active semester */}
+      {isActive && (
+        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-start gap-2">
+            <Badge variant="default">Semester Aktif</Badge>
+            <p className="text-sm text-yellow-800">
+              Ini adalah semester yang sedang aktif. Perubahan akan langsung mempengaruhi sistem KRS.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Main Form */}
+          <div className="lg:col-span-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Informasi Semester</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Tahun Akademik */}
+                <div className="space-y-2">
+                  <Label htmlFor="tahunAkademik">
+                    Tahun Akademik <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="tahunAkademik"
+                    value={formData.tahunAkademik}
+                    onChange={(e) => handleChange('tahunAkademik', e.target.value)}
+                    placeholder="Contoh: 2024/2025"
+                    className={errors.tahunAkademik ? 'border-red-500' : ''}
+                  />
+                  {errors.tahunAkademik && (
+                    <p className="text-sm text-red-500">{errors.tahunAkademik}</p>
+                  )}
+                  <p className="text-sm text-muted-foreground">
+                    Format: YYYY/YYYY (contoh: 2024/2025)
+                  </p>
+                </div>
+
+                {/* Periode */}
+                <div className="space-y-2">
+                  <Label htmlFor="periode">
+                    Periode <span className="text-red-500">*</span>
+                  </Label>
+                  <Select
+                    value={formData.periode}
+                    onValueChange={(value) => handleChange('periode', value)}
+                  >
+                    <SelectTrigger
+                      id="periode"
+                      className={errors.periode ? 'border-red-500' : ''}
+                    >
+                      <SelectValue placeholder="Pilih Periode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PERIODE_OPTIONS.map((periode) => (
+                        <SelectItem key={periode} value={periode}>
+                          {periode}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.periode && (
+                    <p className="text-sm text-red-500">{errors.periode}</p>
+                  )}
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  {/* Tanggal Mulai */}
+                  <div className="space-y-2">
+                    <Label htmlFor="tanggalMulai">
+                      Tanggal Mulai <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="tanggalMulai"
+                      type="date"
+                      value={formData.tanggalMulai}
+                      onChange={(e) => handleChange('tanggalMulai', e.target.value)}
+                      className={errors.tanggalMulai ? 'border-red-500' : ''}
+                    />
+                    {errors.tanggalMulai && (
+                      <p className="text-sm text-red-500">{errors.tanggalMulai}</p>
+                    )}
+                  </div>
+
+                  {/* Tanggal Selesai */}
+                  <div className="space-y-2">
+                    <Label htmlFor="tanggalSelesai">
+                      Tanggal Selesai <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="tanggalSelesai"
+                      type="date"
+                      value={formData.tanggalSelesai}
+                      onChange={(e) => handleChange('tanggalSelesai', e.target.value)}
+                      className={errors.tanggalSelesai ? 'border-red-500' : ''}
+                    />
+                    {errors.tanggalSelesai && (
+                      <p className="text-sm text-red-500">{errors.tanggalSelesai}</p>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Status Info */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Status Semester</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Badge variant={isActive ? 'default' : 'secondary'}>
+                  {isActive ? 'Aktif' : 'Tidak Aktif'}
+                </Badge>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Status aktif tidak dapat diubah melalui form edit. 
+                  Gunakan tombol &quot;Aktifkan&quot; di halaman detail untuk mengaktifkan semester.
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Help */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Panduan</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm text-muted-foreground">
+                <p>• Tahun akademik harus dalam format YYYY/YYYY</p>
+                <p>• Periode bisa Ganjil, Genap, atau Pendek</p>
+                <p>• Tanggal selesai harus lebih besar dari tanggal mulai</p>
+                <p>• Hanya bisa ada satu semester aktif dalam satu waktu</p>
+              </CardContent>
+            </Card>
+
+            {/* Actions */}
+            <Card>
+              <CardContent className="pt-6 space-y-3">
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <>
+                      <LoadingSpinner size="sm" className="mr-2" />
+                      Menyimpan...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Simpan Perubahan
+                    </>
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => router.back()}
+                  disabled={isSaving}
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Batal
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}

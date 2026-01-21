@@ -13,14 +13,7 @@ import { validateKRSRequirements } from '../utils/validasi';
 
 import { generatePDF, getKRSHTMLTemplate } from '../utils/pdfGenerator';
 
-/**
- * GET /api/krs
- * Get all KRS with filters
- */
-/**
- * GET /api/krs
- * Get all KRS with filters
- */
+
 export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
     page = 1,
@@ -57,7 +50,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     where.status = status as any;
   }
 
-  // ✅ Map frontend field names ke Prisma field names
+
   const fieldMapping: Record<string, string> = {
     submittedAt: 'tanggalSubmit',
     approvedAt: 'tanggalApproval',
@@ -79,7 +72,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     skip,
     take: limitNum,
     orderBy: {
-      [prismaField]: sortOrder as 'asc' | 'desc',  // ✅ Use mapped field
+      [prismaField]: sortOrder as 'asc' | 'desc',  
     },
     include: {
       mahasiswa: {
@@ -88,7 +81,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
           nim: true,
           namaLengkap: true,
           angkatan: true,
-          prodi: {  // ✅ Add prodi untuk table display
+          prodi: { 
             select: {
               id: true,
               kode: true,
@@ -392,10 +385,7 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
   });
 });
 
-/**
- * DELETE /api/krs/:id
- * Delete KRS (only when status is DRAFT)
- */
+
 export const deleteById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;

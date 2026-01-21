@@ -207,10 +207,10 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
       angkatan,
       status: 'AKTIF',
       prodi: {
-        connect: { id: prodiId },  // ✅ Pakai connect
+        connect: { id: prodiId },  
       },
       dosenWali: dosenWaliId 
-        ? { connect: { id: dosenWaliId } }  // ✅ Pakai connect
+        ? { connect: { id: dosenWaliId } }  
         : undefined,
       user: {
         create: {

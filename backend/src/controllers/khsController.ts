@@ -1,7 +1,4 @@
-/**
- * KHS Controller
- * Handles KHS (Kartu Hasil Studi) operations
- */
+
 
 import { Response } from 'express';
 import prisma from '../config/database';
@@ -12,10 +9,7 @@ import { generateKHSForMahasiswa } from '../services/nilaiService';
 import { generatePDF, getKHSHTMLTemplate, getTranskripHTMLTemplate } from '../utils/pdfGenerator';
 import { getPredikatIPK } from '../utils/hitungIPK';
 
-/**
- * GET /api/khs
- * Get all KHS for a mahasiswa
- */
+
 export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { mahasiswaId } = req.query;
 
@@ -50,10 +44,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   });
 });
 
-/**
- * GET /api/khs/:id
- * Get KHS by ID with details
- */
+
 export const getById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
@@ -335,11 +326,7 @@ export const downloadPDF = asyncHandler(
   }
 );
 
-/**
- * GET /api/khs/transkrip/:mahasiswaId/pdf
- * Download full transcript as PDF
- * ✅ FIXED: Sudah pakai PDF generator
- */
+
 export const downloadTranskripPDF = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { mahasiswaId } = req.params;

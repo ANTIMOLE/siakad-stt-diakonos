@@ -7,7 +7,6 @@ import { asyncHandler } from '../middlewares/errorMiddleware';
 
 export const getAdminStats = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    // Get active semester
     const activeSemester = await prisma.semester.findFirst({
       where: { isActive: true },
     });

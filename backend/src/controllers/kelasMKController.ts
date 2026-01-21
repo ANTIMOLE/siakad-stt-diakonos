@@ -1,7 +1,4 @@
-/**
- * Kelas Mata Kuliah Controller
- * Handles CRUD operations for class schedules
- */
+
 
 import { Response } from 'express';
 import prisma from '../config/database';
@@ -9,10 +6,6 @@ import { AuthRequest } from '../types';
 import { asyncHandler, AppError } from '../middlewares/errorMiddleware';
 import { Prisma } from '@prisma/client';
 
-/**
- * GET /api/kelas-mk
- * Get all kelas with filters and pagination
- */
 export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
     page = 1,
@@ -118,10 +111,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   });
 });
 
-/**
- * GET /api/kelas-mk/:id
- * Get kelas by ID
- */
+
 export const getById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
@@ -168,9 +158,7 @@ export const getById = asyncHandler(
   }
 );
 
-/**
- * Check for schedule conflicts
- */
+
 const checkScheduleConflict = async (
   hari: string,
   jamMulai: string,
@@ -180,7 +168,7 @@ const checkScheduleConflict = async (
   semesterId: number,
   excludeId?: number
 ): Promise<string | null> => {
-  // Check ruangan conflict
+
   const ruanganConflict = await prisma.kelasMataKuliah.findFirst({
     where: {
       id: excludeId ? { not: excludeId } : undefined,
@@ -245,10 +233,6 @@ const checkScheduleConflict = async (
   return null;
 };
 
-/**
- * POST /api/kelas-mk
- * Create new kelas
- */
 export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
     mkId,
@@ -304,10 +288,6 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
   });
 });
 
-/**
- * PUT /api/kelas-mk/:id
- * Update kelas
- */
 export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const {
@@ -322,7 +302,7 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     keterangan,
   } = req.body;
 
-  // Check if kelas exists
+
   const existingKelas = await prisma.kelasMataKuliah.findUnique({
     where: { id: parseInt(id) },
   });
@@ -331,7 +311,7 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     throw new AppError('Kelas mata kuliah tidak ditemukan', 404);
   }
 
-  // Check for schedule conflicts if schedule is being changed
+
   if (hari || jamMulai || jamSelesai || ruanganId || dosenId) {
     const conflict = await checkScheduleConflict(
       hari || existingKelas.hari,
@@ -348,7 +328,7 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     }
   }
 
-  // Update kelas
+
   const kelasMK = await prisma.kelasMataKuliah.update({
     where: { id: parseInt(id) },
     data: {
@@ -377,10 +357,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
   });
 });
 
-/**
- * DELETE /api/kelas-mk/:id
- * Delete kelas
- */
 export const deleteById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;

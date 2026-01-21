@@ -1,7 +1,4 @@
-/**
- * Authentication Controller (FIXED)
- * Handles login, register, get current user, change password, logout
- */
+
 
 import { Response } from 'express';
 import bcrypt from 'bcrypt';

@@ -16,7 +16,7 @@ export const createFromPaket = async (
 ) => {
   // Get paket KRS with details
   const paketKRS = await prisma.paketKRS.findUnique({
-    where: { id: paketKRSId },
+    where: { id: mahasiswaId },
     include: {
       detail: {
         include: {

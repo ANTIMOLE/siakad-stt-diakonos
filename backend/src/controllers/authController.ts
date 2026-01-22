@@ -52,6 +52,14 @@ if (identifier.length === 10) {
     throw new AppError('User tidak ditemukan', 401);
   }
 
+  // ⛔ TOLAK JIKA ROLE MAHASISWA / DOSEN
+  if (userById.role === 'MAHASISWA' || userById.role === 'DOSEN') {
+    throw new AppError(
+      'Mahasiswa atau dosen tidak dapat login menggunakan User ID',
+      403
+    );
+  }
+
   user = userById;
 }
 

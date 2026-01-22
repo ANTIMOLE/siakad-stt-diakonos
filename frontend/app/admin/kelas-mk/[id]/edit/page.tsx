@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -86,10 +87,10 @@ export default function EditKelasMKPage() {
 
         // Set form data from existing kelas
         setFormData({
-          mataKuliahId: kelas.mataKuliahId?.toString() || '',
-          dosenId: kelas.dosenId?.toString() || '',
-          semesterId: kelas.semesterId?.toString() || '',
-          ruanganId: kelas.ruanganId?.toString() || '',
+          mataKuliahId: kelas.mataKuliah?.id?.toString() || '',
+          dosenId: kelas.dosen?.id?.toString() || '',
+          semesterId: kelas.semester?.id?.toString() || '',
+          ruanganId: kelas.ruangan?.id?.toString() || '',
           hari: kelas.hari || '',
           jamMulai: kelas.jamMulai || '',
           jamSelesai: kelas.jamSelesai || '',
@@ -98,13 +99,12 @@ export default function EditKelasMKPage() {
         });
 
         // Fetch options in parallel
-        const [mkResponse, dosenResponse, semesterResponse, ruanganResponse] =
-          await Promise.all([
-            mataKuliahAPI.getAll({ limit: 1000 }),
-            dosenAPI.getAll({ limit: 1000 }),
-            semesterAPI.getAll(),
-            ruanganAPI.getAll({ limit: 1000, isActive: 'true' }),
-          ]);
+       const [mkResponse, dosenResponse, semesterResponse, ruanganResponse] = await Promise.all([
+  mataKuliahAPI.getAll({ limit: 100 }),  // Reduce further
+  dosenAPI.getAll({ limit: 100 }),
+  semesterAPI.getAll(),
+  ruanganAPI.getAll({ limit: 100, isActive: 'true' }),
+]);
 
         if (mkResponse.success && mkResponse.data) {
           setMataKuliahList(mkResponse.data);

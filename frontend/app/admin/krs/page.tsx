@@ -37,7 +37,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { FileText, Plus, Eye, Edit, Trash2, AlertCircle } from 'lucide-react';
+import { FileText, Plus, Eye, Edit, Trash2, AlertCircle, Send } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -182,8 +182,24 @@ export default function AdminKRSListPage() {
     router.push(`/admin/krs/${id}`);
   };
 
-  const handleEdit = (id: number) => {
-    router.push(`/admin/krs/${id}`);
+  const handleSubmit = async (id: number) => {
+    try {
+      const response = await krsAPI.submit(id);
+
+      if (response.success) {
+        toast.success('KRS berhasil disubmit untuk approval');
+        fetchKRS(); // Refresh list
+      } else {
+        toast.error(response.message || 'Gagal submit KRS');
+      }
+    } catch (err: any) {
+      console.error('Submit error:', err);
+      toast.error(
+        err.response?.data?.message ||
+          err.message ||
+          'Terjadi kesalahan saat submit KRS'
+      );
+    }
   };
 
   const handleDeleteClick = (krs: KRS) => {
@@ -405,10 +421,18 @@ export default function AdminKRSListPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleEdit(krs.id)}
+                                onClick={() => handleView(krs.id)}
                               >
-                                <Edit className="mr-2 h-4 w-4" />
-                                Edit
+                                <Eye className="mr-2 h-4 w-4" />
+                                Detail
+                              </Button>
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => handleSubmit(krs.id)}
+                              >
+                                <Send className="mr-2 h-4 w-4" />
+                                Submit
                               </Button>
                               <Button
                                 variant="ghost"

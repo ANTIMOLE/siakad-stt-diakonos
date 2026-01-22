@@ -32,14 +32,39 @@ import { toast } from 'sonner';
 import { khsAPI, semesterAPI } from '@/lib/api';
 import { KHS, Semester, Nilai } from '@/types/model';
 
+interface KHSWithDetails extends KHS {
+  nilai?: Nilai[];
+  predikat?: string;
+}
+
 export default function KHSPage() {
+  // ============================================
+  // AMBIL USER DARI LOCALSTORAGE
+  // ============================================
+  const [user, setUser] = useState<any>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const parsed = JSON.parse(storedUser);
+        setUser(parsed);
+      } catch (err) {
+        console.error('Gagal parse user dari localStorage');
+        localStorage.removeItem('user');
+      }
+    }
+    setIsAuthLoading(false);
+  }, []);
+
   // ============================================
   // STATE MANAGEMENT
   // ============================================
   const [khsList, setKhsList] = useState<KHS[]>([]);
   const [semesterList, setSemesterList] = useState<Semester[]>([]);
   const [selectedSemesterId, setSelectedSemesterId] = useState<string>('');
-  const [selectedKHS, setSelectedKHS] = useState<KHS | null>(null);
+  const [selectedKHS, setSelectedKHS] = useState<KHSWithDetails | null>(null);
   const [nilaiList, setNilaiList] = useState<Nilai[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
@@ -52,6 +77,12 @@ export default function KHSPage() {
   // ============================================
   useEffect(() => {
     const fetchData = async () => {
+      if (!user?.mahasiswa?.id) {
+        setError('Data mahasiswa tidak ditemukan atau Anda belum login');
+        setIsLoading(false);
+        return;
+      }
+
       try {
         setIsLoading(true);
         setError(null);
@@ -59,7 +90,6 @@ export default function KHSPage() {
         // 1. Fetch all semesters
         const semesterResponse = await semesterAPI.getAll();
         if (semesterResponse.success && semesterResponse.data) {
-          // Sort by newest first
           const sorted = semesterResponse.data.sort((a, b) => {
             return b.tahunAkademik.localeCompare(a.tahunAkademik) || 
                    (b.periode === 'GANJIL' ? -1 : 1);
@@ -67,10 +97,21 @@ export default function KHSPage() {
           setSemesterList(sorted);
         }
 
-        // 2. Fetch KHS history for current user
-        const khsResponse = await khsAPI.getAll();
+        // 2. Fetch KHS history untuk mahasiswa ini
+        // Backend route: GET /api/khs?mahasiswaId=...
+        const khsResponse = await khsAPI.getAll({ mahasiswa_id: user.mahasiswa.id });
+
         if (khsResponse.success && khsResponse.data) {
-          setKhsList(khsResponse.data);
+          const khsData = khsResponse.data;
+          setKhsList(khsData);
+
+          // Auto-select semester terbaru yang punya KHS
+          if (khsData.length > 0) {
+            const latestKHS = khsData[0]; // backend sudah order desc
+            setSelectedSemesterId(latestKHS.semesterId.toString());
+          }
+        } else {
+          setKhsList([]);
         }
       } catch (err: any) {
         console.error('Fetch data error:', err);
@@ -85,14 +126,16 @@ export default function KHSPage() {
       }
     };
 
-    fetchData();
-  }, []);
+    if (!isAuthLoading) {
+      fetchData();
+    }
+  }, [user, isAuthLoading]);
 
   // ============================================
-  // FETCH NILAI WHEN SEMESTER SELECTED
+  // FETCH DETAIL KHS + NILAI + PREDIKAT KETIKA SEMESTER DIPILIH
   // ============================================
   useEffect(() => {
-    const fetchNilai = async () => {
+    const fetchDetail = async () => {
       if (!selectedSemesterId) {
         setSelectedKHS(null);
         setNilaiList([]);
@@ -102,7 +145,7 @@ export default function KHSPage() {
       try {
         setIsLoadingNilai(true);
 
-        // Find KHS for selected semester
+        // Cari KHS berdasarkan semesterId
         const khs = khsList.find(k => k.semesterId === Number(selectedSemesterId));
         
         if (!khs) {
@@ -111,22 +154,28 @@ export default function KHSPage() {
           return;
         }
 
-        setSelectedKHS(khs);
-
-        // Fetch nilai details - backend should return nilai with kelasMK relations
-        // For now, we'll use the nilai from KHS if available
-        // In real implementation, you might need a separate API call
-        setNilaiList([]); // TODO: Fetch from nilai API if needed
+        // Fetch detail lengkap (termasuk nilai & predikat)
+        const detailResponse = await khsAPI.getById(khs.id);
+        
+        if (detailResponse.success && detailResponse.data) {
+          const data = detailResponse.data as KHSWithDetails;
+          setSelectedKHS(data);
+          setNilaiList(data.nilai || []);
+        } else {
+          setSelectedKHS(null);
+          setNilaiList([]);
+        }
         
       } catch (err: any) {
-        console.error('Fetch nilai error:', err);
-        toast.error('Gagal memuat data nilai');
+        console.error('Fetch detail error:', err);
+        toast.error('Gagal memuat detail KHS');
+        setNilaiList([]);
       } finally {
         setIsLoadingNilai(false);
       }
     };
 
-    fetchNilai();
+    fetchDetail();
   }, [selectedSemesterId, khsList]);
 
   // ============================================
@@ -140,11 +189,11 @@ export default function KHSPage() {
       
       const blob = await khsAPI.downloadPDF(selectedKHS.id);
       
-      // Create download link
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `KHS_${selectedKHS.semester?.tahunAkademik}_${selectedKHS.semester?.periode}.pdf`;
+      const semester = selectedKHS.semester;
+      link.download = `KHS_${user.mahasiswa.nim}_${semester?.tahunAkademik?.replace('/', '-') ?? 'unknown'}_${semester?.periode ?? 'unknown'}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -166,12 +215,13 @@ export default function KHSPage() {
   // ============================================
   // COMPUTED VALUES
   // ============================================
-  const previousKHS = selectedKHS && khsList.length > 1
-    ? khsList.find(k => k.id !== selectedKHS.id && k.semesterId < selectedKHS.semesterId)
+  // khsList sudah di-order desc oleh backend (terbaru dulu)
+  const previousKHS = selectedKHS && khsList.length > 1 && khsList[0].id === selectedKHS.id
+    ? khsList[1]
     : null;
 
   const ipsTrend = selectedKHS && previousKHS
-    ? selectedKHS.ips - previousKHS.ips
+    ? Number(selectedKHS.ips) - Number(previousKHS.ips)
     : null;
 
   const getNilaiGrade = (bobot: number | null) => {
@@ -183,8 +233,26 @@ export default function KHSPage() {
   };
 
   // ============================================
-  // LOADING STATE
+  // RENDER
   // ============================================
+  if (isAuthLoading) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <LoadingSpinner size="lg" text="Memuat data autentikasi..." />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <ErrorState
+        title="Akses Ditolak"
+        message="Anda belum login atau session telah berakhir. Silakan login kembali."
+        onRetry={() => (window.location.href = '/login')}
+      />
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -193,9 +261,6 @@ export default function KHSPage() {
     );
   }
 
-  // ============================================
-  // ERROR STATE
-  // ============================================
   if (error) {
     return (
       <ErrorState
@@ -206,9 +271,6 @@ export default function KHSPage() {
     );
   }
 
-  // ============================================
-  // RENDER
-  // ============================================
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -228,12 +290,12 @@ export default function KHSPage() {
         }
       />
 
-      {/* No KHS Available */}
+      {/* Belum ada KHS */}
       {khsList.length === 0 && (
         <Alert className="border-blue-200 bg-blue-50">
           <Info className="h-4 w-4 text-blue-600" />
           <AlertDescription className="text-blue-900">
-            Belum ada KHS yang tersedia. KHS akan tersedia setelah nilai difinalisasi oleh dosen.
+            Belum ada KHS yang tersedia. KHS akan muncul setelah semua nilai semester tersebut difinalisasi oleh dosen.
           </AlertDescription>
         </Alert>
       )}
@@ -248,7 +310,7 @@ export default function KHSPage() {
             <Select 
               value={selectedSemesterId} 
               onValueChange={setSelectedSemesterId}
-              disabled={semesterList.length === 0}
+              disabled={khsList.length === 0}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Pilih semester..." />
@@ -262,7 +324,7 @@ export default function KHSPage() {
                       value={sem.id.toString()}
                       disabled={!hasKHS}
                     >
-                      {sem.tahunAkademik} {sem.periode}
+                      {sem.tahunAkademik} {sem.periode === 'GANJIL' ? 'Ganjil' : 'Genap'}
                       {!hasKHS && ' (Belum tersedia)'}
                     </SelectItem>
                   );
@@ -273,14 +335,14 @@ export default function KHSPage() {
         </CardContent>
       </Card>
 
-      {/* Content */}
+      {/* Konten utama */}
       {!selectedSemesterId ? (
         <Card>
           <CardContent className="py-12">
             <EmptyState
               icon={FileText}
               title="Pilih Semester"
-              description="Pilih semester untuk melihat KHS"
+              description="Pilih semester di atas untuk melihat KHS"
               className="border-0"
             />
           </CardContent>
@@ -290,8 +352,8 @@ export default function KHSPage() {
           <CardContent className="py-12">
             <EmptyState
               icon={FileText}
-              title="KHS Tidak Tersedia"
-              description="KHS untuk semester ini belum tersedia. Nilai sedang diproses atau belum difinalisasi."
+              title="KHS Belum Tersedia"
+              description="KHS untuk semester ini belum digenerate. Tunggu hingga semua nilai difinalisasi."
               className="border-0"
             />
           </CardContent>
@@ -308,7 +370,7 @@ export default function KHSPage() {
               <CardContent>
                 <div className="flex items-baseline gap-2">
                   <div className="text-2xl font-bold text-blue-600">
-                    {selectedKHS.ips.toFixed(2)}
+                    {Number(selectedKHS.ips).toFixed(2)}
                   </div>
                   {ipsTrend !== null && (
                     <div className={`flex items-center text-xs ${ipsTrend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -334,7 +396,7 @@ export default function KHSPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-green-600">
-                  {selectedKHS.ipk.toFixed(2)}
+                  {Number(selectedKHS.ipk).toFixed(2)}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Indeks Prestasi Kumulatif
@@ -367,10 +429,10 @@ export default function KHSPage() {
             </Card>
           </div>
 
-          {/* Nilai Table */}
+          {/* Tabel Nilai */}
           <Card>
             <CardHeader>
-              <CardTitle>Daftar Nilai</CardTitle>
+              <CardTitle>Daftar Nilai Semester Ini</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               {isLoadingNilai ? (
@@ -390,6 +452,7 @@ export default function KHSPage() {
                         <TableHead className="w-12">No</TableHead>
                         <TableHead>Kode MK</TableHead>
                         <TableHead>Nama Mata Kuliah</TableHead>
+                        <TableHead>Dosen Pengampu</TableHead>
                         <TableHead className="text-center">SKS</TableHead>
                         <TableHead className="text-center">Nilai Angka</TableHead>
                         <TableHead className="text-center">Nilai Huruf</TableHead>
@@ -406,13 +469,16 @@ export default function KHSPage() {
                           <TableCell className="font-medium">
                             {nilai.kelasMK?.mataKuliah?.namaMK || '-'}
                           </TableCell>
+                          <TableCell>
+                            {nilai.kelasMK?.dosen?.namaLengkap || '-'}
+                          </TableCell>
                           <TableCell className="text-center">
                             <Badge variant="outline">
                               {nilai.kelasMK?.mataKuliah?.sks || 0} SKS
                             </Badge>
                           </TableCell>
                           <TableCell className="text-center font-medium">
-                            {nilai.nilaiAngka !== null ? nilai.nilaiAngka : '-'}
+                            {nilai.nilaiAngka !== null ? Number(nilai.nilaiAngka).toFixed(2) : '-'}
                           </TableCell>
                           <TableCell className="text-center">
                             <Badge 
@@ -423,7 +489,7 @@ export default function KHSPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-center font-medium">
-                            {nilai.bobot !== null ? nilai.bobot.toFixed(2) : '-'}
+                            {nilai.bobot !== null ? Number(nilai.bobot).toFixed(2) : '-'}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -434,7 +500,7 @@ export default function KHSPage() {
             </CardContent>
           </Card>
 
-          {/* Summary */}
+          {/* Summary dengan predikat dari backend */}
           <Card className="border-blue-200 bg-blue-50">
             <CardContent className="pt-6">
               <div className="grid gap-6 md:grid-cols-2">
@@ -446,7 +512,7 @@ export default function KHSPage() {
                   <ul className="text-sm text-blue-700 space-y-2">
                     <li className="flex justify-between">
                       <span>IPS:</span>
-                      <strong>{selectedKHS.ips.toFixed(2)}</strong>
+                      <strong>{Number(selectedKHS.ips).toFixed(2)}</strong>
                     </li>
                     <li className="flex justify-between">
                       <span>Total SKS:</span>
@@ -466,24 +532,20 @@ export default function KHSPage() {
                   <ul className="text-sm text-blue-700 space-y-2">
                     <li className="flex justify-between">
                       <span>IPK:</span>
-                      <strong>{selectedKHS.ipk.toFixed(2)}</strong>
+                      <strong>{Number(selectedKHS.ipk).toFixed(2)}</strong>
                     </li>
                     <li className="flex justify-between">
                       <span>Total SKS Lulus:</span>
                       <strong>{selectedKHS.totalSKSKumulatif}</strong>
                     </li>
                     <li className="flex justify-between">
-                      <span>Sisa SKS:</span>
+                      <span>Sisa SKS (estimasi):</span>
                       <strong>{144 - selectedKHS.totalSKSKumulatif}</strong>
                     </li>
                     <li className="flex justify-between pt-2 border-t border-blue-200">
                       <span>Predikat:</span>
-                      <strong>
-                        {selectedKHS.ipk >= 3.5
-                          ? 'Cum Laude'
-                          : selectedKHS.ipk >= 3.0
-                          ? 'Memuaskan'
-                          : 'Baik'}
+                      <strong className="capitalize">
+                        {selectedKHS.predikat || 'Belum tersedia'}
                       </strong>
                     </li>
                   </ul>

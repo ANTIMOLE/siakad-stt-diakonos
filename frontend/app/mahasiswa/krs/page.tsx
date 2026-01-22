@@ -13,6 +13,13 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Table,
   TableBody,
   TableCell,
@@ -20,12 +27,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { FileText, Download, AlertCircle, Calendar, Clock, Info } from 'lucide-react';
+import { FileText, Download, AlertCircle, Calendar, Clock, Info, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { toast } from 'sonner';
 
-import { krsAPI } from '@/lib/api';
+import { mahasiswaAPI, krsAPI } from '@/lib/api';
 import { KRS } from '@/types/model';
 
 const HARI_ORDER: Record<string, number> = {
@@ -37,39 +44,73 @@ const HARI_ORDER: Record<string, number> = {
   Sabtu: 6,
 };
 
-export default function KRSPage() {
+export default function MahasiswaKRSPage() {
   // ============================================
-  // STATE MANAGEMENT
+  // AMBIL USER DARI LOCALSTORAGE
   // ============================================
-  const [krs, setKrs] = useState<KRS | null>(null);
+  const [user, setUser] = useState<any>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const parsed = JSON.parse(storedUser);
+        setUser(parsed);
+      } catch (err) {
+        console.error('Gagal parse user dari localStorage');
+        localStorage.removeItem('user');
+      }
+    }
+    setIsAuthLoading(false);
+  }, []);
+
+  // ============================================
+  // STATE MANAGEMENT KRS
+  // ============================================
+  const [krsList, setKrsList] = useState<KRS[]>([]);
+  const [selectedKRS, setSelectedKRS] = useState<KRS | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
   // ============================================
-  // FETCH DATA
+  // FETCH ALL KRS FOR THIS MAHASISWA
   // ============================================
   useEffect(() => {
     const fetchKRS = async () => {
+      if (!user?.mahasiswa?.id) {
+        setError('Data mahasiswa tidak ditemukan atau Anda belum login');
+        setIsLoading(false);
+        return;
+      }
+
       try {
         setIsLoading(true);
         setError(null);
 
-        // Fetch current KRS for active semester
-        const response = await krsAPI.getCurrent();
+        const response = await mahasiswaAPI.getKRS(user.mahasiswa.id);
 
         if (response.success && response.data) {
-          setKrs(response.data);
+          const krsData = response.data;
+          setKrsList(krsData);
+
+          if (krsData.length > 0) {
+            const activeKRS = krsData.find((k) => k.semester?.isActive);
+            setSelectedKRS(activeKRS || krsData[0]);
+          } else {
+            setSelectedKRS(null);
+          }
         } else {
-          // No KRS found - not an error, just empty state
-          setKrs(null);
+          setKrsList([]);
+          setSelectedKRS(null);
         }
       } catch (err: any) {
         console.error('Fetch KRS error:', err);
-        
-        // 404 = no KRS, not an error
+
         if (err.response?.status === 404) {
-          setKrs(null);
+          setKrsList([]);
+          setSelectedKRS(null);
         } else {
           setError(
             err.response?.data?.message ||
@@ -83,25 +124,34 @@ export default function KRSPage() {
       }
     };
 
-    fetchKRS();
-  }, []);
+    // Hanya jalankan fetch setelah auth loading selesai
+    if (!isAuthLoading) {
+      fetchKRS();
+    }
+  }, [user, isAuthLoading]);
 
   // ============================================
   // HANDLERS
   // ============================================
+  const handleSemesterChange = (krsId: string) => {
+    const krs = krsList.find((k) => k.id.toString() === krsId);
+    if (krs) {
+      setSelectedKRS(krs);
+    }
+  };
+
   const handleDownloadPDF = async () => {
-    if (!krs) return;
+    if (!selectedKRS) return;
 
     try {
       setIsDownloading(true);
 
-      const blob = await krsAPI.downloadPDF(krs.id);
+      const blob = await krsAPI.downloadPDF(selectedKRS.id);
 
-      // Create download link
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `KRS_${krs.semester?.tahunAkademik}_${krs.semester?.periode}.pdf`;
+      link.download = `KRS_${selectedKRS.mahasiswa?.nim}_${selectedKRS.semester?.tahunAkademik?.replace('/', '-')}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -123,8 +173,8 @@ export default function KRSPage() {
   // ============================================
   // COMPUTED VALUES
   // ============================================
-  const sortedDetail = krs?.detail
-    ? [...krs.detail].sort((a, b) => {
+  const sortedDetail = selectedKRS?.detail
+    ? [...selectedKRS.detail].sort((a, b) => {
         const hariA = a.kelasMK?.hari || '';
         const hariB = b.kelasMK?.hari || '';
         const hariCompare = HARI_ORDER[hariA] - HARI_ORDER[hariB];
@@ -133,38 +183,29 @@ export default function KRSPage() {
       })
     : [];
 
-  const getStatusMessage = (status: string) => {
-    switch (status) {
-      case 'DRAFT':
-        return {
-          type: 'info' as const,
-          message: 'KRS masih dalam tahap penyusunan. Lengkapi dan submit untuk disetujui dosen wali.',
-        };
-      case 'SUBMITTED':
-        return {
-          type: 'warning' as const,
-          message: 'KRS Anda sedang menunggu persetujuan dosen wali.',
-        };
-      case 'APPROVED':
-        return {
-          type: 'success' as const,
-          message: 'KRS Anda telah disetujui. Anda dapat mengunduh KRS dalam format PDF.',
-        };
-      case 'REJECTED':
-        return {
-          type: 'error' as const,
-          message: 'KRS Anda ditolak. Silakan perbaiki sesuai catatan dosen wali.',
-        };
-      default:
-        return {
-          type: 'info' as const,
-          message: '',
-        };
-    }
-  };
+  // ============================================
+  // LOADING AUTH / USER BELUM ADA
+  // ============================================
+  if (isAuthLoading) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <LoadingSpinner size="lg" text="Memuat data autentikasi..." />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <ErrorState
+        title="Akses Ditolak"
+        message="Anda belum login atau session telah berakhir. Silakan login kembali."
+        onRetry={() => (window.location.href = '/login')}
+      />
+    );
+  }
 
   // ============================================
-  // LOADING STATE
+  // LOADING KRS
   // ============================================
   if (isLoading) {
     return (
@@ -184,21 +225,21 @@ export default function KRSPage() {
   }
 
   // ============================================
-  // EMPTY STATE
+  // EMPTY STATE - NO KRS AT ALL
   // ============================================
-  if (!krs) {
+  if (krsList.length === 0) {
     return (
       <div className="space-y-6">
         <PageHeader
           title="Kartu Rencana Studi (KRS)"
-          description="Kartu Rencana Studi semester ini"
+          description="Kartu Rencana Studi untuk setiap semester"
         />
         <Card>
           <CardContent className="py-12">
             <EmptyState
               icon={FileText}
               title="Belum Ada KRS"
-              description="KRS untuk semester ini belum dibuat. Silakan hubungi admin atau dosen wali Anda."
+              description="Anda belum memiliki KRS untuk semester manapun. Silakan hubungi admin atau dosen wali Anda."
               className="border-0"
             />
           </CardContent>
@@ -207,33 +248,74 @@ export default function KRSPage() {
     );
   }
 
-  const statusInfo = getStatusMessage(krs.status);
+  // ============================================
+  // RENDER WITH KRS DATA
+  // ============================================
+  const krs = selectedKRS!;
 
-  // ============================================
-  // RENDER
-  // ============================================
+  // ... (sisa return JSX sama persis seperti kode asli kamu)
   return (
     <div className="space-y-6">
       {/* Page Header */}
       <PageHeader
         title="Kartu Rencana Studi (KRS)"
-        description={`${krs.semester?.tahunAkademik} ${krs.semester?.periode}`}
-        actions={
-          krs.status === 'APPROVED' && (
-            <Button onClick={handleDownloadPDF} disabled={isDownloading}>
-              <Download className="mr-2 h-4 w-4" />
-              {isDownloading ? 'Downloading...' : 'Download PDF'}
-            </Button>
-          )
-        }
+        description="Lihat dan download KRS Anda untuk setiap semester"
       />
 
-      {/* Status Alert */}
-      {krs.status === 'REJECTED' && krs.catatanAdmin && (
-        <Alert className="border-red-200 bg-red-50">
-          <AlertCircle className="h-4 w-4 text-red-600" />
-          <AlertDescription className="text-red-900">
-            <strong>Alasan Penolakan:</strong> {krs.catatanAdmin}
+      {/* Semester Selector + Actions */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+            <div className="flex-1 w-full md:w-auto">
+              <label className="text-sm font-medium mb-2 block">
+                Pilih Semester
+              </label>
+              <Select
+                value={krs.id.toString()}
+                onValueChange={handleSemesterChange}
+              >
+                <SelectTrigger className="w-full md:w-96">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {krsList.map((k) => (
+                    <SelectItem key={k.id} value={k.id.toString()}>
+                      <div className="flex items-center gap-2">
+                        <span>
+                          {k.semester?.tahunAkademik} - {k.semester?.periode}
+                        </span>
+                        {k.semester?.isActive && (
+                          <Badge variant="default" className="text-xs">
+                            Aktif
+                          </Badge>
+                        )}
+                        <StatusBadge status={k.status} />
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {krs.status === 'APPROVED' && (
+              <Button onClick={handleDownloadPDF} disabled={isDownloading}>
+                <Download className="mr-2 h-4 w-4" />
+                {isDownloading ? 'Downloading...' : 'Download PDF'}
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Status Alerts */}
+      {krs.status === 'DRAFT' && (
+        <Alert className="border-gray-200 bg-gray-50">
+          <AlertCircle className="h-4 w-4 text-gray-600" />
+          <AlertDescription className="text-gray-900">
+            <strong>Status: Draft</strong>
+            <br />
+            KRS masih dalam tahap penyusunan oleh admin. Belum disubmit untuk
+            approval.
           </AlertDescription>
         </Alert>
       )}
@@ -242,21 +324,43 @@ export default function KRSPage() {
         <Alert className="border-yellow-200 bg-yellow-50">
           <Clock className="h-4 w-4 text-yellow-600" />
           <AlertDescription className="text-yellow-900">
-            KRS sedang ditinjau oleh dosen wali. Anda akan mendapat notifikasi setelah KRS
-            disetujui atau ditolak.
+            <strong>Status: Menunggu Approval</strong>
+            <br />
+            KRS sedang ditinjau oleh dosen wali. Anda akan mendapat notifikasi
+            setelah KRS disetujui atau ditolak.
           </AlertDescription>
         </Alert>
       )}
 
       {krs.status === 'APPROVED' && (
         <Alert className="border-green-200 bg-green-50">
-          <AlertCircle className="h-4 w-4 text-green-600" />
+          <CheckCircle className="h-4 w-4 text-green-600" />
           <AlertDescription className="text-green-900">
-            KRS Anda telah disetujui pada{' '}
+            <strong>Status: Disetujui</strong>
+            <br />
+            KRS telah disetujui pada{' '}
             {krs.tanggalApproval &&
               format(new Date(krs.tanggalApproval), 'dd MMMM yyyy HH:mm', {
                 locale: id,
-              })}
+              })}{' '}
+            oleh {krs.approvedBy?.dosen?.namaLengkap || 'Dosen Wali'}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {krs.status === 'REJECTED' && (
+        <Alert className="border-red-200 bg-red-50">
+          <AlertCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-900">
+            <strong>Status: Ditolak</strong>
+            <br />
+            {krs.catatanAdmin && (
+              <>
+                <strong>Alasan:</strong> {krs.catatanAdmin}
+                <br />
+              </>
+            )}
+            Silakan hubungi admin untuk memperbaiki KRS sesuai catatan dosen wali.
           </AlertDescription>
         </Alert>
       )}
@@ -282,7 +386,9 @@ export default function KRSPage() {
               <p className="text-2xl font-bold text-blue-600">{krs.totalSKS}</p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground mb-1">Jumlah Mata Kuliah</p>
+              <p className="text-sm text-muted-foreground mb-1">
+                Jumlah Mata Kuliah
+              </p>
               <p className="text-2xl font-bold text-green-600">
                 {krs.detail?.length || 0}
               </p>
@@ -291,7 +397,9 @@ export default function KRSPage() {
               <p className="text-sm text-muted-foreground mb-1">Tanggal Submit</p>
               <p className="font-medium">
                 {krs.tanggalSubmit
-                  ? format(new Date(krs.tanggalSubmit), 'dd MMM yyyy', { locale: id })
+                  ? format(new Date(krs.tanggalSubmit), 'dd MMM yyyy', {
+                      locale: id,
+                    })
                   : '-'}
               </p>
             </div>
@@ -300,11 +408,16 @@ export default function KRSPage() {
           {/* Paket KRS Info */}
           {krs.paketKRS && (
             <div className="mt-4 pt-4 border-t">
-              <p className="text-sm text-muted-foreground mb-1">Berdasarkan Paket KRS</p>
+              <p className="text-sm text-muted-foreground mb-1">
+                Berdasarkan Paket KRS
+              </p>
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">{krs.paketKRS.namaPaket}</Badge>
                 {krs.isModified && (
-                  <Badge variant="outline" className="text-yellow-700 border-yellow-300">
+                  <Badge
+                    variant="outline"
+                    className="text-yellow-700 border-yellow-300"
+                  >
                     Dimodifikasi
                   </Badge>
                 )}
@@ -337,7 +450,7 @@ export default function KRSPage() {
                 <TableBody>
                   {sortedDetail.map((detail, index) => (
                     <TableRow key={detail.id}>
-                      <TableCell>{index + 1}</TableCell>
+                      <TableCell className="text-center">{index + 1}</TableCell>
                       <TableCell className="font-mono">
                         {detail.kelasMK?.mataKuliah?.kodeMK || '-'}
                       </TableCell>
@@ -346,14 +459,16 @@ export default function KRSPage() {
                       </TableCell>
                       <TableCell className="text-center">
                         <Badge variant="outline">
-                          {detail.kelasMK?.mataKuliah?.sks || 0} SKS
+                          {detail.kelasMK?.mataKuliah?.sks || 0}
                         </Badge>
                       </TableCell>
-                      <TableCell>{detail.kelasMK?.dosen?.namaLengkap || '-'}</TableCell>
+                      <TableCell>
+                        {detail.kelasMK?.dosen?.namaLengkap || '-'}
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Calendar className="h-3 w-3 text-muted-foreground" />
-                          <span>
+                          <span className="text-sm">
                             {detail.kelasMK?.hari || '-'},{' '}
                             {detail.kelasMK?.jamMulai || '-'} -{' '}
                             {detail.kelasMK?.jamSelesai || '-'}
@@ -369,7 +484,7 @@ export default function KRSPage() {
                       Total:
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge variant="default">{krs.totalSKS} SKS</Badge>
+                      <Badge variant="default">{krs.totalSKS}</Badge>
                     </TableCell>
                     <TableCell colSpan={3}></TableCell>
                   </TableRow>
@@ -381,42 +496,11 @@ export default function KRSPage() {
               <EmptyState
                 icon={FileText}
                 title="Belum Ada Mata Kuliah"
-                description="Belum ada mata kuliah yang terdaftar di KRS"
+                description="Belum ada mata kuliah yang terdaftar di KRS ini"
                 className="border-0"
               />
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Summary Card */}
-      <Card className="border-blue-200 bg-blue-50">
-        <CardContent className="pt-6">
-          <div className="flex items-start gap-3">
-            <Info className="h-5 w-5 text-blue-600 mt-0.5" />
-            <div className="flex-1">
-              <p className="font-medium text-blue-900 mb-2">Informasi Penting:</p>
-              <ul className="text-sm text-blue-700 space-y-1.5 list-disc list-inside">
-                <li>
-                  KRS ini untuk semester {krs.semester?.tahunAkademik}{' '}
-                  {krs.semester?.periode}
-                </li>
-                <li>Total SKS yang diambil: {krs.totalSKS} SKS</li>
-                <li>Jumlah mata kuliah: {krs.detail?.length || 0} mata kuliah</li>
-                <li>Status: {statusInfo.message}</li>
-                {krs.approvedBy && (
-                  <li>
-                    Disetujui oleh: {krs.approvedBy.dosen?.namaLengkap || 'Dosen Wali'}
-                  </li>
-                )}
-                {krs.status === 'APPROVED' && (
-                  <li className="font-medium">
-                    Anda dapat mengunduh KRS dalam format PDF menggunakan tombol di atas
-                  </li>
-                )}
-              </ul>
-            </div>
-          </div>
         </CardContent>
       </Card>
 
@@ -432,7 +516,9 @@ export default function KRSPage() {
           <CardContent>
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <p className="text-sm text-muted-foreground mb-1">Periode Semester</p>
+                <p className="text-sm text-muted-foreground mb-1">
+                  Periode Semester
+                </p>
                 <p className="text-sm font-medium">
                   {format(new Date(krs.semester.tanggalMulai), 'dd MMMM yyyy', {
                     locale: id,
@@ -446,19 +532,75 @@ export default function KRSPage() {
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Periode KRS</p>
                 <p className="text-sm font-medium">
-                  {format(new Date(krs.semester.periodeKRSMulai), 'dd MMMM yyyy', {
-                    locale: id,
-                  })}{' '}
+                  {format(
+                    new Date(krs.semester.periodeKRSMulai),
+                    'dd MMMM yyyy',
+                    {
+                      locale: id,
+                    }
+                  )}{' '}
                   -{' '}
-                  {format(new Date(krs.semester.periodeKRSSelesai), 'dd MMMM yyyy', {
-                    locale: id,
-                  })}
+                  {format(
+                    new Date(krs.semester.periodeKRSSelesai),
+                    'dd MMMM yyyy',
+                    {
+                      locale: id,
+                    }
+                  )}
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Summary Card */}
+      <Card className="border-blue-200 bg-blue-50">
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-3">
+            <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-medium text-blue-900 mb-2">
+                Informasi Penting:
+              </p>
+              <ul className="text-sm text-blue-700 space-y-1.5 list-disc list-inside">
+                <li>
+                  KRS ini untuk semester {krs.semester?.tahunAkademik}{' '}
+                  {krs.semester?.periode}
+                </li>
+                <li>Total SKS yang diambil: {krs.totalSKS} SKS</li>
+                <li>Jumlah mata kuliah: {krs.detail?.length || 0} mata kuliah</li>
+                <li>
+                  Status:{' '}
+                  {krs.status === 'DRAFT' && 'Masih draft, belum disubmit'}
+                  {krs.status === 'SUBMITTED' &&
+                    'Menunggu approval dosen wali'}
+                  {krs.status === 'APPROVED' && 'Telah disetujui'}
+                  {krs.status === 'REJECTED' &&
+                    'Ditolak, perlu perbaikan'}
+                </li>
+                {krs.approvedBy && (
+                  <li>
+                    Disetujui oleh:{' '}
+                    {krs.approvedBy.dosen?.namaLengkap || 'Dosen Wali'}
+                  </li>
+                )}
+                {krs.status === 'APPROVED' && (
+                  <li className="font-medium">
+                    Anda dapat mengunduh KRS dalam format PDF menggunakan tombol
+                    di atas
+                  </li>
+                )}
+                {krs.status === 'REJECTED' && krs.catatanAdmin && (
+                  <li className="font-medium text-red-700">
+                    Catatan: {krs.catatanAdmin}
+                  </li>
+                )}
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

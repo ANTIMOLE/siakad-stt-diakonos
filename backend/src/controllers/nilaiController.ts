@@ -13,6 +13,11 @@ import * as nilaiService from '../services/nilaiService';
  * GET /api/nilai/kelas/:kelasId
  * Get all nilai for a specific kelas
  */
+/**
+ * GET /api/nilai/kelas/:kelasId
+ * Get all nilai for a specific kelas
+ * ✅ FIXED: Filter KRS by semester to avoid duplicate students from old KRS
+ */
 export const getByKelas = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { kelasId } = req.params;
@@ -46,12 +51,13 @@ export const getByKelas = asyncHandler(
       throw new AppError('Kelas mata kuliah tidak ditemukan', 404);
     }
 
-    // Get all students in this class (from approved KRS)
+    // ✅ FIXED: Get students ONLY from KRS of the SAME SEMESTER as the kelas
     const krsDetails = await prisma.kRSDetail.findMany({
       where: {
         kelasMKId: parseInt(kelasId),
         krs: {
           status: 'APPROVED',
+          semesterId: kelasMK.semesterId,  // ✅ ADD THIS - Same semester only!
         },
       },
       include: {

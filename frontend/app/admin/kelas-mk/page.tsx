@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -67,46 +68,53 @@ export default function KelasMKListPage() {
   // ============================================
   // FETCH KELAS MK DATA
   // ============================================
-  const fetchKelasMK = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
+const fetchKelasMK = useCallback(async () => {
+  try {
+    setIsLoading(true);
+    setError(null);
 
-      const params: any = {};
-      if (filters.semester_id !== 'ALL') params.semester_id = parseInt(filters.semester_id);
-      if (filters.hari !== 'ALL') params.hari = filters.hari;
-
-      const response = await kelasMKAPI.getAll(params);
-
-      if (response.success) {
-        let data = response.data || [];
-
-        // Client-side search filter
-        if (filters.search) {
-          const searchLower = filters.search.toLowerCase();
-          data = data.filter(
-            (kelas) =>
-              kelas.mataKuliah?.namaMK.toLowerCase().includes(searchLower) ||
-              kelas.mataKuliah?.kodeMK.toLowerCase().includes(searchLower) ||
-              kelas.dosen?.namaLengkap.toLowerCase().includes(searchLower)
-          );
-        }
-
-        setKelasList(data);
-      } else {
-        setError(response.message || 'Gagal memuat data kelas');
-      }
-    } catch (err: any) {
-      console.error('Fetch kelas MK error:', err);
-      setError(
-        err.response?.data?.message ||
-        err.message ||
-        'Terjadi kesalahan saat memuat data kelas'
-      );
-    } finally {
-      setIsLoading(false);
+    const params: any = {};
+    
+    // ✅ Always include semester filter (use "ALL" for no filter)
+    if (filters.semester_id !== 'ALL') {
+      params.semester_id = parseInt(filters.semester_id);
     }
-  }, [filters.semester_id, filters.hari, filters.search]);
+    
+    if (filters.hari !== 'ALL') {
+      params.hari = filters.hari;
+    }
+
+    const response = await kelasMKAPI.getAll(params);
+
+    if (response.success) {
+      let data = response.data || [];
+
+      // Client-side search filter
+      if (filters.search) {
+        const searchLower = filters.search.toLowerCase();
+        data = data.filter(
+          (kelas) =>
+            kelas.mataKuliah?.namaMK.toLowerCase().includes(searchLower) ||
+            kelas.mataKuliah?.kodeMK.toLowerCase().includes(searchLower) ||
+            kelas.dosen?.namaLengkap.toLowerCase().includes(searchLower)
+        );
+      }
+
+      setKelasList(data);
+    } else {
+      setError(response.message || 'Gagal memuat data kelas');
+    }
+  } catch (err: any) {
+    console.error('Fetch kelas MK error:', err);
+    setError(
+      err.response?.data?.message ||
+      err.message ||
+      'Terjadi kesalahan saat memuat data kelas'
+    );
+  } finally {
+    setIsLoading(false);
+  }
+}, [filters]);
 
   useEffect(() => {
     if (!isSemesterLoading) {

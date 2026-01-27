@@ -97,7 +97,7 @@ export default function KRSApprovalListPage() {
 
         // Backend akan auto filter by dosen wali dari JWT token
         const response = await krsAPI.getAll({
-          semester_id: semesterId,
+          semesterId: semesterId,
           status,
         });
 
@@ -147,7 +147,7 @@ export default function KRSApprovalListPage() {
   // HANDLERS
   // ============================================
   const handleReview = (id: number) => {
-    router.push(`/dosen/krs-approval/${id}`);
+    router.push(`/admin/krs-approval/${id}`);
   };
 
   const handleRetry = () => {
@@ -188,7 +188,7 @@ export default function KRSApprovalListPage() {
         title="Approval KRS"
         description="Review dan setujui KRS mahasiswa bimbingan"
         breadcrumbs={[
-          { label: 'Dashboard', href: '/dosen/dashboard' },
+          { label: 'Dashboard', href: '/admin/dashboard' },
           { label: 'Approval KRS' },
         ]}
       />

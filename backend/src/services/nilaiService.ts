@@ -153,12 +153,13 @@ export const finalizeNilai = async (kelasMKId: number, dosenId: number) => {
     throw new AppError('Tidak ada nilai yang dapat difinalisasi', 400);
   }
 
-  // Check if all students have grades
+  // ✅ FIXED: Check if all students have grades - IN SAME SEMESTER!
   const studentsInClass = await prisma.kRSDetail.count({
     where: {
       kelasMKId,
       krs: {
         status: 'APPROVED',
+        semesterId: kelasMK.semesterId,  // ✅ ADD THIS - Critical fix!
       },
     },
   });
@@ -224,9 +225,7 @@ export const generateKHSForMahasiswa = async (
     const semesterNilai = await prisma.nilai.findMany({
       where: {
         mahasiswaId,
-        kelasMK: {
-          semesterId,
-        },
+        semesterId,  // ✅ Already correct - same semester
         isFinalized: true,
       },
       include: {
@@ -242,22 +241,47 @@ export const generateKHSForMahasiswa = async (
     const ips = hitungIPS(semesterNilai);
     const sksSemester = getTotalSKS(semesterNilai);
 
-    // Get all nilai up to this semester for IPK
+    // ✅ FIXED: Get all nilai up to this semester for IPK
+    // Old way (BROKEN): String comparison on tahunAkademik
+    // New way: Use semester ordering
+    
+    // 1. Get target semester
+    const targetSemester = await prisma.semester.findUnique({
+      where: { id: semesterId },
+    });
+
+    if (!targetSemester) {
+      console.error(`Semester ${semesterId} not found`);
+      continue;
+    }
+
+    // 2. Get all semesters ordered by tahunAkademik and periode
+    const allSemesters = await prisma.semester.findMany({
+      orderBy: [
+        { tahunAkademik: 'asc' },
+        { periode: 'asc' },  // GANJIL before GENAP in DB
+      ],
+    });
+
+    // 3. Find position of target semester
+    const targetIndex = allSemesters.findIndex(s => s.id === semesterId);
+    
+    if (targetIndex === -1) {
+      console.error(`Could not find semester ${semesterId} in ordered list`);
+      continue;
+    }
+
+    // 4. Get IDs of all semesters up to and including target
+    const semesterIdsToInclude = allSemesters
+      .slice(0, targetIndex + 1)
+      .map(s => s.id);
+
+    // 5. Query nilai using semester IDs (not string comparison!)
     const allNilai = await prisma.nilai.findMany({
       where: {
         mahasiswaId,
         isFinalized: true,
-        kelasMK: {
-          semester: {
-            tahunAkademik: {
-              lte: (
-                await prisma.semester.findUnique({
-                  where: { id: semesterId },
-                })
-              )?.tahunAkademik || '',
-            },
-          },
-        },
+        semesterId: { in: semesterIdsToInclude },  // ✅ FIXED!
       },
       include: {
         kelasMK: {
@@ -287,6 +311,8 @@ export const generateKHSForMahasiswa = async (
         data: {
           ips,
           ipk,
+          totalSKSSemester: sksSemester,
+          totalSKSKumulatif: sksKumulatif,
         },
       });
     } else {

@@ -124,15 +124,11 @@ router.post(
   krsController.submit
 );
 
-/**
- * POST /api/krs/:id/approve
- * Approve KRS
- * Access: Dosen only (dosen wali)
- */
+
 router.post(
   '/:id/approve',
   authenticate,
-  requireDosen,
+  requireAdminOrDosen,
   idParamValidation('id'),
   krsController.approve
 );
@@ -145,7 +141,7 @@ router.post(
 router.post(
   '/:id/reject',
   authenticate,
-  requireDosen,
+  requireAdminOrDosen,
   validate([
     idParamValidation('id'),
     optionalStringValidation('catatan'),

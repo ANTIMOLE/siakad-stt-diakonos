@@ -29,7 +29,8 @@ router.get(
   validate([
     ...paginationValidation(),
     query('search').optional().isString(),
-    query('semesterId').optional().isInt({ min: 1 }),
+    query('semester_id').optional().isInt({ min: 1 }),  // ✅ Accept semester_id
+    query('semesterId').optional().isInt({ min: 1 }),   // Also accept semesterId
     query('dosenId').optional().isInt({ min: 1 }),
     query('mkId').optional().isInt({ min: 1 }),
     query('hari').optional().isIn(['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']),

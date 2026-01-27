@@ -237,12 +237,20 @@ export const semesterAPI = {
 // ============================================
 export const kelasMKAPI = {
   getAll: (params?: {
-    semester_id?: number;
+    semester_id?: number;  // Keep this
     prodi?: number;
     dosenId?: number;
     hari?: string;
-  }): Promise<ApiResponse<KelasMK[]>> => 
-    api.get('/kelas-mk', { params }),
+    limit?: number;
+  }): Promise<ApiResponse<KelasMK[]>> => {
+    // ✅ Don't use pagination for dropdown loads
+    const finalParams = { ...params };
+    if (params?.limit === undefined && !params?.semester_id) {
+      // If loading all for dropdowns, don't paginate
+      return api.get('/kelas-mk', { params: { ...finalParams, limit: 1000 } });
+    }
+    return api.get('/kelas-mk', { params: finalParams });
+  },
   
   getById: (id: number): Promise<ApiResponse<KelasMK>> => 
     api.get(`/kelas-mk/${id}`),
@@ -292,9 +300,9 @@ export const paketKRSAPI = {
 // ============================================
 export const krsAPI = {
   getAll: (params?: {
-    semester_id?: number;
+    semesterId?: number;        // ✅ Matches backend req.query.semesterId
     status?: string;
-    mahasiswa_id?: number;
+    mahasiswaId?: number;        // ✅ Matches backend req.query.mahasiswaId
   }): Promise<ApiResponse<KRS[]>> => 
     api.get('/krs', { params }),
   
@@ -348,8 +356,8 @@ export const nilaiAPI = {
 // ============================================
 export const khsAPI = {
   getAll: (params?: {
-    mahasiswaId?: number;
-    semester_id?: number;
+    mahasiswaId?: number;        // ✅ Matches backend req.query.mahasiswaId
+    semesterId?: number;         // ✅ FIXED: Was semester_id
   }): Promise<ApiResponse<KHS[]>> => 
     api.get('/khs', { params }),
   

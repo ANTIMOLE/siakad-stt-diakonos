@@ -189,47 +189,49 @@ export default function EditKelasMKPage() {
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    if (!validateForm()) {
-      toast.error('Mohon lengkapi semua field yang wajib diisi');
-      return;
+  if (!validateForm()) {
+    toast.error('Mohon lengkapi semua field yang wajib diisi');
+    return;
+  }
+
+  try {
+    setIsSaving(true);
+
+    // ✅ FIX: Use correct field names matching backend
+    const payload = {
+      mkId: parseInt(formData.mataKuliahId),          // ✅ mkId not mata_kuliah_id
+      dosenId: parseInt(formData.dosenId),            // ✅ dosenId not dosen_id
+      semesterId: parseInt(formData.semesterId),      // ✅ semesterId not semester_id
+      ruanganId: parseInt(formData.ruanganId),        // ✅ ruanganId not ruangan_id
+      hari: formData.hari,
+      jamMulai: formData.jamMulai,                    // ✅ jamMulai not jam_mulai
+      jamSelesai: formData.jamSelesai,                // ✅ jamSelesai not jam_selesai
+      kuotaMax: parseInt(formData.kuotaMax),          // ✅ kuotaMax not kuota_max
+      keterangan: formData.keterangan || null,
+    };
+
+    const response = await kelasMKAPI.update(kelasId, payload);
+
+    if (response.success) {
+      toast.success('Kelas berhasil diupdate');
+      router.push(`/admin/kelas-mk/${kelasId}`);
+    } else {
+      toast.error(response.message || 'Gagal mengupdate kelas');
     }
+  } catch (err: any) {
+    console.error('Submit error:', err);
+    toast.error(
+      err.response?.data?.message ||
+      err.message ||
+      'Terjadi kesalahan saat menyimpan data'
+    );
+  } finally {
+    setIsSaving(false);
+  }
+};
 
-    try {
-      setIsSaving(true);
-
-      const payload = {
-        mata_kuliah_id: parseInt(formData.mataKuliahId),
-        dosen_id: parseInt(formData.dosenId),
-        semester_id: parseInt(formData.semesterId),
-        ruangan_id: parseInt(formData.ruanganId),
-        hari: formData.hari,
-        jam_mulai: formData.jamMulai,
-        jam_selesai: formData.jamSelesai,
-        kuota_max: parseInt(formData.kuotaMax),
-        keterangan: formData.keterangan || undefined,
-      };
-
-      const response = await kelasMKAPI.update(kelasId, payload);
-
-      if (response.success) {
-        toast.success('Kelas berhasil diupdate');
-        router.push(`/admin/kelas-mk/${kelasId}`);
-      } else {
-        toast.error(response.message || 'Gagal mengupdate kelas');
-      }
-    } catch (err: any) {
-      console.error('Submit error:', err);
-      toast.error(
-        err.response?.data?.message ||
-        err.message ||
-        'Terjadi kesalahan saat menyimpan data'
-      );
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const handleRetry = () => {
     window.location.reload();

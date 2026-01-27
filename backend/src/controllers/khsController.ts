@@ -81,6 +81,7 @@ export const getById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
+    // Fetch KHS
     const khs = await prisma.kHS.findUnique({
       where: { id: parseInt(id) },
       include: {
@@ -89,12 +90,10 @@ export const getById = asyncHandler(
             id: true,
             nim: true,
             namaLengkap: true,
-            angkatan: true,
             prodi: {
               select: {
                 kode: true,
                 nama: true,
-                jenjang: true,
               },
             },
           },
@@ -113,14 +112,12 @@ export const getById = asyncHandler(
       throw new AppError('KHS tidak ditemukan', 404);
     }
 
-    // Get nilai for this semester
+    // ✅ Fetch nilai for this semester
     const nilai = await prisma.nilai.findMany({
       where: {
         mahasiswaId: khs.mahasiswaId,
-        kelasMK: {
-          semesterId: khs.semesterId,
-        },
-        isFinalized: true,
+        semesterId: khs.semesterId,
+        isFinalized: true,  // Only finalized grades
       },
       include: {
         kelasMK: {
@@ -134,25 +131,46 @@ export const getById = asyncHandler(
             },
             dosen: {
               select: {
+                nidn: true,
                 namaLengkap: true,
               },
             },
           },
         },
       },
+      orderBy: {
+        kelasMK: {
+          mataKuliah: {
+            kodeMK: 'asc',
+          },
+        },
+      },
     });
 
-    // ✅ Normalize all Decimal fields
-    const normalizedKHS = normalizeKHS(khs);
-    const normalizedNilai = nilai.map(normalizeNilai);
+    // ✅ Calculate predikat based on IPK
+    let predikat = 'Belum tersedia';
+    const ipk = khs.ipk.toNumber();
 
+    if (ipk >= 3.51) {
+      predikat = 'Cum Laude';
+    } else if (ipk >= 3.01) {
+      predikat = 'Sangat Memuaskan';
+    } else if (ipk >= 2.76) {
+      predikat = 'Memuaskan';
+    } else if (ipk >= 2.00) {
+      predikat = 'Cukup';
+    } else if (ipk > 0) {
+      predikat = 'Kurang';
+    }
+
+    // ✅ Return complete data
     res.status(200).json({
       success: true,
       message: 'Data KHS berhasil diambil',
       data: {
-        ...normalizedKHS,
-        nilai: normalizedNilai,
-        predikat: getPredikatIPK(normalizedKHS.ipk),
+        ...khs,
+        nilai,       // ✅ Array of Nilai with kelasMK details
+        predikat,    // ✅ Grade classification
       },
     });
   }

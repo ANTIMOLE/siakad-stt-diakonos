@@ -421,7 +421,7 @@ export default function InputNilaiFormPage() {
                   </TableRow>
                 ) : (
                   mahasiswaList.map((mhs, idx) => (
-                    <TableRow key={mhs.id}>
+                     <TableRow key={`${mhs.id}-${mhs.nim}`}>
                       <TableCell className="text-center">{idx + 1}</TableCell>
                       <TableCell className="font-mono">{mhs.nim}</TableCell>
                       <TableCell>{mhs.namaLengkap}</TableCell>

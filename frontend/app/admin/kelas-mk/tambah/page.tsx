@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -83,24 +84,25 @@ export default function TambahKelasMKPage() {
   // FETCH MATA KULIAH LIST
   // ============================================
   useEffect(() => {
-    const fetchMataKuliah = async () => {
-      try {
-        setIsLoadingMK(true);
-        const response = await mataKuliahAPI.getAll();
+  const fetchMataKuliah = async () => {
+    try {
+      setIsLoadingMK(true);
+      // ✅ Add limit to prevent large queries
+      const response = await mataKuliahAPI.getAll({ limit: 200 });
 
-        if (response.success && response.data) {
-          setMataKuliahList(response.data);
-        }
-      } catch (err) {
-        console.error('Failed to fetch mata kuliah:', err);
-        toast.error('Gagal memuat daftar mata kuliah');
-      } finally {
-        setIsLoadingMK(false);
+      if (response.success && response.data) {
+        setMataKuliahList(response.data);
       }
-    };
+    } catch (err) {
+      console.error('Failed to fetch mata kuliah:', err);
+      toast.error('Gagal memuat daftar mata kuliah');
+    } finally {
+      setIsLoadingMK(false);
+    }
+  };
 
-    fetchMataKuliah();
-  }, []);
+  fetchMataKuliah();
+}, []);
 
   // ============================================
   // FETCH SEMESTER LIST
@@ -134,48 +136,54 @@ export default function TambahKelasMKPage() {
   // ============================================
   // FETCH DOSEN LIST
   // ============================================
-  useEffect(() => {
-    const fetchDosen = async () => {
-      try {
-        setIsLoadingDosen(true);
-        const response = await dosenAPI.getAll({ status: 'AKTIF' });
+useEffect(() => {
+  const fetchDosen = async () => {
+    try {
+      setIsLoadingDosen(true);
+      const response = await dosenAPI.getAll({ 
+        status: 'AKTIF',
+        limit: 200  // ✅ Add limit
+      });
 
-        if (response.success && response.data) {
-          setDosenList(response.data);
-        }
-      } catch (err) {
-        console.error('Failed to fetch dosen:', err);
-        toast.error('Gagal memuat daftar dosen');
-      } finally {
-        setIsLoadingDosen(false);
+      if (response.success && response.data) {
+        setDosenList(response.data);
       }
-    };
+    } catch (err) {
+      console.error('Failed to fetch dosen:', err);
+      toast.error('Gagal memuat daftar dosen');
+    } finally {
+      setIsLoadingDosen(false);
+    }
+  };
 
-    fetchDosen();
-  }, []);
+  fetchDosen();
+}, []);
 
   // ============================================
   // FETCH RUANGAN LIST
   // ============================================
-  useEffect(() => {
-    const fetchRuangan = async () => {
-      try {
-        setIsLoadingRuangan(true);
-        const response = await ruanganAPI.getAll();
+useEffect(() => {
+  const fetchRuangan = async () => {
+    try {
+      setIsLoadingRuangan(true);
+      const response = await ruanganAPI.getAll({ 
+        isActive: 'true',
+        limit: 200  // ✅ Add limit
+      });
 
-        if (response.success && response.data) {
-          setRuanganList(response.data);
-        }
-      } catch (err) {
-        console.error('Failed to fetch ruangan:', err);
-        toast.error('Gagal memuat daftar ruangan');
-      } finally {
-        setIsLoadingRuangan(false);
+      if (response.success && response.data) {
+        setRuanganList(response.data);
       }
-    };
+    } catch (err) {
+      console.error('Failed to fetch ruangan:', err);
+      toast.error('Gagal memuat daftar ruangan');
+    } finally {
+      setIsLoadingRuangan(false);
+    }
+  };
 
-    fetchRuangan();
-  }, []);
+  fetchRuangan();
+}, []);
 
   // ============================================
   // GET SELECTED DATA

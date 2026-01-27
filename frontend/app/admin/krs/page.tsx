@@ -109,7 +109,7 @@ export default function AdminKRSListPage() {
       const status = statusFilter === 'ALL' ? undefined : statusFilter;
 
       const response = await krsAPI.getAll({
-        semester_id: semesterId,
+        semesterId: semesterId,
         status,
       });
 

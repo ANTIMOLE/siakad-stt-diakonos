@@ -134,7 +134,7 @@ export default function KRSApprovalDetailPage() {
 
       if (response.success) {
         toast.success('KRS berhasil disetujui');
-        setTimeout(() => router.push('/dosen/krs-approval'), 1000);
+        setTimeout(() => router.push('/admin/krs-approval'), 1000);
       } else {
         toast.error(response.message || 'Gagal menyetujui KRS');
       }
@@ -159,7 +159,7 @@ export default function KRSApprovalDetailPage() {
 
       if (response.success) {
         toast.success('KRS berhasil ditolak');
-        setTimeout(() => router.push('/dosen/krs-approval'), 1000);
+        setTimeout(() => router.push('/admin/krs-approval'), 1000);
       } else {
         toast.error(response.message || 'Gagal menolak KRS');
       }

@@ -11,6 +11,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     page = 1,
     limit = 10,
     search,
+    semester_id, // ✅ Accept both formats
     semesterId,
     dosenId,
     mkId,
@@ -30,8 +31,10 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     ];
   }
 
-  if (semesterId) {
-    where.semesterId = parseInt(semesterId as string);
+  // ✅ Accept both parameter names
+  const semesterIdValue = semester_id || semesterId;
+  if (semesterIdValue) {
+    where.semesterId = parseInt(semesterIdValue as string);
   }
 
   if (dosenId) {

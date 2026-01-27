@@ -120,8 +120,38 @@ export default function TranskripPage() {
             grouped[key].push(n);
           });
 
-          // Sort groups by semester (newest first)
-          const sortedGroups = Object.entries(grouped).sort(([a], [b]) => b.localeCompare(a));
+          // ✅ FIXED: Sort groups by semester (newest first) with proper academic calendar logic
+          const sortedGroups = Object.entries(grouped).sort(([a], [b]) => {
+            // Parse semester strings
+            // Format: "2024/2025 Ganjil" or "2024/2025 Genap"
+            const parseKey = (key: string) => {
+              const parts = key.split(' ');
+              return {
+                tahunAkademik: parts[0],      // "2024/2025"
+                periode: parts[1],             // "Ganjil" or "Genap"
+              };
+            };
+            
+            const semA = parseKey(a);
+            const semB = parseKey(b);
+            
+            // 1. Compare academic year (descending - newest first)
+            const yearCompare = semB.tahunAkademik.localeCompare(semA.tahunAkademik);
+            if (yearCompare !== 0) return yearCompare;
+            
+            // 2. If same year, sort by periode
+            // Academic calendar: Ganjil (Aug-Dec) → Genap (Jan-Jun)
+            // For descending (newest first): Genap > Ganjil
+            // Because Genap happens AFTER Ganjil in the same academic year
+            if (semA.periode === 'Ganjil' && semB.periode === 'Genap') {
+              return 1;  // B (Genap) comes before A (Ganjil)
+            }
+            if (semA.periode === 'Genap' && semB.periode === 'Ganjil') {
+              return -1;  // A (Genap) comes before B (Ganjil)
+            }
+            
+            return 0;  // Same semester
+          });
 
           setTranskrip(data);
           setGroupedNilai(Object.fromEntries(sortedGroups));

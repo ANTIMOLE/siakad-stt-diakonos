@@ -97,7 +97,7 @@ export default function KRSApprovalListPage() {
 
         // Backend akan auto filter by dosen wali dari JWT token
         const response = await krsAPI.getAll({
-          semester_id: semesterId,
+          semesterId: semesterId,
           status,
         });
 

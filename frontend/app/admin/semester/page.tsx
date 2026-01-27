@@ -1,9 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Edit, CheckCircle } from 'lucide-react';
-import Link from 'next/link';
+import { Plus, Edit, CheckCircle, Trash2, Eye } from 'lucide-react';
 
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
@@ -12,6 +12,16 @@ import EmptyState from '@/components/shared/EmptyState';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { formatDate } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -21,16 +31,24 @@ import { Semester } from '@/types/model';
 export default function SemesterManagePage() {
   const router = useRouter();
 
-  // ============================================
-  // STATE MANAGEMENT
-  // ============================================
+  // STATE
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Delete dialog
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    semesterId: number | null;
+    semesterName: string;
+  }>({
+    open: false,
+    semesterId: null,
+    semesterName: '',
+  });
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  // ============================================
   // FETCH SEMESTER DATA
-  // ============================================
   const fetchSemesters = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -38,9 +56,7 @@ export default function SemesterManagePage() {
 
       const response = await semesterAPI.getAll();
 
-      // ✅ response SUDAH auto-unwrapped
       if (response.success) {
-        // Sort by tahunAkademik descending
         const sorted = (response.data || []).sort((a: Semester, b: Semester) => {
           return b.tahunAkademik.localeCompare(a.tahunAkademik);
         });
@@ -58,42 +74,103 @@ export default function SemesterManagePage() {
     } finally {
       setIsLoading(false);
     }
-  }, []); // ✅ Empty array - ga ada external dependency
+  }, []);
 
   useEffect(() => {
     fetchSemesters();
   }, [fetchSemesters]);
 
-  // ============================================
   // HANDLERS
-  // ============================================
-  const handleActivate = async (id: number, tahunAkademik: string) => {
-    if (!confirm(`Aktifkan semester ${tahunAkademik}? Semester lain akan otomatis dinonaktifkan.`)) {
-      return;
-    }
+// ============================================
+// REPLACE handleActivate in semester list page
+// ============================================
 
-    try {
-      const response = await semesterAPI.activate(id);
+const handleActivate = async (id: number, tahunAkademik: string) => {
+  if (!confirm(`Aktifkan semester ${tahunAkademik}? Semester lain akan otomatis dinonaktifkan.`)) {
+    return;
+  }
 
-      // ✅ response SUDAH auto-unwrapped
-      if (response.success) {
-        toast.success('Semester berhasil diaktifkan');
-        fetchSemesters(); // Refresh data
-      } else {
-        toast.error(response.message || 'Gagal mengaktifkan semester');
-      }
-    } catch (err: any) {
-      console.error('Activate error:', err);
-      toast.error(
-        err.response?.data?.message ||
-        err.message ||
-        'Terjadi kesalahan saat mengaktifkan semester'
-      );
+  try {
+    console.log('Activating semester:', id); // ✅ Debug log
+
+    const response = await semesterAPI.activate(id);
+    
+    console.log('Activate response:', response); // ✅ Debug log
+
+    if (response.success) {
+      toast.success('Semester berhasil diaktifkan');
+      
+      // ✅ Wait a bit then refetch
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await fetchSemesters(); // ✅ Make sure this runs
+      
+      console.log('Semesters refetched'); // ✅ Debug log
+    } else {
+      toast.error(response.message || 'Gagal mengaktifkan semester');
     }
+  } catch (err: any) {
+    console.error('Activate error:', err); // ✅ Debug log
+    
+    const errorMessage = 
+      err.response?.data?.message ||
+      err.message ||
+      'Terjadi kesalahan saat mengaktifkan semester';
+    
+    toast.error(errorMessage, {
+      duration: 5000,
+    });
+  }
+};
+
+  const handleDeleteClick = (semester: Semester) => {
+    setDeleteDialog({
+      open: true,
+      semesterId: semester.id,
+      semesterName: `${semester.tahunAkademik} ${semester.periode}`,
+    });
   };
+
+const confirmDelete = async () => {
+  if (!deleteDialog.semesterId) return;
+
+  try {
+    setIsDeleting(true);
+
+    const response = await semesterAPI.delete(deleteDialog.semesterId);
+
+    if (response.success) {
+      toast.success('Semester berhasil dihapus');
+      fetchSemesters();
+      setDeleteDialog({ open: false, semesterId: null, semesterName: '' });
+    } else {
+      // ✅ Show detailed error message
+      toast.error(response.message || 'Gagal menghapus semester', {
+        duration: 5000, // Show longer for detailed messages
+      });
+    }
+  } catch (err: any) {
+    console.error('Delete error:', err);
+    
+    // ✅ Extract detailed error message from backend
+    const errorMessage = 
+      err.response?.data?.message ||
+      err.message ||
+      'Terjadi kesalahan saat menghapus semester';
+    
+    toast.error(errorMessage, {
+      duration: 6000, // Longer duration for detailed error
+    });
+  } finally {
+    setIsDeleting(false);
+  }
+};
 
   const handleCreate = () => {
     router.push('/admin/semester/tambah');
+  };
+
+  const handleDetail = (id: number) => {
+    router.push(`/admin/semester/${id}`);
   };
 
   const handleEdit = (id: number) => {
@@ -104,9 +181,7 @@ export default function SemesterManagePage() {
     fetchSemesters();
   };
 
-  // ============================================
   // LOADING STATE
-  // ============================================
   if (isLoading && semesters.length === 0) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -115,9 +190,7 @@ export default function SemesterManagePage() {
     );
   }
 
-  // ============================================
   // ERROR STATE
-  // ============================================
   if (error && semesters.length === 0) {
     return (
       <ErrorState
@@ -128,9 +201,7 @@ export default function SemesterManagePage() {
     );
   }
 
-  // ============================================
   // RENDER
-  // ============================================
   return (
     <div className="space-y-6">
       <PageHeader
@@ -182,6 +253,16 @@ export default function SemesterManagePage() {
                     </p>
                   </div>
                   <div className="flex gap-2">
+                    {/* Detail Button */}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleDetail(semester.id)}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+
+                    {/* Activate Button - only if not active */}
                     {!semester.isActive && (
                       <Button
                         size="sm"
@@ -191,6 +272,8 @@ export default function SemesterManagePage() {
                         Aktifkan
                       </Button>
                     )}
+
+                    {/* Edit Button */}
                     <Button
                       size="sm"
                       variant="ghost"
@@ -198,6 +281,18 @@ export default function SemesterManagePage() {
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
+
+                    {/* Delete Button - only if not active */}
+                    {!semester.isActive && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeleteClick(semester)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardHeader>
@@ -221,6 +316,38 @@ export default function SemesterManagePage() {
           ))}
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) =>
+          setDeleteDialog({ ...deleteDialog, open })
+        }
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus Semester?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Apakah Anda yakin ingin menghapus semester{' '}
+              <span className="font-semibold">{deleteDialog.semesterName}</span>?
+              <br />
+              <span className="text-red-600">
+                Aksi ini tidak dapat dibatalkan. Semester yang aktif tidak dapat dihapus.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? 'Menghapus...' : 'Ya, Hapus'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

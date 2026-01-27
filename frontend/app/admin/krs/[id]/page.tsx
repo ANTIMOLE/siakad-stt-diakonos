@@ -1,407 +1,465 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-"use client"
+'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import ErrorState from '@/components/shared/ErrorState';
+import StatusBadge from '@/components/features/status/StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Check, ChevronsUpDown, ArrowLeft, AlertCircle, Plus, Package } from 'lucide-react';
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { ArrowLeft, Download, Edit, AlertCircle, Calendar, CheckCircle, XCircle } from 'lucide-react';
+import { format } from 'date-fns';
+import { id } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 
-import { krsAPI, mahasiswaAPI, semesterAPI, paketKRSAPI } from '@/lib/api';
-import { Mahasiswa, Semester, PaketKRS } from '@/types/model';
+import { krsAPI } from '@/lib/api';
+import { KRS } from '@/types/model';
 
-export default function AssignKRSPage() {
+const HARI_ORDER: Record<string, number> = {
+  Senin: 1,
+  Selasa: 2,
+  Rabu: 3,
+  Kamis: 4,
+  Jumat: 5,
+  Sabtu: 6,
+};
+
+export default function AdminKRSDetailPage() {
   const router = useRouter();
+  const params = useParams();
+  const krsId = params?.id ? parseInt(params.id as string) : null;
 
-  // STATE
-  const [mahasiswaList, setMahasiswaList] = useState<Mahasiswa[]>([]);
-  const [semesterList, setSemesterList] = useState<Semester[]>([]);
-  const [paketKRSList, setPaketKRSList] = useState<PaketKRS[]>([]);
-
-  const [isLoadingMahasiswa, setIsLoadingMahasiswa] = useState(true);
-  const [isLoadingSemester, setIsLoadingSemester] = useState(true);
-  const [isLoadingPaket, setIsLoadingPaket] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
+  const [krs, setKrs] = useState<KRS | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
-  // Form values
-  const [selectedMahasiswaId, setSelectedMahasiswaId] = useState<number | null>(null);
-  const [selectedSemesterId, setSelectedSemesterId] = useState<number | null>(null);
-  const [selectedPaketId, setSelectedPaketId] = useState<number | null>(null);
-
-  // Mahasiswa search states
-  const [mahasiswaOpen, setMahasiswaOpen] = useState(false);
-  const [mahasiswaQuery, setMahasiswaQuery] = useState('');
-  const mahasiswaRef = useRef<HTMLDivElement>(null);
-
-  // COMPUTED
-  const selectedMahasiswa = mahasiswaList.find((m) => m.id === selectedMahasiswaId);
-  const selectedSemester = semesterList.find((s) => s.id === selectedSemesterId);
-  const selectedPaket = paketKRSList.find((p) => p.id === selectedPaketId);
-
-  const canSubmit = !!selectedMahasiswaId && !!selectedSemesterId && !!selectedPaketId && !isSubmitting;
-
-  const mahasiswaDisplayValue = selectedMahasiswa ? `${selectedMahasiswa.nim} - ${selectedMahasiswa.namaLengkap}` : '';
-
-  const filteredMahasiswa = mahasiswaList.filter((m) => {
-    const search = mahasiswaQuery.toLowerCase();
-    return m.namaLengkap.toLowerCase().includes(search) || m.nim.includes(search);
-  });
-
-  // FETCH MAHASISWA
+  // FETCH KRS DETAIL
   useEffect(() => {
-    const fetchMahasiswa = async () => {
-      try {
-        setIsLoadingMahasiswa(true);
-        const response = await mahasiswaAPI.getAll({
-          search: '',
-          prodi: undefined,
-          angkatan: undefined,
-          status: undefined,
-          page: 1,
-          limit: 50, // naikkan sedikit biar lebih banyak opsi langsung
-        });
-
-        if (response.success && response.data) {
-          setMahasiswaList(response.data);
-        }
-      } catch (err) {
-        console.error('Fetch mahasiswa error:', err);
-        toast.error('Gagal memuat daftar mahasiswa');
-      } finally {
-        setIsLoadingMahasiswa(false);
-      }
-    };
-
-    fetchMahasiswa();
-  }, []);
-
-  // FETCH SEMESTER
-  useEffect(() => {
-    const fetchSemester = async () => {
-      try {
-        setIsLoadingSemester(true);
-        const response = await semesterAPI.getAll();
-
-        if (response.success && response.data) {
-          setSemesterList(response.data);
-          const active = response.data.find((s) => s.isActive);
-          if (active) setSelectedSemesterId(active.id);
-        }
-      } catch (err) {
-        console.error('Fetch semester error:', err);
-        toast.error('Gagal memuat daftar semester');
-      } finally {
-        setIsLoadingSemester(false);
-      }
-    };
-
-    fetchSemester();
-  }, []);
-
-  // FETCH PAKET KRS
-  useEffect(() => {
-    if (!selectedMahasiswaId || !selectedSemesterId) {
-      setPaketKRSList([]);
-      setSelectedPaketId(null);
+    if (!krsId) {
+      setError('ID KRS tidak valid');
+      setIsLoading(false);
       return;
     }
 
-    const fetchPaketKRS = async () => {
+    const fetchKRS = async () => {
       try {
-        setIsLoadingPaket(true);
-        const mahasiswa = mahasiswaList.find((m) => m.id === selectedMahasiswaId);
-        if (!mahasiswa) return;
+        setIsLoading(true);
+        setError(null);
 
-        const response = await paketKRSAPI.getAll({
-        });
+        const response = await krsAPI.getById(krsId);
 
         if (response.success && response.data) {
-          setPaketKRSList(response.data);
-          if (response.data.length === 1) {
-            setSelectedPaketId(response.data[0].id);
-          }
+          setKrs(response.data);
+        } else {
+          setError(response.message || 'Gagal memuat detail KRS');
         }
-      } catch (err) {
-        console.error('Fetch paket KRS error:', err);
-        toast.error('Gagal memuat daftar paket KRS');
+      } catch (err: any) {
+        console.error('Fetch KRS error:', err);
+        setError(
+          err.response?.data?.message ||
+            err.message ||
+            'Terjadi kesalahan saat memuat data KRS'
+        );
       } finally {
-        setIsLoadingPaket(false);
+        setIsLoading(false);
       }
     };
 
-    fetchPaketKRS();
-  }, [selectedMahasiswaId, selectedSemesterId, mahasiswaList]);
+    fetchKRS();
+  }, [krsId]);
 
-  // Click outside for mahasiswa
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (mahasiswaRef.current && !mahasiswaRef.current.contains(event.target as Node)) {
-        setMahasiswaOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Handle select mahasiswa
-  const handleSelectMahasiswa = (m: Mahasiswa) => {
-    setSelectedMahasiswaId(m.id);
-    setMahasiswaOpen(false);
-    setMahasiswaQuery('');
+  // HANDLERS
+  const handleBack = () => {
+    router.push('/admin/krs');
   };
 
-  // SUBMIT
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!canSubmit) return;
-
-    try {
-      setIsSubmitting(true);
-      const response = await krsAPI.create({
-        mahasiswaId: selectedMahasiswaId!,
-        semesterId: selectedSemesterId!,
-        paketKRSId: selectedPaketId!,
-      });
-
-      if (response.success) {
-        toast.success('KRS berhasil di-assign!');
-        router.push('/admin/krs');
-      } else {
-        toast.error(response.message || 'Gagal meng-assign KRS');
-      }
-    } catch (err: any) {
-      console.error('Assign KRS error:', err);
-      toast.error(err.response?.data?.message || 'Terjadi kesalahan');
-    } finally {
-      setIsSubmitting(false);
+  const handleEdit = () => {
+    if (krs) {
+      router.push(`/admin/krs/${krs.id}/edit`);
     }
   };
 
-  const handleCreatePaket = () => {
-    router.push('/admin/paket-krs/tambah');
+  const handleDownloadPDF = async () => {
+    if (!krs) return;
+
+    try {
+      setIsDownloading(true);
+
+      const blob = await krsAPI.downloadPDF(krs.id);
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const nim = krs.mahasiswa?.nim || 'KRS';
+      const tahun = krs.semester?.tahunAkademik?.replace('/', '-') || '';
+      const periode = krs.semester?.periode || '';
+      link.download = `KRS_${nim}_${tahun}_${periode}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('KRS berhasil didownload');
+    } catch (err: any) {
+      console.error('Download error:', err);
+      toast.error('Gagal mendownload KRS');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
-  if (isLoadingMahasiswa || isLoadingSemester) {
+  const handleRetry = () => {
+    window.location.reload();
+  };
+
+  // COMPUTED
+  const sortedDetail = krs?.detail
+    ? [...krs.detail].sort((a, b) => {
+        const hariA = a.kelasMK?.hari || '';
+        const hariB = b.kelasMK?.hari || '';
+        const hariCompare = HARI_ORDER[hariA] - HARI_ORDER[hariB];
+        if (hariCompare !== 0) return hariCompare;
+        return (a.kelasMK?.jamMulai || '').localeCompare(b.kelasMK?.jamMulai || '');
+      })
+    : [];
+
+  // LOADING STATE
+  if (isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
-        <LoadingSpinner size="lg" text="Memuat data..." />
+        <LoadingSpinner size="lg" text="Memuat detail KRS..." />
       </div>
     );
   }
 
-  if (error) {
-    return <ErrorState title="Gagal Memuat Data" message={error} onRetry={() => window.location.reload()} />;
+  // ERROR STATE
+  if (error || !krs) {
+    return (
+      <ErrorState
+        title="Gagal Memuat Detail KRS"
+        message={error || 'KRS tidak ditemukan'}
+        onRetry={handleRetry}
+      />
+    );
   }
 
   return (
     <div className="space-y-6">
+      {/* Page Header */}
       <PageHeader
-        title="Assign KRS Baru"
-        description="Assign KRS mahasiswa menggunakan paket yang sudah tersedia"
+        title="Detail KRS"
+        description={`KRS ${krs.mahasiswa?.namaLengkap} - ${krs.semester?.tahunAkademik} ${krs.semester?.periode}`}
         breadcrumbs={[
           { label: 'Dashboard', href: '/admin/dashboard' },
           { label: 'KRS', href: '/admin/krs' },
-          { label: 'Assign KRS Baru' },
+          { label: 'Detail' },
         ]}
         actions={
-          <Button variant="outline" onClick={() => router.push('/admin/krs')}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Kembali
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleBack}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Kembali
+            </Button>
+            {(krs.status === 'DRAFT' || krs.status === 'REJECTED') && (
+              <Button onClick={handleEdit}>
+                <Edit className="mr-2 h-4 w-4" />
+                Edit KRS
+              </Button>
+            )}
+            {krs.status === 'APPROVED' && (
+              <Button onClick={handleDownloadPDF} disabled={isDownloading}>
+                <Download className="mr-2 h-4 w-4" />
+                {isDownloading ? 'Downloading...' : 'Download PDF'}
+              </Button>
+            )}
+          </div>
         }
       />
 
-      <Alert className="border-blue-200 bg-blue-50">
-        <AlertCircle className="h-4 w-4 text-blue-600" />
-        <AlertDescription className="text-blue-900">
-          <strong>Catatan Penting:</strong> Assign KRS hanya menggunakan{' '}
-          <strong>Paket KRS yang sudah ada</strong>. Jika perlu modifikasi, buat paket baru dulu.
-        </AlertDescription>
-      </Alert>
+      {/* Status Alerts */}
+      {krs.status === 'DRAFT' && (
+        <Alert className="border-gray-200 bg-gray-50">
+          <AlertCircle className="h-4 w-4 text-gray-600" />
+          <AlertDescription className="text-gray-900">
+            <strong>Status: Draft</strong> - KRS belum disubmit untuk approval. 
+            Anda dapat mengedit atau menghapus KRS ini.
+          </AlertDescription>
+        </Alert>
+      )}
 
-      <Card className="overflow-visible">
+      {krs.status === 'SUBMITTED' && (
+        <Alert className="border-yellow-200 bg-yellow-50">
+          <AlertCircle className="h-4 w-4 text-yellow-600" />
+          <AlertDescription className="text-yellow-900">
+            <strong>Status: Menunggu Approval</strong> - KRS sedang menunggu persetujuan dosen wali.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {krs.status === 'APPROVED' && (
+        <Alert className="border-green-200 bg-green-50">
+          <CheckCircle className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-900">
+            <strong>Status: Disetujui</strong> - KRS telah disetujui pada{' '}
+            {krs.tanggalApproval &&
+              format(new Date(krs.tanggalApproval), 'dd MMMM yyyy HH:mm', {
+                locale: id,
+              })}{' '}
+            oleh {krs.approvedBy?.dosen?.namaLengkap || 'Dosen Wali'}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {krs.status === 'REJECTED' && (
+        <Alert className="border-red-200 bg-red-50">
+          <XCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-900">
+            <strong>Status: Ditolak</strong>
+            {krs.catatanAdmin && (
+              <>
+                <br />
+                <strong>Alasan:</strong> {krs.catatanAdmin}
+              </>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* KRS Info */}
+      <Card>
         <CardHeader>
-          <CardTitle>Form Assign KRS</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Informasi KRS</CardTitle>
+            <StatusBadge status={krs.status} showIcon />
+          </div>
         </CardHeader>
-        <CardContent className="overflow-visible space-y-6 pb-6">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Pilih Mahasiswa */}
-            <div className="space-y-2">
-              <Label htmlFor="mahasiswa" className="required">
-                Pilih Mahasiswa
-              </Label>
-              <div className="relative" ref={mahasiswaRef}>
-                <Input
-                  placeholder="Cari mahasiswa..."
-                  value={mahasiswaOpen ? mahasiswaQuery : mahasiswaDisplayValue}
-                  onChange={(e) => setMahasiswaQuery(e.target.value)}
-                  onFocus={() => {
-                    setMahasiswaOpen(true);
-                    if (!mahasiswaOpen) setMahasiswaQuery('');
-                  }}
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  className="absolute right-0 top-0 h-full px-3 text-muted-foreground flex items-center"
-                  onClick={() => setMahasiswaOpen(!mahasiswaOpen)}
-                >
-                  <ChevronsUpDown className="h-4 w-4" />
-                </button>
-                {mahasiswaOpen && (
-                  <div className="absolute z-10 w-full bg-white border rounded-md shadow-md max-h-60 overflow-auto mt-1">
-                    {filteredMahasiswa.length === 0 ? (
-                      <div className="p-2 text-center text-gray-500">Tidak ditemukan</div>
-                    ) : (
-                      filteredMahasiswa.map((mahasiswa) => (
-                        <div
-                          key={mahasiswa.id}
-                          className="p-2 hover:bg-gray-100 cursor-pointer flex flex-col"
-                          onClick={() => handleSelectMahasiswa(mahasiswa)}
-                        >
-                          <div className="font-medium">
-                            <span className="font-mono">{mahasiswa.nim}</span> - {mahasiswa.namaLengkap}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {mahasiswa.prodi?.nama} • Angkatan {mahasiswa.angkatan}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Mahasiswa</p>
+              <p className="font-medium">
+                {krs.mahasiswa?.namaLengkap || '-'}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                NIM: {krs.mahasiswa?.nim || '-'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Program Studi</p>
+              <p className="font-medium">
+                {krs.mahasiswa?.prodi?.nama || '-'}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Angkatan {krs.mahasiswa?.angkatan || '-'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Semester</p>
+              <Badge variant="outline" className="font-medium">
+                {krs.semester?.tahunAkademik} {krs.semester?.periode}
+              </Badge>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Total SKS</p>
+              <p className="text-2xl font-bold text-blue-600">{krs.totalSKS}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Jumlah Mata Kuliah</p>
+              <p className="text-2xl font-bold text-green-600">
+                {krs.detail?.length || 0}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Tanggal Dibuat</p>
+              <p className="font-medium">
+                {format(new Date(krs.createdAt), 'dd MMMM yyyy HH:mm', {
+                  locale: id,
+                })}
+              </p>
+            </div>
+          </div>
+
+          {krs.paketKRS && (
+            <div className="mt-4 pt-4 border-t">
+              <p className="text-sm text-muted-foreground mb-1">
+                Berdasarkan Paket KRS
+              </p>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">{krs.paketKRS.namaPaket}</Badge>
+                {krs.isModified && (
+                  <Badge
+                    variant="outline"
+                    className="text-yellow-700 border-yellow-300"
+                  >
+                    Dimodifikasi dari paket
+                  </Badge>
                 )}
               </div>
-
-              {selectedMahasiswa && (
-                <p className="text-sm text-muted-foreground">
-                  {selectedMahasiswa.prodi?.nama} • Angkatan {selectedMahasiswa.angkatan}
-                </p>
-              )}
             </div>
+          )}
+        </CardContent>
+      </Card>
 
-            {/* Pilih Semester */}
-            <div className="space-y-2">
-              <Label htmlFor="semester" className="required">
-                Pilih Semester
-              </Label>
-              <Select
-                value={selectedSemesterId?.toString() ?? ''}
-                onValueChange={(v) => setSelectedSemesterId(parseInt(v))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Pilih semester..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {semesterList.map((sem) => (
-                    <SelectItem key={sem.id} value={sem.id.toString()}>
-                      {sem.tahunAkademik} - {sem.periode}
-                      {sem.isActive && <span className="ml-2 text-xs text-green-600">(Aktif)</span>}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Pilih Paket KRS */}
-            {selectedMahasiswaId && selectedSemesterId && (
-              <div className="space-y-2">
-                <Label htmlFor="paket" className="required">
-                  Pilih Paket KRS
-                </Label>
-
-                {isLoadingPaket ? (
-                  <div className="flex h-20 items-center justify-center rounded-md border border-dashed">
-                    <LoadingSpinner size="sm" text="Memuat paket..." />
-                  </div>
-                ) : paketKRSList.length === 0 ? (
-                  <Alert className="border-yellow-200 bg-yellow-50">
-                    <AlertCircle className="h-4 w-4 text-yellow-600" />
-                    <AlertDescription className="text-yellow-900">
-                      <strong>Tidak ada paket KRS tersedia</strong> untuk angkatan{' '}
-                      {selectedMahasiswa?.angkatan} • {selectedMahasiswa?.prodi?.nama}.
-                      <br />
-                      Silakan buat paket baru terlebih dahulu.
-                    </AlertDescription>
-                  </Alert>
-                ) : (
-                  <Select
-                    value={selectedPaketId?.toString() ?? ''}
-                    onValueChange={(v) => setSelectedPaketId(parseInt(v))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Pilih paket KRS..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {paketKRSList.map((paket) => (
-                        <SelectItem key={paket.id} value={paket.id.toString()}>
-                          <div className="flex items-center gap-2">
-                            <Package className="h-4 w-4" />
-                            <div>
-                              <div className="font-medium">{paket.namaPaket}</div>
-                              <div className="text-xs text-muted-foreground">
-                                Semester {paket.semesterPaket} • {paket.totalSKS} SKS •{' '}
-                                {paket._count?.detail || 0} Mata Kuliah
-                              </div>
-                            </div>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-
-                {selectedPaket && (
-                  <div className="rounded-md border border-green-200 bg-green-50 p-3">
-                    <div className="flex items-start gap-2">
-                      <Check className="h-4 w-4 text-green-600 mt-0.5" />
-                      <div className="text-sm">
-                        <p className="font-medium text-green-900">
-                          Paket terpilih: {selectedPaket.namaPaket}
-                        </p>
-                        <p className="text-green-700">
-                          Total SKS: {selectedPaket.totalSKS} • {selectedPaket._count?.detail || 0} Mata Kuliah
-                        </p>
+      {/* KRS Detail Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Detail Mata Kuliah</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12">No</TableHead>
+                  <TableHead>Kode MK</TableHead>
+                  <TableHead>Nama Mata Kuliah</TableHead>
+                  <TableHead className="text-center">SKS</TableHead>
+                  <TableHead>Dosen</TableHead>
+                  <TableHead>Jadwal</TableHead>
+                  <TableHead>Ruangan</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sortedDetail.map((detail, index) => (
+                  <TableRow key={detail.id}>
+                    <TableCell className="text-center">{index + 1}</TableCell>
+                    <TableCell className="font-mono">
+                      {detail.kelasMK?.mataKuliah?.kodeMK || '-'}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {detail.kelasMK?.mataKuliah?.namaMK || '-'}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant="outline">
+                        {detail.kelasMK?.mataKuliah?.sks || 0}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {detail.kelasMK?.dosen?.namaLengkap || '-'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-sm">
+                          {detail.kelasMK?.hari || '-'},{' '}
+                          {detail.kelasMK?.jamMulai || '-'} -{' '}
+                          {detail.kelasMK?.jamSelesai || '-'}
+                        </span>
                       </div>
-                    </div>
-                  </div>
-                )}
+                    </TableCell>
+                    <TableCell>{detail.kelasMK?.ruangan?.nama || '-'}</TableCell>
+                  </TableRow>
+                ))}
+                {/* Total Row */}
+                <TableRow className="bg-muted/50 font-bold">
+                  <TableCell colSpan={3} className="text-right">
+                    Total:
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant="default">{krs.totalSKS}</Badge>
+                  </TableCell>
+                  <TableCell colSpan={3}></TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Timeline */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Timeline</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-1 rounded-full bg-gray-200 p-2">
+                <AlertCircle className="h-4 w-4 text-gray-600" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium">KRS Dibuat</p>
+                <p className="text-sm text-muted-foreground">
+                  {format(new Date(krs.createdAt), 'dd MMMM yyyy HH:mm', {
+                    locale: id,
+                  })}
+                </p>
+              </div>
+            </div>
+
+            {krs.tanggalSubmit && (
+              <div className="flex items-start gap-3">
+                <div className="mt-1 rounded-full bg-yellow-200 p-2">
+                  <AlertCircle className="h-4 w-4 text-yellow-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">KRS Disubmit</p>
+                  <p className="text-sm text-muted-foreground">
+                    {format(new Date(krs.tanggalSubmit), 'dd MMMM yyyy HH:mm', {
+                      locale: id,
+                    })}
+                  </p>
+                </div>
               </div>
             )}
 
-            {/* Buttons */}
-            <div className="flex flex-wrap gap-3 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleCreatePaket}
-                className="border-blue-500 text-blue-600 hover:bg-blue-50"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Buat Paket Baru
-              </Button>
-              <Button type="submit" disabled={!canSubmit || isSubmitting}>
-                {isSubmitting ? 'Meng-assign...' : 'Assign KRS'}
-              </Button>
-            </div>
-          </form>
+            {krs.tanggalApproval && krs.status === 'APPROVED' && (
+              <div className="flex items-start gap-3">
+                <div className="mt-1 rounded-full bg-green-200 p-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">KRS Disetujui</p>
+                  <p className="text-sm text-muted-foreground">
+                    {format(new Date(krs.tanggalApproval), 'dd MMMM yyyy HH:mm', {
+                      locale: id,
+                    })}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    oleh {krs.approvedBy?.dosen?.namaLengkap || 'Dosen Wali'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {krs.tanggalApproval && krs.status === 'REJECTED' && (
+              <div className="flex items-start gap-3">
+                <div className="mt-1 rounded-full bg-red-200 p-2">
+                  <XCircle className="h-4 w-4 text-red-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">KRS Ditolak</p>
+                  <p className="text-sm text-muted-foreground">
+                    {format(new Date(krs.tanggalApproval), 'dd MMMM yyyy HH:mm', {
+                      locale: id,
+                    })}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    oleh {krs.approvedBy?.dosen?.namaLengkap || 'Dosen Wali'}
+                  </p>
+                  {krs.catatanAdmin && (
+                    <p className="text-sm text-red-600 mt-1">
+                      Catatan: {krs.catatanAdmin}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

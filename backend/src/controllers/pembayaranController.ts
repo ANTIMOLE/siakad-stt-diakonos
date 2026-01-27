@@ -385,3 +385,74 @@ export const getStats = asyncHandler(
     });
   }
 );
+
+export const serveBukti = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+
+    if (!req.user) {
+      throw new AppError('User tidak ditemukan', 401);
+    }
+
+    // 1. Get pembayaran dari DB
+    const pembayaran = await prisma.pembayaran.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        mahasiswa: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+
+    if (!pembayaran) {
+      throw new AppError('Pembayaran tidak ditemukan', 404);
+    }
+
+    // 2. ✅ Authorization: KEUANGAN bisa lihat semua, MAHASISWA hanya punya sendiri
+    if (req.user.role === 'MAHASISWA') {
+      if (pembayaran.mahasiswa.userId !== req.user.id) {
+        throw new AppError('Anda tidak memiliki akses ke file ini', 403);
+      }
+    } else if (req.user.role !== 'KEUANGAN' && req.user.role !== 'ADMIN') {
+      throw new AppError('Anda tidak memiliki akses ke file ini', 403);
+    }
+
+    if (!pembayaran.buktiUrl) {
+      throw new AppError('Bukti pembayaran tidak tersedia', 404);
+    }
+
+    // 3. ✅ Build file path (ambil filename dari buktiUrl)
+    // buktiUrl format: "/uploads/pembayaran/bukti-123456.pdf"
+    const filename = path.basename(pembayaran.buktiUrl);
+    const filePath = path.join(__dirname, '../../uploads/pembayaran', filename);
+
+    // 4. Check if file exists
+    if (!fs.existsSync(filePath)) {
+      throw new AppError('File tidak ditemukan di server', 404);
+    }
+
+    // 5. Determine content type
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType =
+      ext === '.pdf' ? 'application/pdf' :
+      ext === '.png' ? 'image/png' :
+      ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
+      'application/octet-stream';
+
+    // 6. ✅ Set headers dan stream file
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+
+    // 7. Stream file
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+
+    fileStream.on('error', (error) => {
+      console.error('Error streaming file:', error);
+      throw new AppError('Error saat membaca file', 500);
+    });
+  }
+);

@@ -22,7 +22,7 @@ import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { toast } from 'sonner';
 
-import { dashboardAPI, semesterAPI, pembayaranAPI } from '@/lib/api';
+import { semesterAPI, pembayaranAPI } from '@/lib/api';
 import { Semester, JenisPembayaran } from '@/types/model';
 import {
   Select,
@@ -113,17 +113,7 @@ export default function KeuanganDashboardPage() {
           setActiveSemester(active || null);
         }
 
-        // 2. Fetch keuangan stats (legacy endpoint - might need backend update)
-        try {
-          const statsResponse = await dashboardAPI.getKeuanganStats();
-          if (statsResponse.success && statsResponse.data) {
-            setStats(statsResponse.data);
-          }
-        } catch {
-          console.warn('Legacy stats endpoint not available');
-        }
-
-        // 3. Fetch payment stats by type
+        // 2. Fetch stats PER JENIS PEMBAYARAN (sumber data utama & akurat)
         const paymentTypes: JenisPembayaran[] = [
           'KRS',
           'TENGAH_SEMESTER',
@@ -162,19 +152,20 @@ export default function KeuanganDashboardPage() {
         );
         setPaymentTypeStats(validTypeStats);
 
-        // 4. Calculate overall stats from type stats if legacy endpoint unavailable
-        setStats((prevStats) => {
-          if (!prevStats) {
-            return {
-              totalPembayaran: validTypeStats.reduce((sum, s) => sum + s.total, 0),
-              pending: validTypeStats.reduce((sum, s) => sum + s.pending, 0),
-              approved: validTypeStats.reduce((sum, s) => sum + s.approved, 0),
-              rejected: validTypeStats.reduce((sum, s) => sum + s.rejected, 0),
-              totalNominal: validTypeStats.reduce((sum, s) => sum + s.totalNominal, 0),
-            };
-          }
-          return prevStats;
-        });
+        // 3. Hitung overall stats dari sum per jenis (TIDAK ADA LAGI LEGACY/MOCK)
+        const overallStats: KeuanganStats = {
+          totalPembayaran: validTypeStats.reduce((sum, s) => sum + s.total, 0),
+          pending: validTypeStats.reduce((sum, s) => sum + s.pending, 0),
+          approved: validTypeStats.reduce((sum, s) => sum + s.approved, 0),
+          rejected: validTypeStats.reduce((sum, s) => sum + s.rejected, 0),
+          totalNominal: validTypeStats.reduce((sum, s) => sum + s.totalNominal, 0),
+          // Data tambahan (hari ini, semester, recent) sementara null → tampil "tidak ada data"
+          todayStats: undefined,
+          semesterStats: undefined,
+          recentActivities: undefined,
+        };
+
+        setStats(overallStats);
       } catch (err: any) {
         console.error('Fetch dashboard error:', err);
         setError(
@@ -491,43 +482,9 @@ export default function KeuanganDashboardPage() {
             <CardTitle>Pembayaran Hari Ini</CardTitle>
           </CardHeader>
           <CardContent>
-            {stats.todayStats ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b pb-2">
-                  <div>
-                    <p className="text-sm font-medium">Bukti diterima</p>
-                    <p className="text-xs text-muted-foreground">
-                      Perlu verifikasi
-                    </p>
-                  </div>
-                  <div className="text-2xl font-bold text-yellow-600">
-                    {stats.todayStats.received}
-                  </div>
-                </div>
-                <div className="flex items-center justify-between border-b pb-2">
-                  <div>
-                    <p className="text-sm font-medium">Diverifikasi</p>
-                    <p className="text-xs text-muted-foreground">Hari ini</p>
-                  </div>
-                  <div className="text-2xl font-bold text-green-600">
-                    {stats.todayStats.verified}
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">Ditolak</p>
-                    <p className="text-xs text-muted-foreground">Hari ini</p>
-                  </div>
-                  <div className="text-2xl font-bold text-red-600">
-                    {stats.todayStats.rejected}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Tidak ada data untuk hari ini
-              </p>
-            )}
+            <p className="text-sm text-muted-foreground">
+              Tidak ada data untuk hari ini (fitur ini akan ditambahkan nanti)
+            </p>
           </CardContent>
         </Card>
 
@@ -537,53 +494,9 @@ export default function KeuanganDashboardPage() {
             <CardTitle>Ringkasan Semester Aktif</CardTitle>
           </CardHeader>
           <CardContent>
-            {stats.semesterStats && activeSemester ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b pb-2">
-                  <p className="text-sm font-medium">Semester</p>
-                  <Badge variant="outline">
-                    {activeSemester.tahunAkademik} {activeSemester.periode}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between border-b pb-2">
-                  <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-sm font-medium">Total Mahasiswa</p>
-                  </div>
-                  <p className="text-sm font-bold">
-                    {stats.semesterStats.totalMahasiswa}
-                  </p>
-                </div>
-                <div className="flex items-center justify-between border-b pb-2">
-                  <p className="text-sm font-medium">Sudah Bayar KRS</p>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-bold text-green-600">
-                      {stats.semesterStats.sudahBayar}
-                    </p>
-                    <Badge variant="secondary" className="text-xs">
-                      {stats.semesterStats.totalMahasiswa > 0
-                        ? (
-                            (stats.semesterStats.sudahBayar /
-                              stats.semesterStats.totalMahasiswa) *
-                            100
-                          ).toFixed(0)
-                        : 0}
-                      %
-                    </Badge>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Belum Bayar</p>
-                  <p className="text-sm font-bold text-red-600">
-                    {stats.semesterStats.belumBayar}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Tidak ada data semester aktif
-              </p>
-            )}
+            <p className="text-sm text-muted-foreground">
+              Tidak ada data semester aktif (fitur ini akan ditambahkan nanti)
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -594,40 +507,9 @@ export default function KeuanganDashboardPage() {
           <CardTitle>Aktivitas Terbaru</CardTitle>
         </CardHeader>
         <CardContent>
-          {stats.recentActivities && stats.recentActivities.length > 0 ? (
-            <div className="space-y-4">
-              {stats.recentActivities.map((activity) => (
-                <div
-                  key={activity.id}
-                  className="flex items-center justify-between border-b pb-3 last:border-0"
-                >
-                  <div className="flex items-center gap-3">
-                    {getActivityIcon(activity.type)}
-                    <div>
-                      <p className="text-sm font-medium">
-                        {getActivityLabel(activity.type)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {activity.mahasiswa.nim} - {activity.mahasiswa.nama}
-                        {activity.nominal &&
-                          ` - ${formatCurrency(activity.nominal)}`}
-                        {activity.catatan && ` - ${activity.catatan}`}
-                      </p>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {format(new Date(activity.timestamp), 'HH:mm', {
-                      locale: id,
-                    })}
-                  </p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-center text-sm text-muted-foreground py-8">
-              Belum ada aktivitas terbaru
-            </p>
-          )}
+          <p className="text-center text-sm text-muted-foreground py-8">
+            Belum ada aktivitas terbaru (fitur ini akan ditambahkan nanti)
+          </p>
         </CardContent>
       </Card>
     </div>

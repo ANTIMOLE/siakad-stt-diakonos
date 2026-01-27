@@ -46,7 +46,9 @@ const STATUS_OPTIONS: { value: StatusPresensi; label: string; color: string }[] 
 export default function PresensiKelasPage() {
   const params = useParams();
   const router = useRouter();
-  const kelasMKId = parseInt(params.kelasMKId as string);
+  
+  // ✅ FIX: Handle both [id] and [kelasMKId] folder naming
+  const kelasMKId = parseInt((params.kelasMKId || params.id) as string);
 
   const [presensiList, setPresensiList] = useState<Presensi[]>([]);
   const [selectedPresensi, setSelectedPresensi] = useState<Presensi | null>(null);
@@ -67,11 +69,22 @@ export default function PresensiKelasPage() {
   // FETCH PRESENSI LIST
   // ============================================
   const fetchPresensi = async () => {
+    // ✅ Validate kelasMKId first
+    if (!kelasMKId || isNaN(kelasMKId)) {
+      setError('ID kelas tidak valid');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
 
-      const response = await presensiAPI.getAll({ kelasMKId });
+      console.log('Fetching presensi for kelasMKId:', kelasMKId);
+      
+      const response = await presensiAPI.getAll({ 
+        kelasMKId: kelasMKId
+      });
 
       if (response.success) {
         setPresensiList(response.data || []);
@@ -84,7 +97,11 @@ export default function PresensiKelasPage() {
       }
     } catch (err: any) {
       console.error('Fetch error:', err);
-      setError(err.response?.data?.message || 'Terjadi kesalahan');
+      setError(
+        err.response?.data?.message || 
+        err.message || 
+        'Terjadi kesalahan saat memuat data presensi'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -92,7 +109,7 @@ export default function PresensiKelasPage() {
 
   useEffect(() => {
     fetchPresensi();
-  }, [kelasMKId]);
+  }, [kelasMKId]); // Re-fetch if kelasMKId changes
 
   // ============================================
   // LOAD PRESENSI DETAIL

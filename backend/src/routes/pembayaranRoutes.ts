@@ -6,7 +6,7 @@
 import { Router } from 'express';
 import * as pembayaranController from '../controllers/pembayaranController';
 import { authenticate } from '../middlewares/authMiddleware';
-import { requireKeuangan, requireMahasiswa } from '../middlewares/roleMiddleware';
+import { requireKeuangan, requireMahasiswa , requireKeuanganOrAdmin} from '../middlewares/roleMiddleware';
 import {
   validate,
   idParamValidation,
@@ -49,7 +49,7 @@ router.post(
 router.get(
   '/',
   authenticate,
-  requireKeuangan,
+  requireKeuanganOrAdmin,
   validate([
     query('search').optional().isString(),
     query('status')
@@ -81,7 +81,7 @@ router.get(
 router.get(
   '/stats',
   authenticate,
-  requireKeuangan,
+  requireKeuanganOrAdmin,
   validate([
     query('semesterId').optional().isInt({ min: 1 }),
     query('jenisPembayaran')
@@ -128,7 +128,7 @@ router.get(
 router.post(
   '/:id/approve',
   authenticate,
-  requireKeuangan,
+  requireKeuanganOrAdmin,
   idParamValidation('id'),
   pembayaranController.approve
 );
@@ -141,7 +141,7 @@ router.post(
 router.post(
   '/:id/reject',
   authenticate,
-  requireKeuangan,
+  requireKeuanganOrAdmin,
   validate([
     idParamValidation('id'),
     body('catatan')
@@ -152,6 +152,13 @@ router.post(
       .withMessage('Catatan minimal 10 karakter'),
   ]),
   pembayaranController.reject
+);
+
+router.get(
+  '/bukti/:id',
+  authenticate,
+  idParamValidation('id'),
+  pembayaranController.serveBukti
 );
 
 export default router;

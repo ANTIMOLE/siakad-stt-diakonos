@@ -48,9 +48,7 @@ import { KRS, Semester, KRSStatus } from '@/types/model';
 export default function AdminKRSListPage() {
   const router = useRouter();
 
-  // ============================================
-  // STATE MANAGEMENT
-  // ============================================
+  // STATE
   const [krsList, setKrsList] = useState<KRS[]>([]);
   const [semesterList, setSemesterList] = useState<Semester[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -73,9 +71,7 @@ export default function AdminKRSListPage() {
   });
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // ============================================
   // FETCH SEMESTER LIST
-  // ============================================
   useEffect(() => {
     const fetchSemester = async () => {
       try {
@@ -96,15 +92,12 @@ export default function AdminKRSListPage() {
     fetchSemester();
   }, []);
 
-  // ============================================
   // FETCH KRS LIST
-  // ============================================
   const fetchKRS = async () => {
     try {
       setIsLoading(true);
       setError(null);
 
-      // Determine semester ID
       let semesterId: number | undefined;
       if (semesterFilter === 'ACTIVE') {
         const activeSemester = semesterList.find((s) => s.isActive);
@@ -113,7 +106,6 @@ export default function AdminKRSListPage() {
         semesterId = parseInt(semesterFilter);
       }
 
-      // Determine status
       const status = statusFilter === 'ALL' ? undefined : statusFilter;
 
       const response = await krsAPI.getAll({
@@ -144,9 +136,7 @@ export default function AdminKRSListPage() {
     }
   }, [statusFilter, semesterFilter, semesterList, isLoadingSemester]);
 
-  // ============================================
   // FILTER KRS BY SEARCH
-  // ============================================
   const filteredKRS = krsList.filter((krs) => {
     if (search === '') return true;
     const mahasiswa = krs.mahasiswa;
@@ -157,9 +147,7 @@ export default function AdminKRSListPage() {
     );
   });
 
-  // ============================================
   // STATS
-  // ============================================
   const draftCount = filteredKRS.filter((krs) => krs.status === 'DRAFT').length;
   const submittedCount = filteredKRS.filter(
     (krs) => krs.status === 'SUBMITTED'
@@ -171,15 +159,17 @@ export default function AdminKRSListPage() {
     (krs) => krs.status === 'REJECTED'
   ).length;
 
-  // ============================================
   // HANDLERS
-  // ============================================
   const handleAssignNew = () => {
-    router.push('/admin/krs/assign');
+    router.push('/admin/krs/tambah'); 
   };
 
   const handleView = (id: number) => {
-    router.push(`/admin/krs/${id}`);
+    router.push(`/admin/krs/${id}`); 
+  };
+
+  const handleEdit = (id: number) => {
+    router.push(`/admin/krs/${id}/edit`); 
   };
 
   const handleSubmit = async (id: number) => {
@@ -188,7 +178,7 @@ export default function AdminKRSListPage() {
 
       if (response.success) {
         toast.success('KRS berhasil disubmit untuk approval');
-        fetchKRS(); // Refresh list
+        fetchKRS();
       } else {
         toast.error(response.message || 'Gagal submit KRS');
       }
@@ -220,7 +210,7 @@ export default function AdminKRSListPage() {
 
       if (response.success) {
         toast.success('KRS berhasil dihapus');
-        fetchKRS(); // Refresh list
+        fetchKRS();
         setDeleteDialog({ open: false, krsId: null, mahasiswaNama: '' });
       } else {
         toast.error(response.message || 'Gagal menghapus KRS');
@@ -241,9 +231,6 @@ export default function AdminKRSListPage() {
     fetchKRS();
   };
 
-  // ============================================
-  // LOADING STATE
-  // ============================================
   if (isLoading && isLoadingSemester) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -252,9 +239,6 @@ export default function AdminKRSListPage() {
     );
   }
 
-  // ============================================
-  // ERROR STATE
-  // ============================================
   if (error) {
     return (
       <ErrorState
@@ -265,12 +249,8 @@ export default function AdminKRSListPage() {
     );
   }
 
-  // ============================================
-  // RENDER
-  // ============================================
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <PageHeader
         title="Manajemen KRS"
         description="Kelola KRS mahasiswa untuk setiap semester"
@@ -286,7 +266,6 @@ export default function AdminKRSListPage() {
         }
       />
 
-      {/* Alert for drafts */}
       {draftCount > 0 && (
         <Card className="border-blue-200 bg-blue-50">
           <CardContent className="flex items-center gap-3 pt-6">
@@ -416,15 +395,16 @@ export default function AdminKRSListPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          {krs.status === 'DRAFT' ? (
+                          {/* ✅ DRAFT - Edit, Submit, Delete */}
+                          {krs.status === 'DRAFT' && (
                             <>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleView(krs.id)}
+                                onClick={() => handleEdit(krs.id)}
                               >
-                                <Eye className="mr-2 h-4 w-4" />
-                                Detail
+                                <Edit className="mr-2 h-4 w-4" />
+                                Edit
                               </Button>
                               <Button
                                 variant="default"
@@ -444,7 +424,32 @@ export default function AdminKRSListPage() {
                                 Hapus
                               </Button>
                             </>
-                          ) : (
+                          )}
+
+                          {/* ✅ REJECTED - Edit, Submit lagi */}
+                          {krs.status === 'REJECTED' && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEdit(krs.id)}
+                              >
+                                <Edit className="mr-2 h-4 w-4" />
+                                Edit
+                              </Button>
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => handleSubmit(krs.id)}
+                              >
+                                <Send className="mr-2 h-4 w-4" />
+                                Submit Ulang
+                              </Button>
+                            </>
+                          )}
+
+                          {/* ✅ SUBMITTED/APPROVED - View only */}
+                          {(krs.status === 'SUBMITTED' || krs.status === 'APPROVED') && (
                             <Button
                               variant="ghost"
                               size="sm"

@@ -33,6 +33,7 @@ import { toast } from 'sonner';
 
 import { mahasiswaAPI } from '@/lib/api';
 import { Mahasiswa, MahasiswaStatus } from '@/types/model';
+import { useAuth } from '@/hooks/useAuth'; // ✅ IMPORT useAuth
 
 // Extended type with KRS info (backend might return this)
 interface MahasiswaWithKRS extends Mahasiswa {
@@ -42,6 +43,9 @@ interface MahasiswaWithKRS extends Mahasiswa {
 
 export default function MahasiswaBimbinganPage() {
   const router = useRouter();
+  
+  // ✅ GET LOGGED-IN DOSEN
+  const { user, isLoading: isAuthLoading } = useAuth('DOSEN');
 
   // ============================================
   // STATE MANAGEMENT
@@ -59,15 +63,28 @@ export default function MahasiswaBimbinganPage() {
   // ============================================
   useEffect(() => {
     const fetchMahasiswa = async () => {
+      // ✅ WAIT FOR AUTH & DOSEN DATA
+      if (isAuthLoading) {
+        return;
+      }
+
+      // ✅ CHECK IF DOSEN DATA EXISTS
+      if (!user?.dosen?.id) {
+        setError('Data dosen tidak ditemukan');
+        setIsLoading(false);
+        return;
+      }
+
       try {
         setIsLoading(true);
         setError(null);
 
-        // Backend akan auto filter by dosenWaliId dari JWT token
+        // ✅ FILTER BY DOSEN WALI ID (camelCase!)
         const response = await mahasiswaAPI.getAll({
           search: search || undefined,
           angkatan: angkatanFilter !== 'ALL' ? parseInt(angkatanFilter) : undefined,
           status: statusFilter !== 'ALL' ? statusFilter : undefined,
+          dosenWaliId: user.dosen.id, // ✅ CRITICAL: Filter by logged-in dosen
           limit: 100, // Get all bimbingan students
         });
 
@@ -95,8 +112,11 @@ export default function MahasiswaBimbinganPage() {
       }
     };
 
-    fetchMahasiswa();
-  }, [search, angkatanFilter, statusFilter]);
+    // ✅ ONLY FETCH WHEN AUTH IS READY
+    if (!isAuthLoading && user?.dosen?.id) {
+      fetchMahasiswa();
+    }
+  }, [search, angkatanFilter, statusFilter, isAuthLoading, user]);
 
   // ============================================
   // GET UNIQUE ANGKATAN
@@ -128,7 +148,7 @@ export default function MahasiswaBimbinganPage() {
   // ============================================
   // LOADING STATE
   // ============================================
-  if (isLoading) {
+  if (isAuthLoading || isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
         <LoadingSpinner size="lg" text="Memuat daftar mahasiswa..." />
@@ -137,9 +157,22 @@ export default function MahasiswaBimbinganPage() {
   }
 
   // ============================================
-  // ERROR STATE
+  // ERROR STATE - NO DOSEN DATA
   // ============================================
-  if (error) {
+  if (!user?.dosen?.id) {
+    return (
+      <ErrorState
+        title="Data Dosen Tidak Ditemukan"
+        message="Tidak dapat memuat mahasiswa bimbingan. Data dosen tidak tersedia."
+        onRetry={handleRetry}
+      />
+    );
+  }
+
+  // ============================================
+  // ERROR STATE - FETCH ERROR
+  // ============================================
+  if (error && mahasiswaList.length === 0) {
     return (
       <ErrorState
         title="Gagal Memuat Data"
@@ -157,7 +190,7 @@ export default function MahasiswaBimbinganPage() {
       {/* Page Header */}
       <PageHeader
         title="Mahasiswa Bimbingan"
-        description="Daftar mahasiswa yang Anda bimbing"
+        description={`Mahasiswa yang dibimbing oleh ${user.dosen.namaLengkap}`}
         breadcrumbs={[
           { label: 'Dashboard', href: '/dosen/dashboard' },
           { label: 'Mahasiswa Bimbingan' },

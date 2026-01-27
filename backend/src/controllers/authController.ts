@@ -1,81 +1,157 @@
-
+/**
+ * Authentication Controller
+ * ✅ UPDATED: Support for NIM (10 digits) and NIDN (10 digits)
+ */
 
 import { Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import prisma from '../config/database';
 import { env } from '../config/env';
-import { AuthRequest, LoginResponse, UserWithProfile } from '../types';
+import { AuthRequest } from '../middlewares/authMiddleware';
 import { asyncHandler, AppError } from '../middlewares/errorMiddleware';
 
+// ============================================
+// COOKIE OPTIONS
+// ============================================
+const getCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: (process.env.NODE_ENV === 'production' ? 'strict' : 'lax') as 'strict' | 'lax',
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  path: '/',
+});
 
+// ============================================
+// LOGIN
+// ============================================
 export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { identifier, password } = req.body;
   
- let user: any;
+  let user: any;
+  let loginType: string;
 
-// ===== MAHASISWA (NIM = 10) =====
-if (identifier.length === 10) {
-  const mahasiswa = await prisma.mahasiswa.findUnique({
-    where: { nim: identifier },
-    include: { user: true, prodi: true },
-  });
+  // ===== 10 DIGITS: NIM (Mahasiswa) or NIDN (Dosen) =====
+  if (/^\d{10}$/.test(identifier)) {
+    // ✅ Check both NIM and NIDN in parallel
+    const [mahasiswa, dosen] = await Promise.all([
+      prisma.mahasiswa.findUnique({
+        where: { nim: identifier },
+        include: { 
+          user: true, 
+          prodi: true,
+          dosenWali: {
+            select: {
+              id: true,
+              namaLengkap: true,
+            },
+          },
+        },
+      }),
+      prisma.dosen.findUnique({
+        where: { nidn: identifier },
+        include: { user: true, prodi: true },
+      }),
+    ]);
 
-  if (!mahasiswa) {
-    throw new AppError('NIM atau password salah', 401);
+    if (mahasiswa) {
+      user = mahasiswa.user;
+      user.mahasiswa = mahasiswa;
+      loginType = 'nim';
+    } else if (dosen) {
+      user = dosen.user;
+      user.dosen = dosen;
+      loginType = 'nidn';
+    } else {
+      throw new AppError('NIM/NIDN atau password salah', 401);
+    }
+
+  // ===== 16 DIGITS: NUPTK (Dosen) =====
+  } else if (/^\d{16}$/.test(identifier)) {
+    const dosen = await prisma.dosen.findUnique({
+      where: { nuptk: identifier },
+      include: { user: true, prodi: true },
+    });
+
+    if (!dosen) {
+      throw new AppError('NUPTK atau password salah', 401);
+    }
+
+    user = dosen.user;
+    user.dosen = dosen;
+    loginType = 'nuptk';
+
+  // ===== USERNAME (Admin/Keuangan/Dosen) =====
+  } else if (/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(identifier)) {
+    const userByUsername = await prisma.user.findUnique({
+      where: { username: identifier },
+      include: {
+        dosen: {
+          include: {
+            prodi: true,
+          },
+        },
+      },
+    });
+
+    if (!userByUsername) {
+      throw new AppError('Username atau password salah', 401);
+    }
+
+    if (userByUsername.role === 'MAHASISWA') {
+      throw new AppError('Mahasiswa harus login menggunakan NIM', 403);
+    }
+
+    user = userByUsername;
+    loginType = 'username';
+
+  // ===== USER_ID (1-9 digits, for development) =====
+  } else if (/^\d{1,9}$/.test(identifier)) {
+    const userById = await prisma.user.findUnique({
+      where: { id: Number(identifier) },
+      include: {
+        mahasiswa: {
+          include: {
+            prodi: true,
+            dosenWali: {
+              select: {
+                id: true,
+                namaLengkap: true,
+              },
+            },
+          },
+        },
+        dosen: {
+          include: {
+            prodi: true,
+          },
+        },
+      },
+    });
+
+    if (!userById) {
+      throw new AppError('User tidak ditemukan', 401);
+    }
+
+    user = userById;
+    loginType = 'id';
+
+  } else {
+    throw new AppError('Format identifier tidak valid', 400);
   }
 
-  user = mahasiswa.user;
-  user.mahasiswa = mahasiswa;
-
-// ===== DOSEN (NUPTK = 16) =====
-} else if (identifier.length === 16) {
-  const dosen = await prisma.dosen.findUnique({
-    where: { nuptk: identifier },
-    include: { user: true, prodi: true },
-  });
-
-  if (!dosen) {
-    throw new AppError('NUPTK atau password salah', 401);
-  }
-
-  user = dosen.user;
-  user.dosen = dosen;
-
-// ===== ADMIN / KEUANGAN (USER_ID) =====
-} else {
-  const userById = await prisma.user.findUnique({
-    where: { id: Number(identifier) },
-  });
-
-  if (!userById) {
-    throw new AppError('User tidak ditemukan', 401);
-  }
-
-  // ⛔ TOLAK JIKA ROLE MAHASISWA / DOSEN
-  if (userById.role === 'MAHASISWA' || userById.role === 'DOSEN') {
-    throw new AppError(
-      'Mahasiswa atau dosen tidak dapat login menggunakan User ID',
-      403
-    );
-  }
-
-  user = userById;
-}
-
-
-  // Cek user aktif
+  // Check if user is active
   if (!user.isActive) {
     throw new AppError('Akun Anda telah dinonaktifkan', 403);
   }
 
-  // Verifikasi password
+  // Verify password
   const isPasswordValid = await bcrypt.compare(password, user.password);
   if (!isPasswordValid) {
     throw new AppError('Identifier atau password salah', 401);
   }
 
-  // Generate JWT token (TANPA EMAIL)
+  // ✅ Generate JWT token
   const token = jwt.sign(
     {
       userId: user.id,
@@ -86,26 +162,34 @@ if (identifier.length === 10) {
     { expiresIn: env.JWT_EXPIRES_IN } as jwt.SignOptions
   );
 
-  // Prepare response
-  let namaLengkap = '';
-  if (user.mahasiswa) {
-    namaLengkap = user.mahasiswa.namaLengkap;
-  } else if (user.dosen) {
-    namaLengkap = user.dosen.namaLengkap;
-  }
+  // ✅ SET HTTPONLY COOKIE
+  res.cookie('token', token, getCookieOptions());
 
+  // ✅ Prepare user data (WITHOUT TOKEN)
   const responseData = {
-    token,
     user: {
       id: user.id,
+      username: user.username,
       role: user.role,
-      nomorInduk: identifier,
-      profile: {
-        nama: namaLengkap || null,
-      },
+      mahasiswa: user.mahasiswa ? {
+        id: user.mahasiswa.id,
+        nim: user.mahasiswa.nim,
+        namaLengkap: user.mahasiswa.namaLengkap,
+        angkatan: user.mahasiswa.angkatan,
+        status: user.mahasiswa.status,
+        prodi: user.mahasiswa.prodi,
+        dosenWali: user.mahasiswa.dosenWali,
+      } : null,
+      dosen: user.dosen ? {
+        id: user.dosen.id,
+        nidn: user.dosen.nidn,
+        nuptk: user.dosen.nuptk,
+        namaLengkap: user.dosen.namaLengkap,
+        status: user.dosen.status,
+        prodi: user.dosen.prodi,
+      } : null,
     },
   };
-
 
   res.status(200).json({
     success: true,
@@ -114,14 +198,14 @@ if (identifier.length === 10) {
   });
 });
 
-/**
- * POST /api/auth/register
- * Register new user (Admin only)
- */
+// ============================================
+// REGISTER
+// ============================================
 export const register = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
     password,
     role,
+    username,
     namaLengkap,
     nim,
     nidn,
@@ -130,7 +214,32 @@ export const register = asyncHandler(async (req: AuthRequest, res: Response) => 
     angkatan,
   } = req.body;
 
-  // Cek NIM/NIDN sudah ada
+  // ✅ Validate username for ADMIN/KEUANGAN
+  if ((role === 'ADMIN' || role === 'KEUANGAN') && !username) {
+    throw new AppError('Username wajib untuk role ADMIN atau KEUANGAN', 400);
+  }
+
+  // ✅ Validate username tidak boleh untuk MAHASISWA
+  if (role === 'MAHASISWA' && username) {
+    throw new AppError('Mahasiswa tidak boleh memiliki username', 400);
+  }
+
+  // ✅ Validate username format (must start with letter)
+  if (username && !/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(username)) {
+    throw new AppError('Username harus diawali huruf dan hanya boleh mengandung huruf, angka, underscore, atau hyphen', 400);
+  }
+
+  // Check username already exists
+  if (username) {
+    const existingUsername = await prisma.user.findUnique({
+      where: { username },
+    });
+    if (existingUsername) {
+      throw new AppError('Username sudah digunakan', 400);
+    }
+  }
+
+  // Check NIM already exists
   if (role === 'MAHASISWA' && nim) {
     const existingMahasiswa = await prisma.mahasiswa.findUnique({
       where: { nim },
@@ -140,6 +249,7 @@ export const register = asyncHandler(async (req: AuthRequest, res: Response) => 
     }
   }
 
+  // Check NIDN already exists
   if (role === 'DOSEN' && nidn) {
     const existingDosen = await prisma.dosen.findUnique({
       where: { nidn },
@@ -149,6 +259,7 @@ export const register = asyncHandler(async (req: AuthRequest, res: Response) => 
     }
   }
 
+  // Check NUPTK already exists
   if (role === 'DOSEN' && nuptk) {
     const existingNuptk = await prisma.dosen.findUnique({
       where: { nuptk },
@@ -161,11 +272,12 @@ export const register = asyncHandler(async (req: AuthRequest, res: Response) => 
   // Hash password
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  // Create user dengan profile
+  // Create user with profile
   const user = await prisma.user.create({
     data: {
       password: hashedPassword,
       role,
+      username: username || null,
       isActive: true,
       
       ...(role === 'MAHASISWA' && {
@@ -211,10 +323,9 @@ export const register = asyncHandler(async (req: AuthRequest, res: Response) => 
   });
 });
 
-/**
- * GET /api/auth/me
- * Get current authenticated user
- */
+// ============================================
+// GET CURRENT USER
+// ============================================
 export const getCurrentUser = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     if (!req.user) {
@@ -225,6 +336,7 @@ export const getCurrentUser = asyncHandler(
       where: { id: req.user.id },
       select: {
         id: true,
+        username: true,
         role: true,
         isActive: true,
         createdAt: true,
@@ -284,10 +396,9 @@ export const getCurrentUser = asyncHandler(
   }
 );
 
-/**
- * POST /api/auth/change-password
- * Change user password
- */
+// ============================================
+// CHANGE PASSWORD
+// ============================================
 export const changePassword = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     if (!req.user) {
@@ -332,12 +443,18 @@ export const changePassword = asyncHandler(
   }
 );
 
-/**
- * POST /api/auth/logout
- * Logout user (client-side token removal)
- */
+// ============================================
+// LOGOUT
+// ============================================
 export const logout = asyncHandler(
   async (req: AuthRequest, res: Response) => {
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+      path: '/',
+    });
+
     res.status(200).json({
       success: true,
       message: 'Logout berhasil',
@@ -345,13 +462,14 @@ export const logout = asyncHandler(
   }
 );
 
-
+// ============================================
+// REFRESH TOKEN
+// ============================================
 export const refreshToken = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     if (!req.user) {
       throw new AppError('User tidak ditemukan', 401);
     }
-
 
     const token = jwt.sign(
       {
@@ -363,10 +481,11 @@ export const refreshToken = asyncHandler(
       { expiresIn: env.JWT_EXPIRES_IN } as jwt.SignOptions
     );
 
+    res.cookie('token', token, getCookieOptions());
+
     res.status(200).json({
       success: true,
       message: 'Token berhasil di-refresh',
-      data: { token },
     });
   }
 );

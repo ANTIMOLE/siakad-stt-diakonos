@@ -3,6 +3,7 @@
  * Dashboard Layout
  * Main layout dengan Sidebar + TopBar + Content area
  * ✅ AUTH ENABLED - Protects all authenticated pages
+ * ✅ UPDATED: Integrated with useAuth hook for cookie-based auth
  */
 
 'use client';
@@ -13,8 +14,7 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import MobileNav from './MobileNav';
 import { Loader2 } from 'lucide-react';
-import { authAPI } from '@/lib/api';
-import { toast } from 'sonner';
+import { useAuth } from '@/hooks/useAuth'; // Adjust path sesuai lokasi hook
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -23,105 +23,22 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children, role }: DashboardLayoutProps) {
   const router = useRouter();
+  const { user: currentUser, isLoading, isAuthenticated } = useAuth(role);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<any>(null);
 
   // ============================================
-  // AUTH CHECK - Protect routes
+  // REDIRECT EFFECT
   // ============================================
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        // Check if token exists
-        const token = localStorage.getItem('token');
-        const userStr = localStorage.getItem('user');
-
-        if (!token || !userStr) {
-          // Not logged in, redirect to login
-          toast.error('Silakan login terlebih dahulu');
-          router.push('/login');
-          return;
-        }
-
-        // Parse stored user
-        let user;
-        try {
-          user = JSON.parse(userStr);
-        } catch (error) {
-          console.error('Invalid user data:', error);
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          router.push('/login');
-          return;
-        }
-
-        // Verify token with backend
-        try {
-          const response = await authAPI.getCurrentUser();
-          
-          if (!response.data) {
-            throw new Error('Invalid session');
-          }
-
-          // Update user data from backend
-          const backendUser = response.data;
-          
-          // If role is specified, check if user has correct role
-          if (role && backendUser.role !== role) {
-            // Wrong role, redirect to correct dashboard
-            const roleRoutes: Record<string, string> = {
-              ADMIN: '/admin/dashboard',
-              DOSEN: '/dosen/dashboard',
-              MAHASISWA: '/mahasiswa/dashboard',
-              KEUANGAN: '/keuangan/dashboard',
-            };
-            
-            toast.error('Anda tidak memiliki akses ke halaman ini');
-            router.push(roleRoutes[backendUser.role] || '/login');
-            return;
-          }
-
-          // Update localStorage with fresh data
-          localStorage.setItem('user', JSON.stringify(backendUser));
-          setCurrentUser(backendUser);
-          setIsLoading(false);
-
-        } catch (apiError: any) {
-          // Token invalid or expired
-          console.error('Auth verification failed:', apiError);
-          
-          // Check if it's a network error
-          if (!apiError.response) {
-            toast.error('Tidak dapat terhubung ke server');
-            // Still allow access with cached user data for offline mode
-            setCurrentUser(user);
-            setIsLoading(false);
-            return;
-          }
-
-          // Clear invalid session
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          toast.error('Sesi Anda telah berakhir. Silakan login kembali.');
-          router.push('/login');
-        }
-
-      } catch (error) {
-        console.error('Auth check error:', error);
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        router.push('/login');
-      }
-    };
-
-    checkAuth();
-  }, [router, role]);
+    if (!isLoading && !isAuthenticated) {
+      router.push('/login');
+    }
+  }, [isLoading, isAuthenticated, router]);
 
   // ============================================
-  // LOADING STATE
+  // LOADING OR UNAUTH STATE
   // ============================================
-  if (isLoading) {
+  if (isLoading || !isAuthenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">

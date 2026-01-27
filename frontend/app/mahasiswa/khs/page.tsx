@@ -30,6 +30,7 @@ import { Award, Download, FileText, TrendingUp, TrendingDown, Info } from 'lucid
 import { toast } from 'sonner';
 
 import { khsAPI, semesterAPI } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth'; // Adjust path sesuai lokasi hook
 import { KHS, Semester, Nilai } from '@/types/model';
 
 interface KHSWithDetails extends KHS {
@@ -39,24 +40,9 @@ interface KHSWithDetails extends KHS {
 
 export default function KHSPage() {
   // ============================================
-  // AMBIL USER DARI LOCALSTORAGE
+  // AUTH & USER MANAGEMENT
   // ============================================
-  const [user, setUser] = useState<any>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
-
-  useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      try {
-        const parsed = JSON.parse(storedUser);
-        setUser(parsed);
-      } catch (err) {
-        console.error('Gagal parse user dari localStorage');
-        localStorage.removeItem('user');
-      }
-    }
-    setIsAuthLoading(false);
-  }, []);
+  const { user, isLoading: authLoading } = useAuth('MAHASISWA');
 
   // ============================================
   // STATE MANAGEMENT
@@ -76,12 +62,13 @@ export default function KHSPage() {
   // FETCH DATA
   // ============================================
   useEffect(() => {
+    if (authLoading || !user?.mahasiswa?.id) {
+      setIsLoading(false);
+      return;
+    }
+
     const fetchData = async () => {
-      if (!user?.mahasiswa?.id) {
-        setError('Data mahasiswa tidak ditemukan atau Anda belum login');
-        setIsLoading(false);
-        return;
-      }
+      const mahasiswaId = user.mahasiswa.id;
 
       try {
         setIsLoading(true);
@@ -95,11 +82,12 @@ export default function KHSPage() {
                    (b.periode === 'GANJIL' ? -1 : 1);
           });
           setSemesterList(sorted);
+        } else {
+          throw new Error('Gagal memuat data semester');
         }
 
         // 2. Fetch KHS history untuk mahasiswa ini
-        // Backend route: GET /api/khs?mahasiswaId=...
-        const khsResponse = await khsAPI.getAll({ mahasiswa_id: user.mahasiswa.id });
+        const khsResponse = await khsAPI.getAll({ mahasiswaId: mahasiswaId });
 
         if (khsResponse.success && khsResponse.data) {
           const khsData = khsResponse.data;
@@ -126,10 +114,8 @@ export default function KHSPage() {
       }
     };
 
-    if (!isAuthLoading) {
-      fetchData();
-    }
-  }, [user, isAuthLoading]);
+    fetchData();
+  }, [authLoading, user]);
 
   // ============================================
   // FETCH DETAIL KHS + NILAI + PREDIKAT KETIKA SEMESTER DIPILIH
@@ -193,7 +179,7 @@ export default function KHSPage() {
       const link = document.createElement('a');
       link.href = url;
       const semester = selectedKHS.semester;
-      link.download = `KHS_${user.mahasiswa.nim}_${semester?.tahunAkademik?.replace('/', '-') ?? 'unknown'}_${semester?.periode ?? 'unknown'}.pdf`;
+      link.download = `KHS_${user?.mahasiswa?.nim}_${semester?.tahunAkademik?.replace('/', '-') ?? 'unknown'}_${semester?.periode ?? 'unknown'}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -235,7 +221,7 @@ export default function KHSPage() {
   // ============================================
   // RENDER
   // ============================================
-  if (isAuthLoading) {
+  if (authLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
         <LoadingSpinner size="lg" text="Memuat data autentikasi..." />

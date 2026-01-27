@@ -35,6 +35,7 @@ export type UserRole = 'ADMIN' | 'DOSEN' | 'MAHASISWA' | 'KEUANGAN';
 
 export interface User {
   id: number;
+  username: string | null; // ✅ NEW
   role: UserRole;
   isActive: boolean;
   createdAt: string;
@@ -282,6 +283,25 @@ export interface Nilai extends BaseEntity {
     id: number;
     role: UserRole;
   };
+}
+
+export interface NilaiMahasiswa {
+  mahasiswaId: number;
+  nim: string;
+  namaLengkap: string;
+  nilaiId: number | null;
+  nilaiAngka: number | null;
+  nilaiHuruf: NilaiHuruf | null;
+  bobot: number | null;
+  isFinalized: boolean;
+}
+
+export interface NilaiByKelasResponse {
+  kelas: any;
+  mahasiswa: NilaiMahasiswa[];
+  totalMahasiswa: number;
+  totalDinilai: number;
+  isAllFinalized: boolean;
 }
 
 // ============================================

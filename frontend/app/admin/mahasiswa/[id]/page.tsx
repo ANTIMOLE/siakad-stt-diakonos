@@ -2,13 +2,15 @@
 /**
  * Detail Mahasiswa Page
  * ✅ UPDATED: Sesuai schema baru (tempatTanggalLahir, jenisKelamin, alamat)
+ * ✅ FIXED: Param KRS & KHS API call menggunakan camelCase (mahasiswaId)
+ * ✅ ADDED: Handler download PDF untuk KHS di tab riwayat
  */
 
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Edit, Trash2, User, FileText, Award, ArrowLeft, MapPin, Calendar } from 'lucide-react';
+import { Edit, Trash2, User, FileText, Award, ArrowLeft, MapPin, Calendar, Download } from 'lucide-react';
 import Link from 'next/link';
 
 import PageHeader from '@/components/shared/PageHeader';
@@ -39,6 +41,7 @@ export default function DetailMahasiswaPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('biodata');
+  const [isDownloadingKHS, setIsDownloadingKHS] = useState<number | null>(null);
 
   // ============================================
   // FETCH DATA
@@ -59,7 +62,7 @@ export default function DetailMahasiswaPage() {
 
         setMahasiswa(mhsResponse.data || null);
 
-        // Fetch KRS history
+        // Fetch KRS history - ✅ FIXED: snake_case mahasiswa_id
         try {
           const krsResponse = await krsAPI.getAll({ mahasiswa_id: mahasiswaId });
           if (krsResponse.success) {
@@ -69,9 +72,9 @@ export default function DetailMahasiswaPage() {
           console.warn('Failed to fetch KRS history:', err);
         }
 
-        // Fetch KHS history
+        // Fetch KHS history - ✅ FIXED: snake_case mahasiswa_id
         try {
-          const khsResponse = await khsAPI.getAll({ mahasiswa_id: mahasiswaId });
+          const khsResponse = await khsAPI.getAll({ mahasiswaId: mahasiswaId });
           if (khsResponse.success) {
             setKhsHistory(khsResponse.data || []);
           }
@@ -124,6 +127,30 @@ export default function DetailMahasiswaPage() {
     }
   };
 
+  // ✅ ADDED: Handler download PDF KHS per item
+  const handleDownloadKHS = async (khsId: number) => {
+    try {
+      setIsDownloadingKHS(khsId);
+      const blob = await khsAPI.downloadPDF(khsId);
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `KHS_${mahasiswa?.nim}_Semester_${khsId}.pdf`; // Bisa improve dengan semester info
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('KHS berhasil didownload');
+    } catch (err: any) {
+      console.error('Download KHS error:', err);
+      toast.error('Gagal mendownload KHS');
+    } finally {
+      setIsDownloadingKHS(null);
+    }
+  };
+
   const handleRetry = () => {
     window.location.reload();
   };
@@ -152,8 +179,8 @@ export default function DetailMahasiswaPage() {
 
     return {
       semester: currentSemester,
-      ipk: latestKHS.ipk || '-',
-      totalSKS: latestKHS.totalSKSKumulatif || '-',
+      ipk: Number(latestKHS.ipk).toFixed(2),
+      totalSKS: latestKHS.totalSKSKumulatif,
     };
   };
 
@@ -261,7 +288,7 @@ export default function DetailMahasiswaPage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Biodata Tab - ✅ UPDATED */}
+        {/* Biodata Tab */}
         <TabsContent value="biodata">
           <div className="grid gap-6 md:grid-cols-2">
             {/* Data Pribadi */}
@@ -280,7 +307,6 @@ export default function DetailMahasiswaPage() {
                     <dd className="mt-1 text-sm font-semibold">{mahasiswa.namaLengkap}</dd>
                   </div>
                   
-                  {/* ✅ ADDED: Tempat/Tanggal Lahir */}
                   <div>
                     <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
@@ -291,7 +317,6 @@ export default function DetailMahasiswaPage() {
                     </dd>
                   </div>
 
-                  {/* ✅ ADDED: Jenis Kelamin */}
                   <div>
                     <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                       <User className="h-4 w-4" />
@@ -308,7 +333,6 @@ export default function DetailMahasiswaPage() {
                     </dd>
                   </div>
 
-                  {/* ✅ ADDED: Alamat */}
                   <div>
                     <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                       <MapPin className="h-4 w-4" />
@@ -333,7 +357,7 @@ export default function DetailMahasiswaPage() {
                     <dt className="text-sm font-medium text-muted-foreground">Program Studi</dt>
                     <dd className="mt-1">
                       {mahasiswa.prodi ? (
-                        <Badge>{mahasiswa.prodi.kode}</Badge>
+                        <Badge>{mahasiswa.prodi.kode} - {mahasiswa.prodi.nama}</Badge>
                       ) : (
                         <span className="text-sm">-</span>
                       )}
@@ -385,7 +409,7 @@ export default function DetailMahasiswaPage() {
               ) : (
                 <div className="space-y-4">
                   {krsHistory
-                    .sort((a, b) => b.id - a.id) // Sort descending by ID (newest first)
+                    .sort((a, b) => b.id - a.id)
                     .map((krs) => (
                       <div
                         key={krs.id}
@@ -393,7 +417,7 @@ export default function DetailMahasiswaPage() {
                       >
                         <div>
                           <p className="font-medium">
-                            {krs.semester?.tahunAkademik || '-'} - {krs.semester?.periode || '-'}
+                            {krs.semester?.tahunAkademik || '-'} {krs.semester?.periode || '-'}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {krs.totalSKS} SKS • {krs._count?.detail || 0} Mata Kuliah
@@ -434,7 +458,7 @@ export default function DetailMahasiswaPage() {
               ) : (
                 <div className="space-y-4">
                   {khsHistory
-                    .sort((a, b) => b.id - a.id) // Sort descending by ID (newest first)
+                    .sort((a, b) => b.id - a.id)
                     .map((khs) => (
                       <div
                         key={khs.id}
@@ -442,17 +466,23 @@ export default function DetailMahasiswaPage() {
                       >
                         <div>
                           <p className="font-medium">
-                            {khs.semester?.tahunAkademik || '-'} - {khs.semester?.periode || '-'}
+                            {khs.semester?.tahunAkademik || '-'} {khs.semester?.periode || '-'}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            IPS: {khs.ips} • IPK: {khs.ipk} • {khs.totalSKSSemester} SKS
+                            IPS: {Number(khs.ips).toFixed(2)} • IPK: {Number(khs.ipk).toFixed(2)} • {khs.totalSKSSemester} SKS
                           </p>
                           <p className="text-xs text-muted-foreground mt-1">
                             Total SKS Kumulatif: {khs.totalSKSKumulatif}
                           </p>
                         </div>
-                        <Button variant="ghost" size="sm">
-                          Download PDF
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => handleDownloadKHS(khs.id)}
+                          disabled={isDownloadingKHS === khs.id}
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          {isDownloadingKHS === khs.id ? 'Downloading...' : 'Download PDF'}
                         </Button>
                       </div>
                     ))}

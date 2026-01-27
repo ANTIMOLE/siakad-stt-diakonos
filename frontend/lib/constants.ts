@@ -287,7 +287,9 @@ export const ADMIN_MENU = [
   { label: 'Kelas MK', href: '/admin/kelas-mk', icon: 'School' },
   { label: 'Paket KRS', href: '/admin/paket-krs', icon: 'Package' },
   { label: 'KRS', href: '/admin/krs', icon: 'CheckSquare' },
+  { label: 'KRS Approval', href: '/admin/krs-approval', icon: 'CheckSquare' },
   { label: 'Semester', href: '/admin/semester', icon: 'Calendar' },
+  { label: 'Pembayaran', href: '/admin/pembayaran', icon: 'FileText' },
 ] as const;
 
 export const DOSEN_MENU = [

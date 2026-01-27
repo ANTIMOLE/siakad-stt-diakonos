@@ -140,31 +140,38 @@ export default function MahasiswaKRSPage() {
     }
   };
 
-  const handleDownloadPDF = async () => {
-    if (!selectedKRS) return;
+const handleDownloadPDF = async () => {
+  if (!selectedKRS) return;
 
-    try {
-      setIsDownloading(true);
+  try {
+    setIsDownloading(true);
 
-      const blob = await krsAPI.downloadPDF(selectedKRS.id);
+    const blob = await krsAPI.downloadPDF(selectedKRS.id);
 
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `KRS_${selectedKRS.mahasiswa?.nim}_${selectedKRS.semester?.tahunAkademik?.replace('/', '-')}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    
+    // ✅ FIX: Backend already sets proper filename in Content-Disposition header
+    // Just use a safe default based on available data
+    const nim = user?.mahasiswa?.nim || 'KRS';
+    const tahun = selectedKRS.semester?.tahunAkademik?.replace('/', '-') || '';
+    const periode = selectedKRS.semester?.periode || '';
+    link.download = `KRS_${nim}_${tahun}_${periode}.pdf`;
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
 
-      toast.success('KRS berhasil didownload');
-    } catch (err: any) {
-      console.error('Download error:', err);
-      toast.error('Gagal mendownload KRS');
-    } finally {
-      setIsDownloading(false);
-    }
-  };
+    toast.success('KRS berhasil didownload');
+  } catch (err: any) {
+    console.error('Download error:', err);
+    toast.error('Gagal mendownload KRS');
+  } finally {
+    setIsDownloading(false);
+  }
+};
 
   const handleRetry = () => {
     window.location.reload();

@@ -1,7 +1,6 @@
 /**
- * Authentication Middleware (FIXED)
- * JWT token verification and user attachment
- * ✅ FIXED: Tambah identifier di req.user
+ * Authentication Middleware
+ * ✅ UPDATED: Read JWT from HttpOnly cookie
  */
 
 import { Request, Response, NextFunction } from 'express';
@@ -9,12 +8,11 @@ import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import prisma from '../config/database';
 
-// ✅ Interface yang BENAR (pakai ini, bukan yang di types/index.ts)
 export interface AuthRequest extends Request {
   user?: {
     id: number;
     role: 'ADMIN' | 'DOSEN' | 'MAHASISWA' | 'KEUANGAN';
-    identifier?: string; // NIM atau NUPTK
+    identifier?: string;
   };
 }
 
@@ -26,7 +24,7 @@ interface JwtPayload {
 
 /**
  * Authenticate middleware
- * Verifies JWT token and attaches user to request
+ * ✅ Verifies JWT token from HttpOnly cookie
  */
 export const authenticate = async (
   req: AuthRequest,
@@ -34,24 +32,13 @@ export const authenticate = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader) {
-      res.status(401).json({
-        success: false,
-        message: 'Token tidak ditemukan. Silakan login terlebih dahulu.',
-      });
-      return;
-    }
-
-    const token = authHeader.startsWith('Bearer ')
-      ? authHeader.substring(7)
-      : authHeader;
+    // ✅ READ TOKEN FROM COOKIE (not Authorization header)
+    const token = req.cookies?.token;
 
     if (!token) {
       res.status(401).json({
         success: false,
-        message: 'Format token tidak valid.',
+        message: 'Token tidak ditemukan. Silakan login terlebih dahulu.',
       });
       return;
     }
@@ -102,11 +89,11 @@ export const authenticate = async (
       return;
     }
 
-    // ✅ FIXED: Attach user dengan identifier
+    // Attach user to request
     req.user = {
       id: user.id,
       role: user.role,
-      identifier: decoded.identifier, // ✅ TAMBAH INI
+      identifier: decoded.identifier,
     };
 
     next();
@@ -128,9 +115,9 @@ export const optionalAuth = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  const authHeader = req.headers.authorization;
+  const token = req.cookies?.token;
 
-  if (!authHeader) {
+  if (!token) {
     next();
     return;
   }

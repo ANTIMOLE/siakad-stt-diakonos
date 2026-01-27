@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Login Page
- * Form login dengan Nomor Induk (NIM/NIP/NIK) + password
- * Submit ke API, save token, redirect berdasarkan role
+ * ✅ UPDATED: Support for NIM/NIDN (10 digits), NUPTK (16 digits), Username
  */
 
 'use client';
@@ -22,19 +21,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 
-// API & Utils
+// API
 import { authAPI } from '@/lib/api';
-import { ROLES } from '@/lib/constants';
 
 // ============================================
 // VALIDATION SCHEMA
 // ============================================
 const loginSchema = z.object({
-  Identifier: z
+  identifier: z
     .string()
-    .min(1, 'Nomor Identifier wajib diisi')
-    .min(1, 'Nomor Identifier minimal 1 karakter')
-    .regex(/^[a-zA-Z0-9]+$/, 'Nomor Identifier hanya boleh berisi huruf dan angka'),
+    .min(1, 'Identifier wajib diisi')
+    .refine((val) => {
+      // ✅ Allow multiple formats:
+      // - 10 digits: NIM (Mahasiswa) or NIDN (Dosen)
+      // - 16 digits: NUPTK (Dosen)
+      // - Starts with letter: Username (Admin/Keuangan/Dosen)
+      // - 1-9 digits: User ID (development)
+      const is10Digits = /^\d{10}$/.test(val);        // NIM or NIDN
+      const is16Digits = /^\d{16}$/.test(val);        // NUPTK
+      const isUsername = /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(val);
+      const isUserID = /^\d{1,9}$/.test(val);
+      
+      return is10Digits || is16Digits || isUsername || isUserID;
+    }, 'Format identifier tidak valid. Gunakan NIM/NIDN (10 digit), NUPTK (16 digit), Username, atau User ID'),
   password: z
     .string()
     .min(1, 'Password wajib diisi')
@@ -52,94 +61,62 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // React Hook Form
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
-    defaultValues: {
-      Identifier: '',
-      password: '',
-    },
   });
 
   // ============================================
   // SUBMIT HANDLER
   // ============================================
-const onSubmit = async (data: LoginFormData) => {
-  try {
-    setIsLoading(true);
-    setError(null);
+  const onSubmit = async (data: LoginFormData) => {
+    try {
+      setIsLoading(true);
+      setError(null);
 
-    const response = await authAPI.login(
-      data.Identifier,
-      data.password
-    );
+      const response = await authAPI.login(data.identifier, data.password);
 
-    console.log('FULL RESPONSE:', response);
-    console.log('USER DATA:', response.data?.user);  // ✅ Debug user
-
-    if (!response.success || !response.data) {
-      throw new Error(response.message || 'Data login tidak lengkap');
-    }
-
-    const { token, user } = response.data;
-
-    if (!token || !user) {
-      throw new Error('Data login tidak lengkap');
-    }
-
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(user));
-
-    // ✅ Fix: Pakai property yang ada di response
-    const getUserName = () => {
-      if (user.role === 'MAHASISWA' && user.mahasiswa) {
-        return user.mahasiswa.namaLengkap;
+      if (!response.success || !response.data) {
+        throw new Error(response.message || 'Login gagal');
       }
-      if (user.role === 'DOSEN' && user.dosen) {
-        return user.dosen.namaLengkap;
-      }
-      if (user.role === 'ADMIN' && user.admin) {
-        return user.admin.nama || 'Admin';
-      }
-      return 'User';
-    };
 
-    toast.success(`Selamat datang, ${getUserName()}!`);
+      const { user } = response.data;
 
-    const roleRoutes: Record<string, string> = {
-      ADMIN: '/admin/dashboard',
-      DOSEN: '/dosen/dashboard',
-      MAHASISWA: '/mahasiswa/dashboard',
-      KEUANGAN: '/keuangan/dashboard',
-    };
+      // ✅ ONLY STORE USER DATA (token is in HttpOnly cookie)
+      localStorage.setItem('user', JSON.stringify(user));
 
-    router.push(roleRoutes[user.role as string] || '/');
+      // Get user name
+      const getUserName = () => {
+        if (user.mahasiswa) return user.mahasiswa.namaLengkap;
+        if (user.dosen) return user.dosen.namaLengkap;
+        return user.username || 'User';
+      };
 
-  } catch (err: any) {
-    console.error('Login error:', err);
-    console.error('Error response:', err.response);  // ✅ Debug error
+      toast.success(`Selamat datang, ${getUserName()}!`);
 
-    let errorMessage = 'Terjadi kesalahan saat login';
+      // Redirect based on role
+      const roleRoutes: Record<string, string> = {
+        ADMIN: '/admin/dashboard',
+        DOSEN: '/dosen/dashboard',
+        MAHASISWA: '/mahasiswa/dashboard',
+        KEUANGAN: '/keuangan/dashboard',
+      };
 
-    // ✅ Fix: Interceptor sudah unwrap error.response
-    if (err.response?.data) {
-      errorMessage = err.response.data.message || err.response.data.error || errorMessage;
-    } else if (err.message) {
-      errorMessage = err.message;
+      router.push(roleRoutes[user.role] || '/');
+
+    } catch (err: any) {
+      console.error('Login error:', err);
+
+      const errorMessage = err.response?.data?.message || err.message || 'Terjadi kesalahan saat login';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
-
-    setError(errorMessage);
-    toast.error(errorMessage);
-  } finally {
-    setIsLoading(false);
-  }
-};
-
-
+  };
 
   // ============================================
   // RENDER
@@ -171,14 +148,14 @@ const onSubmit = async (data: LoginFormData) => {
               <Input
                 id="identifier"
                 type="text"
-                placeholder="NIM / NIP / NIK"
+                placeholder="NIM / NIDN / NUPTK / Username"
                 className="pl-10"
                 disabled={isLoading}
-                {...register('Identifier')}
+                {...register('identifier')}
               />
             </div>
-            {errors.Identifier && (
-              <p className="text-sm text-destructive">{errors.Identifier.message}</p>
+            {errors.identifier && (
+              <p className="text-sm text-destructive">{errors.identifier.message}</p>
             )}
           </div>
 
@@ -213,30 +190,6 @@ const onSubmit = async (data: LoginFormData) => {
             )}
           </div>
 
-          {/* Remember Me & Forgot Password */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                id="remember"
-                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-              />
-              <label
-                htmlFor="remember"
-                className="text-sm text-gray-600 cursor-pointer"
-              >
-                Ingat saya
-              </label>
-            </div>
-            <button
-              type="button"
-              className="text-sm text-primary hover:underline"
-              disabled={isLoading}
-            >
-              Lupa password?
-            </button>
-          </div>
-
           {/* Submit Button */}
           <Button
             type="submit"
@@ -255,13 +208,15 @@ const onSubmit = async (data: LoginFormData) => {
           </Button>
         </form>
 
-        {/* Demo Accounts Info (Optional - Remove in production) */}
+        {/* Demo Accounts Info */}
         <div className="mt-6 rounded-lg bg-muted p-4 text-xs">
           <p className="mb-2 font-semibold text-muted-foreground">Demo Accounts:</p>
           <div className="space-y-1 text-muted-foreground">
-            <p>• Admin: ADM001 / admin123</p>
-            <p>• Dosen: DSN001 / dosen123</p>
-            <p>• Mahasiswa: 220101001 / mhs123</p>
+            <p>• Admin: admin / password123</p>
+            <p>• Keuangan: keuangan / password123</p>
+            <p>• Dosen (NIDN): 0101018901 / password123</p>
+            <p>• Dosen (NUPTK): 1234567890123456 / password123</p>
+            <p>• Mahasiswa (NIM): 2024010001 / password123</p>
           </div>
         </div>
       </CardContent>

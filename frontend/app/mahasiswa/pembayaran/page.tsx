@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Upload Pembayaran Page
- * ✅ UPDATED: Sesuai schema baru (JenisPembayaran enum)
+ * ✅ UPDATED: Sesuai schema baru + dropdown semester untuk KRS
  */
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
@@ -57,11 +57,11 @@ import { id } from 'date-fns/locale';
 import { toast } from 'sonner';
 
 import { pembayaranAPI } from '@/lib/api';
-import { Pembayaran, JenisPembayaran } from '@/types/model';
+import { semesterAPI } from '@/lib/api'; // ✅ Tambahkan import
+import { Pembayaran, JenisPembayaran, Semester } from '@/types/model';
 
 type PembayaranStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
-// ✅ UPDATED: Mapping label untuk enum JenisPembayaran
 const JENIS_PEMBAYARAN_OPTIONS: Array<{ value: JenisPembayaran; label: string }> = [
   { value: 'KRS', label: 'Pembayaran KRS' },
   { value: 'TENGAH_SEMESTER', label: 'Pembayaran Tengah Semester' },
@@ -75,9 +75,12 @@ export default function UploadPembayaranPage() {
   // ============================================
   // STATE MANAGEMENT
   // ============================================
-  const [jenisPembayaran, setJenisPembayaran] = useState<JenisPembayaran>('KRS'); // ✅ UPDATED
+  const [jenisPembayaran, setJenisPembayaran] = useState<JenisPembayaran>('KRS');
   const [nominal, setNominal] = useState('');
-  const [bulanPembayaran, setBulanPembayaran] = useState(''); // ✅ ADDED for KOMITMEN_BULANAN
+  const [bulanPembayaran, setBulanPembayaran] = useState('');
+  const [selectedSemesterId, setSelectedSemesterId] = useState<number | null>(null); // ✅ NEW
+  const [semesters, setSemesters] = useState<Semester[]>([]); // ✅ NEW
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [history, setHistory] = useState<Pembayaran[]>([]);
@@ -90,19 +93,11 @@ export default function UploadPembayaranPage() {
   const [error, setError] = useState<string | null>(null);
 
   // ============================================
-  // FETCH HISTORY
+  // FETCH HISTORY & SEMESTERS
   // ============================================
-  useEffect(() => {
-    fetchHistory();
-  }, []);
-
   const fetchHistory = async () => {
     try {
-      setIsLoading(true);
-      setError(null);
-
       const response = await pembayaranAPI.getHistory();
-
       if (response.success && response.data) {
         setHistory(response.data);
       }
@@ -113,10 +108,34 @@ export default function UploadPembayaranPage() {
           err.message ||
           'Terjadi kesalahan saat memuat riwayat pembayaran'
       );
-    } finally {
-      setIsLoading(false);
     }
   };
+
+  const fetchSemesters = useCallback(async () => {
+    try {
+      const response = await semesterAPI.getAll();
+      if (response.success && response.data) {
+        // Sort descending by tahunAkademik
+        const sorted = response.data.sort((a: Semester, b: Semester) =>
+          b.tahunAkademik.localeCompare(a.tahunAkademik)
+        );
+        setSemesters(sorted);
+      }
+    } catch (err: any) {
+      console.error('Fetch semesters error:', err);
+      toast.error('Gagal memuat daftar semester');
+    }
+  }, []);
+
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      setError(null);
+      await Promise.all([fetchHistory(), fetchSemesters()]);
+      setIsLoading(false);
+    };
+    loadData();
+  }, [fetchSemesters]);
 
   // ============================================
   // HELPERS
@@ -129,7 +148,6 @@ export default function UploadPembayaranPage() {
     }).format(amount);
   };
 
-  // ✅ ADDED: Get label for jenis pembayaran
   const getJenisPembayaranLabel = (jenis: JenisPembayaran) => {
     return JENIS_PEMBAYARAN_OPTIONS.find(opt => opt.value === jenis)?.label || jenis;
   };
@@ -138,13 +156,11 @@ export default function UploadPembayaranPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       toast.error('Ukuran file maksimal 5MB');
       return;
     }
 
-    // Validate file type
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
     if (!allowedTypes.includes(file.type)) {
       toast.error('Format file harus JPG, PNG, atau PDF');
@@ -153,7 +169,6 @@ export default function UploadPembayaranPage() {
 
     setSelectedFile(file);
 
-    // Create preview for images
     if (file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -178,9 +193,14 @@ export default function UploadPembayaranPage() {
       return;
     }
 
-    // ✅ ADDED: Validate bulanPembayaran for KOMITMEN_BULANAN
     if (jenisPembayaran === 'KOMITMEN_BULANAN' && !bulanPembayaran) {
       toast.error('Bulan pembayaran harus diisi untuk komitmen bulanan');
+      return;
+    }
+
+    // ✅ Validasi semester untuk KRS
+    if (jenisPembayaran === 'KRS' && !selectedSemesterId) {
+      toast.error('Semester harus dipilih untuk pembayaran KRS');
       return;
     }
 
@@ -194,18 +214,20 @@ export default function UploadPembayaranPage() {
       setIsUploading(true);
       setUploadProgress(0);
 
-      // Create FormData
       const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('jenisPembayaran', jenisPembayaran); // ✅ Now using enum value
+      formData.append('bukti', selectedFile);
+      formData.append('jenisPembayaran', jenisPembayaran);
       formData.append('nominal', nominalValue.toString());
-      
-      // ✅ ADDED: Include bulanPembayaran if KOMITMEN_BULANAN
+
       if (jenisPembayaran === 'KOMITMEN_BULANAN' && bulanPembayaran) {
         formData.append('bulanPembayaran', bulanPembayaran);
       }
 
-      // Simulate progress (since we can't track real progress with current API)
+      // ✅ Kirim semesterId untuk KRS
+      if (jenisPembayaran === 'KRS' && selectedSemesterId) {
+        formData.append('semesterId', selectedSemesterId.toString());
+      }
+
       const progressInterval = setInterval(() => {
         setUploadProgress((prev) => {
           if (prev >= 90) {
@@ -216,7 +238,6 @@ export default function UploadPembayaranPage() {
         });
       }, 200);
 
-      // Upload
       const response = await pembayaranAPI.uploadBukti(formData);
 
       clearInterval(progressInterval);
@@ -228,12 +249,13 @@ export default function UploadPembayaranPage() {
         // Reset form
         setJenisPembayaran('KRS');
         setNominal('');
-        setBulanPembayaran(''); // ✅ ADDED
+        setBulanPembayaran('');
+        setSelectedSemesterId(null); // ✅ Reset semester
         setSelectedFile(null);
         setPreviewUrl(null);
         
-        // Refresh history
-        fetchHistory();
+        // Refresh data
+        await Promise.all([fetchHistory(), fetchSemesters()]);
       } else {
         throw new Error(response.message || 'Upload gagal');
       }
@@ -284,7 +306,7 @@ export default function UploadPembayaranPage() {
   };
 
   // ============================================
-  // LOADING STATE
+  // LOADING / ERROR STATE
   // ============================================
   if (isLoading) {
     return (
@@ -294,9 +316,6 @@ export default function UploadPembayaranPage() {
     );
   }
 
-  // ============================================
-  // ERROR STATE
-  // ============================================
   if (error) {
     return (
       <ErrorState
@@ -312,7 +331,6 @@ export default function UploadPembayaranPage() {
   // ============================================
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <PageHeader
         title="Upload Pembayaran"
         description="Upload bukti pembayaran untuk verifikasi"
@@ -325,14 +343,19 @@ export default function UploadPembayaranPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* ✅ UPDATED: Jenis Pembayaran dengan enum */}
+            {/* Jenis Pembayaran */}
             <div className="space-y-2">
               <Label htmlFor="jenis-pembayaran">
                 Jenis Pembayaran <span className="text-red-500">*</span>
               </Label>
               <Select 
                 value={jenisPembayaran} 
-                onValueChange={(value) => setJenisPembayaran(value as JenisPembayaran)}
+                onValueChange={(value) => {
+                  setJenisPembayaran(value as JenisPembayaran);
+                  // Reset conditional fields
+                  setSelectedSemesterId(null);
+                  setBulanPembayaran('');
+                }}
                 disabled={isUploading}
               >
                 <SelectTrigger id="jenis-pembayaran">
@@ -348,7 +371,38 @@ export default function UploadPembayaranPage() {
               </Select>
             </div>
 
-            {/* ✅ ADDED: Bulan Pembayaran (only for KOMITMEN_BULANAN) */}
+            {/* ✅ Dropdown Semester (hanya untuk KRS) */}
+            {jenisPembayaran === 'KRS' && (
+              <div className="space-y-2">
+                <Label htmlFor="semester">
+                  Semester <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  value={selectedSemesterId?.toString() || ''}
+                  onValueChange={(value) => setSelectedSemesterId(parseInt(value))}
+                  disabled={isUploading || semesters.length === 0}
+                >
+                  <SelectTrigger id="semester">
+                    <SelectValue placeholder={semesters.length === 0 ? 'Memuat semester...' : 'Pilih semester'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {semesters.map((semester) => (
+                      <SelectItem key={semester.id} value={semester.id.toString()}>
+                        {semester.tahunAkademik} {semester.periode}
+                        {semester.isActive && (
+                          <span className="ml-2 text-green-600 font-medium">(Aktif)</span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Pilih semester akademik untuk pembayaran KRS
+                </p>
+              </div>
+            )}
+
+            {/* Bulan Pembayaran (hanya untuk KOMITMEN_BULANAN) */}
             {jenisPembayaran === 'KOMITMEN_BULANAN' && (
               <div className="space-y-2">
                 <Label htmlFor="bulan-pembayaran">
@@ -427,7 +481,6 @@ export default function UploadPembayaranPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {/* Preview for images */}
                     {previewUrl && (
                       <div className="relative">
                         <img
@@ -449,7 +502,6 @@ export default function UploadPembayaranPage() {
                       </div>
                     )}
 
-                    {/* File info */}
                     <div className="flex items-center justify-between bg-muted/50 p-3 rounded-lg">
                       <div className="flex items-center gap-3">
                         {selectedFile.type.startsWith('image/') ? (
@@ -477,7 +529,6 @@ export default function UploadPembayaranPage() {
                       )}
                     </div>
 
-                    {/* Change file button */}
                     {!isUploading && !previewUrl && (
                       <div className="text-center">
                         <label
@@ -500,7 +551,6 @@ export default function UploadPembayaranPage() {
               </div>
             </div>
 
-            {/* Upload Progress */}
             {isUploading && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
@@ -511,7 +561,6 @@ export default function UploadPembayaranPage() {
               </div>
             )}
 
-            {/* Info Alert */}
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
@@ -520,7 +569,6 @@ export default function UploadPembayaranPage() {
               </AlertDescription>
             </Alert>
 
-            {/* Submit Button */}
             <div className="flex justify-end gap-3">
               <Button
                 type="button"
@@ -528,7 +576,8 @@ export default function UploadPembayaranPage() {
                 onClick={() => {
                   setJenisPembayaran('KRS');
                   setNominal('');
-                  setBulanPembayaran(''); // ✅ ADDED
+                  setBulanPembayaran('');
+                  setSelectedSemesterId(null);
                   setSelectedFile(null);
                   setPreviewUrl(null);
                 }}
@@ -554,7 +603,7 @@ export default function UploadPembayaranPage() {
         </CardContent>
       </Card>
 
-      {/* History */}
+      {/* Riwayat Pembayaran (tidak berubah) */}
       <Card>
         <CardHeader>
           <CardTitle>Riwayat Pembayaran</CardTitle>
@@ -575,7 +624,7 @@ export default function UploadPembayaranPage() {
                     <TableRow>
                       <TableHead>Jenis Pembayaran</TableHead>
                       <TableHead>Semester</TableHead>
-                      <TableHead>Bulan</TableHead> {/* ✅ ADDED */}
+                      <TableHead>Bulan</TableHead>
                       <TableHead className="text-right">Nominal</TableHead>
                       <TableHead>Tanggal Upload</TableHead>
                       <TableHead>Status</TableHead>
@@ -586,12 +635,11 @@ export default function UploadPembayaranPage() {
                     {history.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell className="font-medium">
-                          {getJenisPembayaranLabel(item.jenisPembayaran)} {/* ✅ UPDATED */}
+                          {getJenisPembayaranLabel(item.jenisPembayaran)}
                         </TableCell>
                         <TableCell>
                           {item.semester ? `${item.semester.tahunAkademik} ${item.semester.periode}` : '-'}
                         </TableCell>
-                        {/* ✅ ADDED: Bulan column */}
                         <TableCell>
                           {item.bulanPembayaran 
                             ? format(new Date(item.bulanPembayaran), 'MMMM yyyy', { locale: id })
@@ -625,7 +673,7 @@ export default function UploadPembayaranPage() {
         </CardContent>
       </Card>
 
-      {/* Detail Dialog */}
+      {/* Detail Dialog (tidak berubah) */}
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -637,7 +685,7 @@ export default function UploadPembayaranPage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Jenis Pembayaran</p>
                   <p className="font-medium">
-                    {getJenisPembayaranLabel(selectedPembayaran.jenisPembayaran)} {/* ✅ UPDATED */}
+                    {getJenisPembayaranLabel(selectedPembayaran.jenisPembayaran)}
                   </p>
                 </div>
                 <div>
@@ -648,7 +696,6 @@ export default function UploadPembayaranPage() {
                       : '-'}
                   </p>
                 </div>
-                {/* ✅ ADDED: Bulan Pembayaran */}
                 {selectedPembayaran.bulanPembayaran && (
                   <div>
                     <p className="text-sm text-muted-foreground">Bulan Pembayaran</p>

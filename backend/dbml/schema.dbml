@@ -4,6 +4,7 @@
 
 Table users {
   id Int [pk, increment]
+  username String [unique]
   password String [not null]
   role Role [not null, default: 'MAHASISWA']
   isActive Boolean [not null, default: true]

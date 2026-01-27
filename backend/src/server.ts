@@ -1,12 +1,12 @@
 /**
  * Express Server Entry Point
- * ✅ Updated for unified Pembayaran system
+ * ✅ UPDATED: Cookie-based authentication with HttpOnly cookies
  */
 
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import cookieParser from 'cookie-parser';
+import cookieParser from 'cookie-parser'; // ✅ ADDED
 import { env } from './config/env';
 import {
   errorHandler,
@@ -25,9 +25,9 @@ import paketKRSRoutes from './routes/paketKRSRoutes';
 import krsRoutes from './routes/krsRoutes';
 import nilaiRoutes from './routes/nilaiRoutes';
 import khsRoutes from './routes/khsRoutes';
-import pembayaranRoutes from './routes/pembayaranRoutes'; // ✅ RENAMED
+import pembayaranRoutes from './routes/pembayaranRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
-import presensiRoutes from './routes/presensiRoutes'; 
+import presensiRoutes from './routes/presensiRoutes';
 
 const app: Application = express();
 
@@ -35,19 +35,25 @@ const app: Application = express();
 // MIDDLEWARE CONFIGURATION
 // ============================================
 
+// ✅ CORS - CRITICAL: Must allow credentials for HttpOnly cookies
 const corsOptions = {
   origin: env.NODE_ENV === 'production'
     ? process.env.FRONTEND_URL || 'http://localhost:3000'
     : ['http://localhost:3000', 'http://localhost:3001'],
-  credentials: true,
+  credentials: true, // ✅ ENABLE COOKIES
   optionsSuccessStatus: 200,
 };
 
 app.use(cors(corsOptions));
+
+// Body parsers
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ✅ Cookie parser - MUST be AFTER body parsers
 app.use(cookieParser());
 
+// Logging
 if (env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 } else {
@@ -89,8 +95,9 @@ app.get('/api', (req: Request, res: Response) => {
       krs: '/api/krs',
       nilai: '/api/nilai',
       khs: '/api/khs',
-      pembayaran: '/api/pembayaran', // ✅ RENAMED
+      pembayaran: '/api/pembayaran',
       dashboard: '/api/dashboard',
+      presensi: '/api/presensi',
     },
   });
 });
@@ -116,8 +123,9 @@ app.use('/api/nilai', nilaiRoutes);
 app.use('/api/khs', khsRoutes);
 
 // Payment & Dashboard routes
-app.use('/api/pembayaran', pembayaranRoutes); // ✅ RENAMED & GENERALIZED
+app.use('/api/pembayaran', pembayaranRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/presensi', presensiRoutes);
 
 // Static files for uploads
 app.use('/uploads', express.static('uploads'));
@@ -143,6 +151,7 @@ const server = app.listen(PORT, () => {
   console.log(`🌐 Server running on: http://localhost:${PORT}`);
   console.log(`🔗 API endpoint: http://localhost:${PORT}/api`);
   console.log(`💚 Health check: http://localhost:${PORT}/health`);
+  console.log(`🍪 Auth mode: HttpOnly Cookies`); // ✅ ADDED
   console.log('='.repeat(50));
   console.log('✅ Server is ready to accept connections');
   console.log('='.repeat(50));

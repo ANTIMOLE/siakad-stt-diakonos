@@ -1,14 +1,44 @@
-
-
 import { Response } from 'express';
 import prisma from '../config/database';
 import { AuthRequest } from '../types';
 import { asyncHandler, AppError } from '../middlewares/errorMiddleware';
 import { generateKHSForMahasiswa } from '../services/nilaiService';
-// import { hitungIPS, hitungIPK, getTotalSKS, getPredikatIPK } from '../utils/hitungIPK';
 import { generatePDF, getKHSHTMLTemplate, getTranskripHTMLTemplate } from '../utils/pdfGenerator';
 import { getPredikatIPK } from '../utils/hitungIPK';
 
+// ============================================
+// HELPER: Convert Decimal to Number
+// ============================================
+const toNumber = (value: any): number => {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === 'number') return value;
+  // Handle Prisma Decimal
+  if (typeof value === 'object' && 'toNumber' in value) {
+    return value.toNumber();
+  }
+  const num = Number(value);
+  return isNaN(num) ? 0 : num;
+};
+
+// ============================================
+// Convert KHS data to plain numbers
+// ============================================
+const normalizeKHS = (khs: any) => ({
+  ...khs,
+  ips: toNumber(khs.ips),
+  ipk: toNumber(khs.ipk),
+  totalSKS: toNumber(khs.totalSKS),
+  totalSKSKumulatif: toNumber(khs.totalSKSKumulatif),
+});
+
+// ============================================
+// Convert Nilai data to plain numbers
+// ============================================
+const normalizeNilai = (nilai: any) => ({
+  ...nilai,
+  nilaiAngka: toNumber(nilai.nilaiAngka),
+  bobot: toNumber(nilai.bobot),
+});
 
 export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { mahasiswaId } = req.query;
@@ -37,13 +67,15 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     },
   });
 
+  // ✅ Normalize Decimal fields
+  const normalizedList = khsList.map(normalizeKHS);
+
   res.status(200).json({
     success: true,
     message: 'Data KHS berhasil diambil',
-    data: khsList,
+    data: normalizedList,
   });
 });
-
 
 export const getById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -110,13 +142,17 @@ export const getById = asyncHandler(
       },
     });
 
+    // ✅ Normalize all Decimal fields
+    const normalizedKHS = normalizeKHS(khs);
+    const normalizedNilai = nilai.map(normalizeNilai);
+
     res.status(200).json({
       success: true,
       message: 'Data KHS berhasil diambil',
       data: {
-        ...khs,
-        nilai,
-        predikat: getPredikatIPK(Number(khs.ipk)),
+        ...normalizedKHS,
+        nilai: normalizedNilai,
+        predikat: getPredikatIPK(normalizedKHS.ipk),
       },
     });
   }
@@ -225,6 +261,11 @@ export const getTranskrip = asyncHandler(
                 periode: true,
               },
             },
+            dosen: {
+              select: {
+                namaLengkap: true,
+              },
+            },
           },
         },
       },
@@ -237,23 +278,27 @@ export const getTranskrip = asyncHandler(
       },
     });
 
+    // ✅ Normalize all data
+    const normalizedKHS = khsList.map(normalizeKHS);
+    const normalizedNilai = allNilai.map(normalizeNilai);
+
     // Calculate final IPK
-    const finalIPK = khsList.length > 0 ? khsList[khsList.length - 1].ipk : 0;
-    const totalSKS = khsList.length > 0 ? khsList[khsList.length - 1].totalSKSKumulatif : 0;
-    const predikat = getPredikatIPK(Number(finalIPK));
+    const finalIPK = normalizedKHS.length > 0 ? normalizedKHS[normalizedKHS.length - 1].ipk : 0;
+    const totalSKS = normalizedKHS.length > 0 ? normalizedKHS[normalizedKHS.length - 1].totalSKSKumulatif : 0;
+    const predikat = getPredikatIPK(finalIPK);
 
     res.status(200).json({
       success: true,
       message: 'Data transkrip berhasil diambil',
       data: {
         mahasiswa,
-        khs: khsList,
-        nilai: allNilai,
+        khs: normalizedKHS,
+        nilai: normalizedNilai,
         summary: {
           finalIPK,
           totalSKS,
           predikat,
-          totalSemester: khsList.length,
+          totalSemester: normalizedKHS.length,
         },
       },
     });
@@ -308,24 +353,36 @@ export const downloadPDF = asyncHandler(
       },
     });
 
+    // ✅ Normalize all Decimal fields before passing to template
+    const normalizedKHS = normalizeKHS(khs);
+    const normalizedNilai = nilai.map(normalizeNilai);
+
+    // ✅ Calculate totalSKS from nilai if not in KHS
+    const calculatedTotalSKS = normalizedNilai.reduce(
+      (sum, n) => sum + (n.kelasMK?.mataKuliah?.sks || 0), 
+      0
+    );
+
     // Prepare data with predikat
     const khsData = {
-      ...khs,
-      nilai,
-      predikat: getPredikatIPK(Number(khs.ipk)),
+      ...normalizedKHS,
+      mahasiswa: khs.mahasiswa,
+      semester: khs.semester,
+      nilai: normalizedNilai,
+      totalSKS: normalizedKHS.totalSKS || calculatedTotalSKS, // ✅ Use calculated if not in DB
+      predikat: getPredikatIPK(normalizedKHS.ipk),
     };
 
     // Generate HTML
     const html = getKHSHTMLTemplate(khsData);
     
     // Generate filename
-    const filename = `KHS_${khs.mahasiswa.nim}_${khs.semester.tahunAkademik.replace('/', '-')}.pdf`;
+    const filename = `KHS_${khs.mahasiswa.nim}_${khs.semester.tahunAkademik.replace('/', '-')}_${khs.semester.periode}.pdf`;
     
     // Generate and send PDF
     await generatePDF(html, filename, res);
   }
 );
-
 
 export const downloadTranskripPDF = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -370,6 +427,11 @@ export const downloadTranskripPDF = asyncHandler(
           include: {
             mataKuliah: true,
             semester: true,
+            dosen: {
+              select: {
+                namaLengkap: true,
+              },
+            },
           },
         },
       },
@@ -382,20 +444,24 @@ export const downloadTranskripPDF = asyncHandler(
       },
     });
 
+    // ✅ Normalize all data before PDF generation
+    const normalizedKHS = khsList.map(normalizeKHS);
+    const normalizedNilai = allNilai.map(normalizeNilai);
+
     // Calculate summary
-    const finalIPK = khsList.length > 0 ? khsList[khsList.length - 1].ipk : 0;
-    const totalSKS = khsList.length > 0 ? khsList[khsList.length - 1].totalSKSKumulatif : 0;
-    const predikat = getPredikatIPK(Number(finalIPK));
+    const finalIPK = normalizedKHS.length > 0 ? normalizedKHS[normalizedKHS.length - 1].ipk : 0;
+    const totalSKS = normalizedKHS.length > 0 ? normalizedKHS[normalizedKHS.length - 1].totalSKSKumulatif : 0;
+    const predikat = getPredikatIPK(finalIPK);
 
     const transkripData = {
       mahasiswa,
-      khs: khsList,
-      nilai: allNilai,
+      khs: normalizedKHS,
+      nilai: normalizedNilai,
       summary: {
         finalIPK,
         totalSKS,
         predikat,
-        totalSemester: khsList.length,
+        totalSemester: normalizedKHS.length,
       },
     };
 

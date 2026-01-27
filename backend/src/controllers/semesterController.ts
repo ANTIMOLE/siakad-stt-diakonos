@@ -222,14 +222,35 @@ export const deleteById = asyncHandler(
       throw new AppError('Semester tidak ditemukan', 404);
     }
 
-    // Check if semester has data
-    const hasData = await prisma.kelasMataKuliah.count({
-      where: { semesterId: parseInt(id) },
-    });
+    // ✅ IMPROVED: Check all related data and count them
+    const [kelasCount, krsCount, khsCount] = await Promise.all([
+      prisma.kelasMataKuliah.count({
+        where: { semesterId: parseInt(id) },
+      }),
+      prisma.kRS.count({
+        where: { semesterId: parseInt(id) },
+      }),
+      prisma.kHS.count({
+        where: { semesterId: parseInt(id) },
+      }),
+    ]);
 
-    if (hasData > 0) {
+    // ✅ Build detailed error message
+    if (kelasCount > 0 || krsCount > 0 || khsCount > 0) {
+      const errors = [];
+      
+      if (kelasCount > 0) {
+        errors.push(`${kelasCount} kelas mata kuliah`);
+      }
+      if (krsCount > 0) {
+        errors.push(`${krsCount} KRS`);
+      }
+      if (khsCount > 0) {
+        errors.push(`${khsCount} KHS`);
+      }
+
       throw new AppError(
-        'Tidak dapat menghapus semester. Masih ada data kelas yang terkait',
+        `Tidak dapat menghapus semester. Masih ada data yang terkait: ${errors.join(', ')}`,
         400
       );
     }
@@ -245,7 +266,6 @@ export const deleteById = asyncHandler(
     });
   }
 );
-
 /**
  * POST /api/semester/:id/activate
  * Activate semester (set isActive = true, deactivate others)
@@ -253,31 +273,62 @@ export const deleteById = asyncHandler(
 export const activate = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
+    const semesterId = parseInt(id);
 
     // Check if semester exists
     const semester = await prisma.semester.findUnique({
-      where: { id: parseInt(id) },
+      where: { id: semesterId },
     });
 
     if (!semester) {
       throw new AppError('Semester tidak ditemukan', 404);
     }
 
-    // Deactivate all other semesters and activate this one
-    await prisma.$transaction([
-      prisma.semester.updateMany({
-        where: { isActive: true },
-        data: { isActive: false },
-      }),
-      prisma.semester.update({
-        where: { id: parseInt(id) },
-        data: { isActive: true },
-      }),
-    ]);
+    console.log('=== ACTIVATION START ===');
+    console.log('Requested semester ID:', semesterId);
+    console.log('Requested semester:', semester.tahunAkademik, semester.periode);
+
+    // ✅ BULLETPROOF: Use raw SQL transaction
+    await prisma.$transaction(async (tx) => {
+      // 1. Deactivate ALL semesters (no exceptions)
+      const deactivateResult = await tx.$executeRaw`
+        UPDATE "semester" 
+        SET "isActive" = false, "updatedAt" = NOW() 
+        WHERE "isActive" = true
+      `;
+      console.log('Deactivated all active semesters:', deactivateResult);
+
+      // 2. Activate target semester
+      const activateResult = await tx.$executeRaw`
+        UPDATE "semester" 
+        SET "isActive" = true, "updatedAt" = NOW() 
+        WHERE "id" = ${semesterId}
+      `;
+      console.log('Activated target semester:', activateResult);
+    });
+
+    // Fetch updated semester
+    const updatedSemester = await prisma.semester.findUnique({
+      where: { id: semesterId },
+    });
+
+    // Verify: count active semesters
+    const activeCount = await prisma.semester.count({
+      where: { isActive: true },
+    });
+
+    console.log('Active semester count after update:', activeCount);
+    console.log('Updated semester:', updatedSemester);
+    console.log('=== ACTIVATION END ===');
+
+    if (activeCount !== 1) {
+      console.error('WARNING: More than one semester is active!');
+    }
 
     res.status(200).json({
       success: true,
       message: 'Semester berhasil diaktifkan',
+      data: updatedSemester,
     });
   }
 );

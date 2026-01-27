@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -11,13 +12,6 @@ import ErrorState from '@/components/shared/ErrorState';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   Table,
   TableBody,
   TableCell,
@@ -26,14 +20,15 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Users } from 'lucide-react';
+import { FileText, Users, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { kelasMKAPI, semesterAPI } from '@/lib/api';
 import { KelasMK, Semester } from '@/types/model';
+import { useAuth } from '@/hooks/useAuth';
 
 // ============================================
-// EXTENDED TYPE - Backend might return this
+// EXTENDED TYPE
 // ============================================
 interface KelasMKWithNilai extends KelasMK {
   isNilaiFinalized?: boolean;
@@ -41,88 +36,80 @@ interface KelasMKWithNilai extends KelasMK {
 
 export default function InputNilaiPage() {
   const router = useRouter();
+  
+  // ✅ GET LOGGED-IN DOSEN
+  const { user, isLoading: isAuthLoading } = useAuth('DOSEN');
 
   // ============================================
   // STATE MANAGEMENT
   // ============================================
   const [kelasList, setKelasList] = useState<KelasMKWithNilai[]>([]);
-  const [semesterList, setSemesterList] = useState<Semester[]>([]);
-  const [isLoadingKelas, setIsLoadingKelas] = useState(true);
-  const [isLoadingSemester, setIsLoadingSemester] = useState(true);
+  const [activeSemester, setActiveSemester] = useState<Semester | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
-  const [semesterFilter, setSemesterFilter] = useState<string>('ACTIVE');
 
   // ============================================
-  // FETCH SEMESTER LIST
+  // FETCH ACTIVE SEMESTER & KELAS
   // ============================================
   useEffect(() => {
-    const fetchSemester = async () => {
-      try {
-        setIsLoadingSemester(true);
-        const response = await semesterAPI.getAll();
-
-        if (response.success && response.data) {
-          setSemesterList(response.data);
-        }
-      } catch (err: any) {
-        console.error('Fetch semester error:', err);
-        toast.error('Gagal memuat daftar semester');
-      } finally {
-        setIsLoadingSemester(false);
+    const fetchData = async () => {
+      // ✅ WAIT FOR AUTH
+      if (isAuthLoading) {
+        return;
       }
-    };
 
-    fetchSemester();
-  }, []);
+      // ✅ CHECK IF DOSEN DATA EXISTS
+      if (!user?.dosen?.id) {
+        setError('Data dosen tidak ditemukan');
+        setIsLoading(false);
+        return;
+      }
 
-  // ============================================
-  // FETCH KELAS LIST (by current dosen)
-  // ============================================
-  useEffect(() => {
-    const fetchKelas = async () => {
       try {
-        setIsLoadingKelas(true);
+        setIsLoading(true);
         setError(null);
 
-        // Get active semester or selected semester
-        let semesterId: number | undefined;
-        
-        if (semesterFilter === 'ACTIVE') {
-          const activeSemester = semesterList.find(s => s.isActive);
-          semesterId = activeSemester?.id;
-        } else if (semesterFilter !== 'ALL') {
-          semesterId = parseInt(semesterFilter);
+        // 1. Get active semester
+        const semesterResponse = await semesterAPI.getAll();
+        if (!semesterResponse.success || !semesterResponse.data) {
+          throw new Error('Gagal memuat semester');
         }
 
-        // Backend akan auto filter by dosen yang login dari JWT token
-        const response = await kelasMKAPI.getAll({
-          semester_id: semesterId,
+        const active = semesterResponse.data.find(s => s.isActive);
+        if (!active) {
+          throw new Error('Tidak ada semester aktif');
+        }
+        setActiveSemester(active);
+
+        // 2. Get kelas for this dosen in active semester
+        const kelasResponse = await kelasMKAPI.getAll({
+          semester_id: active.id,     // ✅ ONLY ACTIVE SEMESTER
+          dosenId: user.dosen.id,    // ✅ ONLY THIS DOSEN
         });
 
-        if (response.success && response.data) {
-          setKelasList(response.data);
+        if (kelasResponse.success && kelasResponse.data) {
+          setKelasList(kelasResponse.data);
         } else {
-          setError(response.message || 'Gagal memuat daftar kelas');
+          setError(kelasResponse.message || 'Gagal memuat daftar kelas');
         }
       } catch (err: any) {
-        console.error('Fetch kelas error:', err);
+        console.error('Fetch data error:', err);
         setError(
           err.response?.data?.message ||
           err.message ||
-          'Terjadi kesalahan saat memuat data kelas'
+          'Terjadi kesalahan saat memuat data'
         );
       } finally {
-        setIsLoadingKelas(false);
+        setIsLoading(false);
       }
     };
 
-    // Only fetch if semester list is loaded
-    if (!isLoadingSemester) {
-      fetchKelas();
+    if (!isAuthLoading && user?.dosen?.id) {
+      fetchData();
     }
-  }, [semesterFilter, semesterList, isLoadingSemester]);
+  }, [isAuthLoading, user]);
 
   // ============================================
   // FILTER KELAS BY SEARCH
@@ -134,8 +121,8 @@ export default function InputNilaiPage() {
   // ============================================
   // HANDLERS
   // ============================================
-  const handleInputNilai = (kelasId: number) => {
-    router.push(`/dosen/input-nilai/${kelasId}`);
+  const handleInputNilai = (id: number) => {
+    router.push(`/dosen/input-nilai/${id}`);
   };
 
   const handleRetry = () => {
@@ -145,7 +132,7 @@ export default function InputNilaiPage() {
   // ============================================
   // LOADING STATE
   // ============================================
-  if (isLoadingKelas || isLoadingSemester) {
+  if (isAuthLoading || isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
         <LoadingSpinner size="lg" text="Memuat data kelas..." />
@@ -154,9 +141,22 @@ export default function InputNilaiPage() {
   }
 
   // ============================================
-  // ERROR STATE
+  // ERROR STATE - NO DOSEN DATA
   // ============================================
-  if (error) {
+  if (!user?.dosen?.id) {
+    return (
+      <ErrorState
+        title="Data Dosen Tidak Ditemukan"
+        message="Tidak dapat memuat data kelas. Data dosen tidak tersedia."
+        onRetry={handleRetry}
+      />
+    );
+  }
+
+  // ============================================
+  // ERROR STATE - FETCH ERROR
+  // ============================================
+  if (error && kelasList.length === 0) {
     return (
       <ErrorState
         title="Gagal Memuat Data"
@@ -167,18 +167,13 @@ export default function InputNilaiPage() {
   }
 
   // ============================================
-  // GET ACTIVE SEMESTER INFO
-  // ============================================
-  const activeSemester = semesterList.find(s => s.isActive);
-
-  // ============================================
   // RENDER
   // ============================================
   return (
     <div className="space-y-6">
       <PageHeader
         title="Input Nilai Mahasiswa"
-        description="Pilih kelas untuk input atau edit nilai mahasiswa"
+        description={`Kelola nilai mahasiswa di kelas yang Anda ampu`}
         breadcrumbs={[
           { label: 'Dashboard', href: '/dosen/dashboard' },
           { label: 'Input Nilai' },
@@ -186,45 +181,34 @@ export default function InputNilaiPage() {
       />
 
       {/* Active Semester Info */}
-      {activeSemester && semesterFilter === 'ACTIVE' && (
+      {activeSemester && (
         <Card className="bg-primary/5 border-primary/20">
           <CardContent className="pt-6">
-            <p className="text-sm font-medium text-primary">
-              Semester Aktif: {activeSemester.tahunAkademik}{' '}
-              {activeSemester.periode}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {new Date(activeSemester.tanggalMulai).toLocaleDateString('id-ID')} -{' '}
-              {new Date(activeSemester.tanggalSelesai).toLocaleDateString('id-ID')}
-            </p>
+            <div className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-primary" />
+              <div>
+                <p className="font-medium text-primary">
+                  Semester Aktif: {activeSemester.tahunAkademik}{' '}
+                  {activeSemester.periode}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {new Date(activeSemester.tanggalMulai).toLocaleDateString('id-ID')} -{' '}
+                  {new Date(activeSemester.tanggalSelesai).toLocaleDateString('id-ID')}
+                </p>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Filters */}
+      {/* Search Filter */}
       <Card>
         <CardContent className="pt-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <SearchBar
-              placeholder="Cari mata kuliah..."
-              onSearch={setSearch}
-              defaultValue={search}
-            />
-            <Select value={semesterFilter} onValueChange={setSemesterFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filter Semester" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ACTIVE">Semester Aktif</SelectItem>
-                <SelectItem value="ALL">Semua Semester</SelectItem>
-                {semesterList.map((sem) => (
-                  <SelectItem key={sem.id} value={sem.id.toString()}>
-                    {sem.tahunAkademik} - {sem.periode}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <SearchBar
+            placeholder="Cari mata kuliah..."
+            onSearch={setSearch}
+            defaultValue={search}
+          />
         </CardContent>
       </Card>
 
@@ -233,7 +217,7 @@ export default function InputNilaiPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{kelasList.length}</div>
-            <p className="text-xs text-muted-foreground">Total Kelas</p>
+            <p className="text-sm text-muted-foreground">Total Kelas</p>
           </CardContent>
         </Card>
         <Card>
@@ -241,7 +225,7 @@ export default function InputNilaiPage() {
             <div className="text-2xl font-bold text-green-600">
               {kelasList.filter(k => k.isNilaiFinalized).length}
             </div>
-            <p className="text-xs text-muted-foreground">Nilai Finalized</p>
+            <p className="text-sm text-muted-foreground">Nilai Finalized</p>
           </CardContent>
         </Card>
         <Card>
@@ -249,7 +233,7 @@ export default function InputNilaiPage() {
             <div className="text-2xl font-bold text-yellow-600">
               {kelasList.filter(k => !k.isNilaiFinalized).length}
             </div>
-            <p className="text-xs text-muted-foreground">Belum Finalized</p>
+            <p className="text-sm text-muted-foreground">Belum Finalized</p>
           </CardContent>
         </Card>
       </div>
@@ -264,7 +248,7 @@ export default function InputNilaiPage() {
               description={
                 search
                   ? 'Tidak ada kelas yang sesuai dengan pencarian'
-                  : 'Anda belum mengampu kelas pada semester ini'
+                  : 'Anda belum mengampu kelas pada semester aktif'
               }
               className="my-8 border-0"
             />

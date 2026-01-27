@@ -207,11 +207,20 @@ export const nikValidation = (field: string = 'nik') =>
 export const identifierValidation = () =>
   body('identifier')
     .notEmpty()
-    .withMessage('NIM/NIDN wajib diisi')
+    .withMessage('Identifier wajib diisi')
     .isString()
-    .withMessage('NIM/NIDN harus berupa teks')
+    .withMessage('Identifier harus berupa teks')
     .trim()
-    .isLength({ min: 1, max: 16 })
-    .withMessage('NIM/NIDN harus 8-16 karakter')
-    .isNumeric()
-    .withMessage('NIM/NIDN harus berupa angka');
+    .custom((value) => {
+      // Check if it matches any valid pattern
+      const isNIM = /^\d{10}$/.test(value);          // 10 digits (Mahasiswa)
+      const isNUPTK = /^\d{16}$/.test(value);        // 16 digits (Dosen)
+      const isUsername = /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(value); // Starts with letter
+      const isUserID = /^\d{1,9}$/.test(value);      // 1-9 digits (Admin/Keuangan ID)
+
+      if (!isNIM && !isNUPTK && !isUsername && !isUserID) {
+        throw new Error('Format identifier tidak valid. Gunakan NIM (10 digit), NUPTK (16 digit), atau username');
+      }
+      
+      return true;
+    });

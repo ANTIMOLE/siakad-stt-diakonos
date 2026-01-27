@@ -37,6 +37,26 @@ export default function MahasiswaDashboardPage() {
   const [currentDay, setCurrentDay] = useState<string>('');
 
   // ============================================
+  // HELPERS - Convert Decimal to Number
+  // ============================================
+  const toNumber = (value: any): number | null => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') return value;
+    // Handle Prisma Decimal
+    if (typeof value === 'object' && 'toNumber' in value) {
+      return value.toNumber();
+    }
+    // Try to convert to number
+    const num = Number(value);
+    return isNaN(num) ? null : num;
+  };
+
+  const formatScore = (value: any): string => {
+    const num = toNumber(value);
+    return num !== null ? num.toFixed(2) : '-';
+  };
+
+  // ============================================
   // FETCH DATA
   // ============================================
   useEffect(() => {
@@ -144,6 +164,8 @@ export default function MahasiswaDashboardPage() {
   // ============================================
   const krsInfo = getKRSStatusInfo(stats.krsStatus);
   const hasJadwalToday = stats.jadwalHariIni && stats.jadwalHariIni.length > 0;
+  const ipsNum = toNumber(stats.ips);
+  const ipkNum = toNumber(stats.ipk);
 
   // ============================================
   // RENDER
@@ -238,7 +260,7 @@ export default function MahasiswaDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
-              {stats.ips !== null ? stats.ips.toFixed(2) : '-'}
+              {formatScore(stats.ips)}
             </div>
             <p className="text-xs text-muted-foreground">Indeks Prestasi Semester</p>
           </CardContent>
@@ -251,7 +273,7 @@ export default function MahasiswaDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {stats.ipk !== null ? stats.ipk.toFixed(2) : '-'}
+              {formatScore(stats.ipk)}
             </div>
             <p className="text-xs text-muted-foreground">Indeks Prestasi Kumulatif</p>
           </CardContent>
@@ -383,7 +405,7 @@ export default function MahasiswaDashboardPage() {
       </div>
 
       {/* Academic Progress */}
-      {(stats.ipk !== null || stats.ips !== null) && (
+      {(ipkNum !== null || ipsNum !== null) && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -403,17 +425,17 @@ export default function MahasiswaDashboardPage() {
               <div className="text-center p-4 rounded-lg bg-green-50">
                 <p className="text-sm text-muted-foreground mb-1">IPK</p>
                 <p className="text-2xl font-bold text-green-600">
-                  {stats.ipk !== null ? stats.ipk.toFixed(2) : '-'}
+                  {formatScore(stats.ipk)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">Kumulatif</p>
               </div>
               <div className="text-center p-4 rounded-lg bg-purple-50">
                 <p className="text-sm text-muted-foreground mb-1">Predikat</p>
                 <p className="text-2xl font-bold text-purple-600">
-                  {stats.ipk !== null
-                    ? stats.ipk >= 3.5
+                  {ipkNum !== null
+                    ? ipkNum >= 3.5
                       ? 'Cum Laude'
-                      : stats.ipk >= 3.0
+                      : ipkNum >= 3.0
                       ? 'Memuaskan'
                       : 'Baik'
                     : '-'}

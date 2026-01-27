@@ -34,7 +34,7 @@ import { Save, Lock, AlertCircle, ArrowLeft, Unlock } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { nilaiAPI, kelasMKAPI } from '@/lib/api';
-import { KelasMK, Nilai } from '@/types/model';
+import { KelasMK } from '@/types/model';
 import { getNilaiHuruf, NILAI_BOBOT } from '@/lib/constants';
 
 // ============================================
@@ -52,18 +52,18 @@ interface MahasiswaWithNilai {
   nilaiAngka: number | null;
   nilaiHuruf: string | null;
   bobot: number | null;
+  isFinalized?: boolean;
 }
 
 export default function InputNilaiFormPage() {
   const params = useParams();
   const router = useRouter();
-  const kelasId = Number(params.kelasId);
+  const kelasId = Number(params.id);
 
   // ============================================
   // STATE MANAGEMENT
   // ============================================
   const [kelas, setKelas] = useState<KelasMK | null>(null);
-  const [nilaiList, setNilaiList] = useState<Nilai[]>([]);
   const [mahasiswaList, setMahasiswaList] = useState<MahasiswaWithNilai[]>([]);
   const [isFinalized, setIsFinalized] = useState(false);
 
@@ -95,23 +95,24 @@ export default function InputNilaiFormPage() {
         // 2. Fetch nilai list (includes mahasiswa data)
         const nilaiResponse = await nilaiAPI.getByKelas(kelasId);
         if (nilaiResponse.success && nilaiResponse.data) {
-          setNilaiList(nilaiResponse.data);
-
-          // Check if any nilai is finalized
-          const hasFinalized = nilaiResponse.data.some(n => n.isFinalized);
-          setIsFinalized(hasFinalized);
-
-          // Build mahasiswa list with nilai
-          const mahasiswaData: MahasiswaWithNilai[] = nilaiResponse.data.map(nilai => ({
-            id: nilai.mahasiswaId,
-            nim: nilai.mahasiswa?.nim || '',
-            namaLengkap: nilai.mahasiswa?.namaLengkap || '',
-            nilaiAngka: nilai.nilaiAngka,
-            nilaiHuruf: nilai.nilaiHuruf,
-            bobot: nilai.bobot,
+          // Backend return object, bukan array langsung
+          // Ambil array mahasiswa dari data.mahasiswa
+          const mahasiswaData: MahasiswaWithNilai[] = nilaiResponse.data.mahasiswa.map((m: any) => ({
+            id: m.mahasiswaId,
+            nim: m.nim,
+            namaLengkap: m.namaLengkap,
+            nilaiAngka: m.nilaiAngka,
+            nilaiHuruf: m.nilaiHuruf,
+            // Convert bobot to number (handles Decimal/string from backend)
+            bobot: m.bobot != null ? Number(m.bobot) : null,
+            isFinalized: m.isFinalized,
           }));
 
           setMahasiswaList(mahasiswaData);
+
+          // Check finalized dari backend's isAllFinalized
+          const allFinalized = nilaiResponse.data.isAllFinalized || false;
+          setIsFinalized(allFinalized);
         }
       } catch (err: any) {
         console.error('Fetch data error:', err);
@@ -167,10 +168,8 @@ export default function InputNilaiFormPage() {
       const nilaiData = mahasiswaList
         .filter(mhs => mhs.nilaiAngka !== null)
         .map(mhs => ({
-          mahasiswa_id: mhs.id,
-          nilai_angka: mhs.nilaiAngka!,
-          nilai_huruf: mhs.nilaiHuruf!,
-          bobot: mhs.bobot!,
+          mahasiswaId: mhs.id,
+          nilaiAngka: mhs.nilaiAngka!,
         }));
 
       if (nilaiData.length === 0) {
@@ -189,11 +188,20 @@ export default function InputNilaiFormPage() {
       }
     } catch (err: any) {
       console.error('Save nilai error:', err);
-      toast.error(
-        err.response?.data?.message ||
-        err.message ||
-        'Terjadi kesalahan saat menyimpan nilai'
-      );
+      
+      // Check if error is due to finalized status
+      const errorMessage = err.response?.data?.message || err.message || '';
+      
+      if (errorMessage.includes('difinalisasi') || errorMessage.includes('unlock')) {
+        // Show unlock dialog instead of just error
+        toast.error('Nilai sudah difinalisasi', {
+          description: 'Klik tombol "Buka Kembali" untuk mengedit nilai',
+          duration: 5000,
+        });
+        setIsFinalized(true); // Update UI state
+      } else {
+        toast.error(errorMessage || 'Terjadi kesalahan saat menyimpan nilai');
+      }
     } finally {
       setIsSaving(false);
     }
@@ -209,6 +217,7 @@ export default function InputNilaiFormPage() {
         toast.error(
           `${missingNilai.length} mahasiswa belum memiliki nilai. Pastikan semua nilai sudah diinput.`
         );
+        setShowFinalizeDialog(false);
         return;
       }
 
@@ -437,8 +446,8 @@ export default function InputNilaiFormPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {mhs.bobot !== null ? (
-                          <span className="font-medium">{mhs.bobot.toFixed(2)}</span>
+                        {mhs.bobot != null ? (
+                          <span className="font-medium">{Number(mhs.bobot).toFixed(2)}</span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}

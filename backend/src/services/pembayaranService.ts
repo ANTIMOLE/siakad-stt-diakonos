@@ -241,10 +241,6 @@ export const rejectPembayaran = async (
   return updated;
 };
 
-/**
- * Get pembayaran statistics
- * ✅ UPDATED: Supports filtering by payment type
- */
 export const getPembayaranStats = async (
   semesterId?: number,
   jenisPembayaran?: JenisPembayaran
@@ -278,10 +274,6 @@ export const getPembayaranStats = async (
   };
 };
 
-/**
- * ✅ NEW: Check if KRS payment is approved
- * Used before allowing KRS creation/submission
- */
 export const checkKRSPaymentApproved = async (
   mahasiswaId: number,
   semesterId: number

@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 
 import { kelasMKAPI, semesterAPI } from '@/lib/api';
 import { KelasMK, Semester } from '@/types/model';
+import { useAuth } from '@/hooks/useAuth';
 
 // ============================================
 // CONSTANTS
@@ -56,6 +57,11 @@ interface JadwalGroup {
 }
 
 export default function JadwalDosenPage() {
+  // ============================================
+  // AUTH
+  // ============================================
+  const { user, isLoading: isAuthLoading } = useAuth('DOSEN');
+
   // ============================================
   // STATE MANAGEMENT
   // ============================================
@@ -91,10 +97,22 @@ export default function JadwalDosenPage() {
   }, []);
 
   // ============================================
-  // FETCH JADWAL
+  // FETCH JADWAL (FILTERED BY DOSEN)
   // ============================================
   useEffect(() => {
     const fetchJadwal = async () => {
+      // ✅ WAIT FOR AUTH & USER DATA
+      if (isAuthLoading) {
+        return;
+      }
+
+      // ✅ CHECK IF DOSEN DATA EXISTS
+      if (!user?.dosen?.id) {
+        setError('Data dosen tidak ditemukan');
+        setIsLoading(false);
+        return;
+      }
+
       try {
         setIsLoading(true);
         setError(null);
@@ -109,9 +127,10 @@ export default function JadwalDosenPage() {
           semesterId = parseInt(semesterFilter);
         }
 
-        // Backend akan auto filter by dosen yang login dari JWT token
+        // ✅ FETCH ONLY FOR THIS DOSEN
         const response = await kelasMKAPI.getAll({
           semester_id: semesterId,
+          dosenId: user.dosen.id,
         });
 
         if (response.success && response.data) {
@@ -131,11 +150,11 @@ export default function JadwalDosenPage() {
       }
     };
 
-    // Only fetch if semester list is loaded
-    if (!isLoadingSemester) {
+    // ✅ ONLY FETCH WHEN ALL DEPENDENCIES ARE READY
+    if (!isLoadingSemester && !isAuthLoading && user?.dosen?.id) {
       fetchJadwal();
     }
-  }, [semesterFilter, semesterList, isLoadingSemester]);
+  }, [semesterFilter, semesterList, isLoadingSemester, isAuthLoading, user]);
 
   // ============================================
   // SORT & GROUP JADWAL
@@ -161,7 +180,7 @@ export default function JadwalDosenPage() {
   // ============================================
   // LOADING STATE
   // ============================================
-  if (isLoading || isLoadingSemester) {
+  if (isAuthLoading || isLoadingSemester || isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
         <LoadingSpinner size="lg" text="Memuat jadwal mengajar..." />
@@ -170,9 +189,22 @@ export default function JadwalDosenPage() {
   }
 
   // ============================================
-  // ERROR STATE
+  // ERROR STATE - NO DOSEN DATA
   // ============================================
-  if (error) {
+  if (!user?.dosen?.id) {
+    return (
+      <ErrorState
+        title="Data Dosen Tidak Ditemukan"
+        message="Tidak dapat memuat jadwal. Data dosen tidak tersedia."
+        onRetry={handleRetry}
+      />
+    );
+  }
+
+  // ============================================
+  // ERROR STATE - FETCH ERROR
+  // ============================================
+  if (error && jadwalList.length === 0) {
     return (
       <ErrorState
         title="Gagal Memuat Jadwal"
@@ -198,7 +230,7 @@ export default function JadwalDosenPage() {
     <div className="space-y-6">
       <PageHeader
         title="Jadwal Mengajar"
-        description="Jadwal mengajar Anda untuk semester ini"
+        description={`Jadwal mengajar ${user.dosen.namaLengkap}`}
         breadcrumbs={[
           { label: 'Dashboard', href: '/dosen/dashboard' },
           { label: 'Jadwal' },

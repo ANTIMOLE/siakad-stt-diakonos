@@ -22,8 +22,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Calendar, Clock, MapPin, Info, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { krsAPI } from '@/lib/api';
-import { KRS, KelasMK } from '@/types/model';
+import { mahasiswaAPI, semesterAPI } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth'; // Adjust path sesuai lokasi hook
+import { KRS, KelasMK, Semester } from '@/types/model';
 
 const HARI_ORDER: Record<string, number> = {
   Senin: 1,
@@ -52,10 +53,13 @@ export default function JadwalPage() {
   // ============================================
   // STATE MANAGEMENT
   // ============================================
+  const { user, isLoading: authLoading } = useAuth('MAHASISWA');
   const [krs, setKrs] = useState<KRS | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentDay, setCurrentDay] = useState<string>('');
+  const [semesters, setSemesters] = useState<Semester[]>([]);
+  const [activeSemester, setActiveSemester] = useState<Semester | null>(null);
 
   // ============================================
   // FETCH DATA
@@ -65,23 +69,47 @@ export default function JadwalPage() {
     const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     const today = new Date().getDay();
     setCurrentDay(days[today]);
+  }, []);
 
-    const fetchKRS = async () => {
+  useEffect(() => {
+    if (authLoading || !user || !user.mahasiswa?.id) {
+      return;
+    }
+
+    const mahasiswaId = user.mahasiswa.id;
+
+    const fetchData = async () => {
       try {
         setIsLoading(true);
         setError(null);
 
-        // Fetch current/active KRS
-        const response = await krsAPI.getCurrent();
+        // Fetch all semesters to find active one
+        const semestersResponse = await semesterAPI.getAll();
+        if (semestersResponse.success && semestersResponse.data) {
+          setSemesters(semestersResponse.data);
+          const active = semestersResponse.data.find(s => s.isActive);
+          setActiveSemester(active || null);
+        } else {
+          throw new Error('Gagal memuat data semester');
+        }
 
-        if (response.success && response.data) {
-          setKrs(response.data);
+        // Fetch all KRS for current mahasiswa
+        const krsResponse = await mahasiswaAPI.getKRS(mahasiswaId);
+
+        if (krsResponse.success && krsResponse.data) {
+          // Find KRS for active semester
+          const currentKRS = krsResponse.data.find(
+            k => k.semesterId === activeSemester?.id && 
+                 (k.status === 'APPROVED' || k.status === 'SUBMITTED')
+          );
+
+          setKrs(currentKRS || null);
         } else {
           // No KRS found - not an error, just empty state
           setKrs(null);
         }
       } catch (err: any) {
-        console.error('Fetch KRS error:', err);
+        console.error('Fetch data error:', err);
         setError(
           err.response?.data?.message ||
             err.message ||
@@ -93,15 +121,15 @@ export default function JadwalPage() {
       }
     };
 
-    fetchKRS();
-  }, []);
+    fetchData();
+  }, [authLoading, user, activeSemester?.id]);
 
   // ============================================
   // COMPUTED VALUES
   // ============================================
   const jadwalList: KelasMK[] = (krs?.detail
-  ?.map((d) => d.kelasMK)
-  .filter((kelasMK): kelasMK is KelasMK => kelasMK !== undefined) || []);
+    ?.map((d) => d.kelasMK)
+    .filter((kelasMK): kelasMK is KelasMK => kelasMK !== undefined) || []);
 
   // Sort by day and time
   const sortedJadwal = [...jadwalList].sort((a, b) => {
@@ -133,7 +161,7 @@ export default function JadwalPage() {
   // ============================================
   // LOADING STATE
   // ============================================
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
         <LoadingSpinner size="lg" text="Memuat jadwal..." />
@@ -192,7 +220,7 @@ export default function JadwalPage() {
       {/* Page Header */}
       <PageHeader
         title="Jadwal Kuliah"
-        description={`${krs.semester?.tahunAkademik} ${krs.semester?.periode}`}
+        description={`${activeSemester?.tahunAkademik || ''} ${activeSemester?.periode || ''}`}
       />
 
       {/* Today's Schedule Alert */}

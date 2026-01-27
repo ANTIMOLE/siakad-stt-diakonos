@@ -43,6 +43,26 @@ interface TranskripData {
 
 export default function TranskripPage() {
   // ============================================
+  // HELPERS - Convert Decimal to Number
+  // ============================================
+  const toNumber = (value: any): number | null => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') return value;
+    // Handle Prisma Decimal
+    if (typeof value === 'object' && 'toNumber' in value) {
+      return value.toNumber();
+    }
+    // Try to convert to number
+    const num = Number(value);
+    return isNaN(num) ? null : num;
+  };
+
+  const formatScore = (value: any, decimals: number = 2): string => {
+    const num = toNumber(value);
+    return num !== null ? num.toFixed(decimals) : '-';
+  };
+
+  // ============================================
   // AMBIL USER DARI LOCALSTORAGE
   // ============================================
   const [user, setUser] = useState<any>(null);
@@ -240,7 +260,7 @@ export default function TranskripPage() {
               <div>
                 <p className="text-sm text-muted-foreground">IPK Akhir</p>
                 <p className="text-2xl font-bold text-green-600">
-                  {transkrip.summary.finalIPK.toFixed(2)}
+                  {formatScore(transkrip.summary.finalIPK)}
                 </p>
               </div>
             </div>
@@ -322,7 +342,7 @@ export default function TranskripPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-center">
-                        {nilai.nilaiAngka !== null ? Number(nilai.nilaiAngka).toFixed(2) : '-'}
+                        {formatScore(nilai.nilaiAngka)}
                       </TableCell>
                       <TableCell className="text-center">
                         <Badge className={`font-bold ${getGradeColor(nilai.nilaiHuruf)}`}>
@@ -330,7 +350,7 @@ export default function TranskripPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-center font-medium">
-                        {nilai.bobot !== null ? Number(nilai.bobot).toFixed(2) : '-'}
+                        {formatScore(nilai.bobot)}
                       </TableCell>
                     </TableRow>
                   ))}

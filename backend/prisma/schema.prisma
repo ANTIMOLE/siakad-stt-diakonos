@@ -77,7 +77,8 @@ enum NilaiHuruf {
 
 model User {
   id        Int      @id @default(autoincrement())
-  password  String // bcrypt hashed
+  username  String?  @unique // ✅ NEW: For ADMIN, KEUANGAN, (optional for DOSEN)
+  password  String   // bcrypt hashed
   role      Role     @default(MAHASISWA)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())

@@ -420,7 +420,7 @@ export default function MahasiswaDashboardPage() {
                 <p className="text-2xl font-bold text-blue-600">
                   {stats.totalSKSLulus}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">dari ~144 SKS</p>
+                <p className="text-xs text-muted-foreground mt-1">SKS</p>
               </div>
               <div className="text-center p-4 rounded-lg bg-green-50">
                 <p className="text-sm text-muted-foreground mb-1">IPK</p>

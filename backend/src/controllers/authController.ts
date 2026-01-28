@@ -489,3 +489,77 @@ export const refreshToken = asyncHandler(
     });
   }
 );
+
+export const changeUsername = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    if (!req.user) {
+      throw new AppError('User tidak ditemukan', 401);
+    }
+
+    const { newUsername } = req.body;
+
+    // Role check (redundant with middleware, but good practice)
+    if (req.user.role !== 'ADMIN' && req.user.role !== 'KEUANGAN') {
+      throw new AppError(
+        'Hanya Admin dan Staff Keuangan yang dapat mengubah username',
+        403
+      );
+    }
+
+    // Validation
+    if (!newUsername) {
+      throw new AppError('Username baru harus diisi', 400);
+    }
+
+    if (newUsername.length < 3) {
+      throw new AppError('Username minimal 3 karakter', 400);
+    }
+
+    // Validate username format (alphanumeric + underscore, must start with letter)
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(newUsername)) {
+      throw new AppError(
+        'Username harus diawali huruf dan hanya boleh mengandung huruf, angka, underscore, atau hyphen',
+        400
+      );
+    }
+
+    // Check if new username same as current
+    const currentUser = await prisma.user.findUnique({
+      where: { id: req.user.id },
+    });
+
+    if (!currentUser) {
+      throw new AppError('User tidak ditemukan', 404);
+    }
+
+    if (currentUser.username === newUsername) {
+      throw new AppError('Username baru sama dengan username saat ini', 400);
+    }
+
+    // Check if username already taken by another user
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        username: newUsername,
+        id: { not: req.user.id },
+      },
+    });
+
+    if (existingUser) {
+      throw new AppError('Username sudah digunakan', 400);
+    }
+
+    // Update username
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { username: newUsername },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Username berhasil diubah',
+      data: {
+        username: newUsername,
+      },
+    });
+  }
+);

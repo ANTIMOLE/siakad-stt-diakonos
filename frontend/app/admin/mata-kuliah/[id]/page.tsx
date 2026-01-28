@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Edit, Trash2, BookOpen, Users, Calendar } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, BookOpen, Users, Calendar, TrendingUp } from 'lucide-react';
 
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
@@ -24,25 +25,18 @@ import {
 import { toast } from 'sonner';
 
 import { mataKuliahAPI } from '@/lib/api';
-import { MataKuliah } from '@/types/model';
 
 export default function MataKuliahDetailPage() {
   const router = useRouter();
   const params = useParams();
   const id = parseInt(params.id as string);
 
-  // ============================================
-  // STATE MANAGEMENT
-  // ============================================
-  const [mataKuliah, setMataKuliah] = useState<MataKuliah | null>(null);
+  const [mataKuliah, setMataKuliah] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // ============================================
-  // FETCH DATA
-  // ============================================
   useEffect(() => {
     const fetchMataKuliah = async () => {
       try {
@@ -71,9 +65,6 @@ export default function MataKuliahDetailPage() {
     fetchMataKuliah();
   }, [id]);
 
-  // ============================================
-  // HANDLERS
-  // ============================================
   const handleBack = () => {
     router.back();
   };
@@ -111,9 +102,6 @@ export default function MataKuliahDetailPage() {
     window.location.reload();
   };
 
-  // ============================================
-  // LOADING STATE
-  // ============================================
   if (isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -122,9 +110,6 @@ export default function MataKuliahDetailPage() {
     );
   }
 
-  // ============================================
-  // ERROR STATE
-  // ============================================
   if (error || !mataKuliah) {
     return (
       <ErrorState
@@ -135,12 +120,20 @@ export default function MataKuliahDetailPage() {
     );
   }
 
-  // ============================================
-  // RENDER
-  // ============================================
+  // ✅ Extract dual statistics
+  const activeStats = mataKuliah.statistics?.active || {
+    classes: 0,
+    students: 0,
+    semester: null,
+  };
+
+  const totalStats = mataKuliah.statistics?.total || {
+    classes: 0,
+    students: 0,
+  };
+
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <PageHeader
         title="Detail Mata Kuliah"
         description={`Informasi lengkap mata kuliah ${mataKuliah.kodeMK}`}
@@ -171,7 +164,6 @@ export default function MataKuliahDetailPage() {
       />
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Informasi Dasar */}
           <Card>
@@ -191,7 +183,6 @@ export default function MataKuliahDetailPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Basic Info Grid */}
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">SKS</p>
@@ -234,7 +225,6 @@ export default function MataKuliahDetailPage() {
                 </div>
               </div>
 
-              {/* Deskripsi */}
               {mataKuliah.deskripsi && (
                 <>
                   <Separator />
@@ -249,16 +239,15 @@ export default function MataKuliahDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Kelas Aktif (jika ada relasi) */}
-          {/* TODO: Uncomment when relation is available
+          {/* Kelas Aktif */}
           {mataKuliah.kelasMataKuliah && mataKuliah.kelasMataKuliah.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Kelas Aktif</CardTitle>
+                <CardTitle>Kelas Aktif Semester Ini</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {mataKuliah.kelasMataKuliah.map((kelas) => (
+                  {mataKuliah.kelasMataKuliah.map((kelas: any) => (
                     <div
                       key={kelas.id}
                       className="flex items-center justify-between p-4 rounded-lg border"
@@ -271,9 +260,14 @@ export default function MataKuliahDetailPage() {
                           {kelas.dosen?.namaLengkap} • {kelas.hari} {kelas.jamMulai}-
                           {kelas.jamSelesai}
                         </p>
+                        {kelas.ruangan && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            📍 {kelas.ruangan.nama}
+                          </p>
+                        )}
                       </div>
                       <Badge variant="outline">
-                        {kelas.kuotaTerisi || 0}/{kelas.kuotaMax} mahasiswa
+                        {kelas._count?.krsDetail || 0} mahasiswa
                       </Badge>
                     </div>
                   ))}
@@ -281,23 +275,69 @@ export default function MataKuliahDetailPage() {
               </CardContent>
             </Card>
           )}
-          */}
         </div>
 
         {/* Sidebar */}
         <div className="space-y-6">
-          {/* Statistik (placeholder) */}
+          {/* ✅ Statistik Semester Aktif */}
           <Card>
             <CardHeader>
-              <CardTitle>Statistik</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                Semester Aktif
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {activeStats.semester ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Semester</span>
+                    <Badge variant="default">
+                      {activeStats.semester.tahunAkademik} {activeStats.semester.periode}
+                    </Badge>
+                  </div>
+
+                  <Separator />
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Kelas</span>
+                    <span className="text-2xl font-bold text-blue-600">
+                      {activeStats.classes}
+                    </span>
+                  </div>
+
+                  <Separator />
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Mahasiswa</span>
+                    <span className="text-2xl font-bold text-green-600">
+                      {activeStats.students}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Tidak ada kelas aktif di semester ini
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ✅ Statistik Total (All Time) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Total (Semua Semester)
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <BookOpen className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm text-muted-foreground">Total Kelas</span>
                 </div>
-                <span className="font-semibold">-</span>
+                <span className="font-semibold">{totalStats.classes}</span>
               </div>
 
               <Separator />
@@ -307,17 +347,7 @@ export default function MataKuliahDetailPage() {
                   <Users className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm text-muted-foreground">Total Mahasiswa</span>
                 </div>
-                <span className="font-semibold">-</span>
-              </div>
-
-              <Separator />
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <BookOpen className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Semester Aktif</span>
-                </div>
-                <span className="font-semibold">-</span>
+                <span className="font-semibold">{totalStats.students}</span>
               </div>
             </CardContent>
           </Card>

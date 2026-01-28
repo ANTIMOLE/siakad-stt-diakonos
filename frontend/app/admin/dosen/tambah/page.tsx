@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState } from 'react';
@@ -215,8 +216,8 @@ export default function TambahDosenPage() {
                         <SelectValue placeholder="Pilih prodi (opsional)" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="3">PAK</SelectItem>
-                        <SelectItem value="4">Teologi</SelectItem>
+                        <SelectItem value="1">PAK</SelectItem>
+                        <SelectItem value="2">Teologi</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

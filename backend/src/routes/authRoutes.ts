@@ -6,7 +6,7 @@
 import { Router } from 'express';
 import * as authController from '../controllers/authController';
 import { authenticate } from '../middlewares/authMiddleware';
-import { requireAdmin } from '../middlewares/roleMiddleware';
+import { requireAdmin, requireKeuanganOrAdmin } from '../middlewares/roleMiddleware';
 import {
   validate,
   simplePasswordValidation,
@@ -151,6 +151,22 @@ router.post(
   '/refresh',
   authenticate,
   authController.refreshToken
+);
+
+
+router.post(
+  '/change-username',
+  authenticate,
+  requireKeuanganOrAdmin,  // ✅ Use existing middleware
+  validate([
+    body('newUsername')
+      .trim()
+      .isLength({ min: 3 })
+      .withMessage('Username minimal 3 karakter')
+      .matches(/^[a-zA-Z][a-zA-Z0-9_-]*$/)
+      .withMessage('Username harus diawali huruf dan hanya boleh mengandung huruf, angka, underscore, atau hyphen'),
+  ]),
+  authController.changeUsername
 );
 
 export default router;

@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Edit Mahasiswa Page
- * ✅ UPDATED: Sesuai schema baru (tempatTanggalLahir, jenisKelamin, alamat)
+ * ✅ UPDATED: Dynamic year selector + schema baru
  */
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -34,15 +34,15 @@ import { mahasiswaAPI, dosenAPI } from '@/lib/api';
 import { Mahasiswa, MahasiswaStatus, Dosen } from '@/types/model';
 
 // ============================================
-// VALIDATION SCHEMA - ✅ UPDATED
+// VALIDATION SCHEMA
 // ============================================
 const mahasiswaSchema = z.object({
   namaLengkap: z.string().min(3, 'Nama minimal 3 karakter'),
-  tempatTanggalLahir: z.string().min(3, 'Tempat/Tanggal Lahir minimal 3 karakter').optional(), // ✅ ADDED
-  jenisKelamin: z.enum(['L', 'P']).optional(), // ✅ ADDED
-  alamat: z.string().min(5, 'Alamat minimal 5 karakter').optional(), // ✅ ADDED
+  tempatTanggalLahir: z.string().min(3, 'Tempat/Tanggal Lahir minimal 3 karakter').optional(),
+  jenisKelamin: z.enum(['L', 'P']).optional(),
+  alamat: z.string().min(5, 'Alamat minimal 5 karakter').optional(),
   prodiId: z.number().min(1, 'Prodi wajib dipilih'),
-  angkatan: z.number().min(2020, 'Angkatan tidak valid'),
+  angkatan: z.number().min(2000, 'Angkatan tidak valid'),
   dosenWaliId: z.number().optional(),
   status: z.enum(['AKTIF', 'CUTI', 'NON_AKTIF', 'LULUS', 'DO']),
 });
@@ -74,6 +74,19 @@ export default function EditMahasiswaPage() {
     resolver: zodResolver(mahasiswaSchema),
   });
 
+  // ✅ DYNAMIC YEAR GENERATION
+  const angkatanOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const years = [];
+    
+    // Generate: current year + 10 years back
+    for (let i = 0; i <= 10; i++) {
+      years.push(currentYear - i);
+    }
+    
+    return years;
+  }, []);
+
   // ============================================
   // FETCH DATA
   // ============================================
@@ -94,12 +107,12 @@ export default function EditMahasiswaPage() {
         const data = mhsResponse.data;
         setMahasiswa(data);
 
-        // Set form values - ✅ UPDATED
+        // Set form values
         reset({
           namaLengkap: data.namaLengkap,
-          tempatTanggalLahir: data.tempatTanggalLahir || undefined, // ✅ ADDED
-          jenisKelamin: data.jenisKelamin || undefined, // ✅ ADDED
-          alamat: data.alamat || undefined, // ✅ ADDED
+          tempatTanggalLahir: data.tempatTanggalLahir || undefined,
+          jenisKelamin: data.jenisKelamin || undefined,
+          alamat: data.alamat || undefined,
           prodiId: data.prodiId,
           angkatan: data.angkatan,
           dosenWaliId: data.dosenWaliId || undefined,
@@ -247,7 +260,7 @@ export default function EditMahasiswaPage() {
                   )}
                 </div>
 
-                {/* ✅ ADDED: Tempat/Tanggal Lahir */}
+                {/* Tempat/Tanggal Lahir */}
                 <div className="grid gap-2">
                   <Label htmlFor="tempatTanggalLahir">Tempat/Tanggal Lahir</Label>
                   <Input
@@ -262,11 +275,11 @@ export default function EditMahasiswaPage() {
                   )}
                 </div>
 
-                {/* ✅ ADDED: Jenis Kelamin */}
+                {/* Jenis Kelamin */}
                 <div className="grid gap-2">
                   <Label htmlFor="jenisKelamin">Jenis Kelamin</Label>
                   <Select
-                    value={watch('jenisKelamin')}
+                    value={watch('jenisKelamin') || 'none'}
                     onValueChange={(value) => 
                       setValue('jenisKelamin', value === 'none' ? undefined : value as 'L' | 'P')
                     }
@@ -285,7 +298,7 @@ export default function EditMahasiswaPage() {
                   )}
                 </div>
 
-                {/* ✅ ADDED: Alamat */}
+                {/* Alamat */}
                 <div className="grid gap-2">
                   <Label htmlFor="alamat">Alamat</Label>
                   <Textarea
@@ -310,8 +323,8 @@ export default function EditMahasiswaPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="3">PAK</SelectItem>
-                      <SelectItem value="4">Teologi</SelectItem>
+                      <SelectItem value="1">PAK</SelectItem>
+                      <SelectItem value="2">Teologi</SelectItem>
                     </SelectContent>
                   </Select>
                   {errors.prodiId && (
@@ -319,7 +332,7 @@ export default function EditMahasiswaPage() {
                   )}
                 </div>
 
-                {/* Angkatan */}
+                {/* ✅ DYNAMIC ANGKATAN */}
                 <div className="grid gap-2">
                   <Label htmlFor="angkatan">Angkatan *</Label>
                   <Select
@@ -330,12 +343,11 @@ export default function EditMahasiswaPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="2025">2025</SelectItem>
-                      <SelectItem value="2024">2024</SelectItem>
-                      <SelectItem value="2023">2023</SelectItem>
-                      <SelectItem value="2022">2022</SelectItem>
-                      <SelectItem value="2021">2021</SelectItem>
-                      <SelectItem value="2020">2020</SelectItem>
+                      {angkatanOptions.map((year) => (
+                        <SelectItem key={year} value={year.toString()}>
+                          {year}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   {errors.angkatan && (

@@ -1,6 +1,7 @@
 /**
  * Presensi Controller
  * Handle HTTP requests for attendance management
+ * ✅ UPDATED: Added semesterId filter support
  */
 
 import { Response } from 'express';
@@ -12,19 +13,30 @@ import * as presensiService from '../services/presensiService';
 /**
  * GET /api/presensi
  * Get all presensi for a specific class
+ * ✅ UPDATED: Added optional semesterId filter
  */
 export const getAllByKelas = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const { kelasMKId } = req.query;
+    const { kelasMKId, semesterId } = req.query;
 
     if (!kelasMKId) {
       throw new AppError('kelasMKId parameter wajib diisi', 400);
     }
 
+    // ✅ Build where clause with optional semester filter
+    const where: any = {
+      kelasMKId: parseInt(kelasMKId as string),
+    };
+
+    // ✅ Add semester filter if provided
+    if (semesterId) {
+      where.kelasMK = {
+        semesterId: parseInt(semesterId as string),
+      };
+    }
+
     const presensiList = await prisma.presensi.findMany({
-      where: {
-        kelasMKId: parseInt(kelasMKId as string),
-      },
+      where,
       include: {
         kelasMK: {
           include: {
@@ -38,6 +50,14 @@ export const getAllByKelas = asyncHandler(
             dosen: {
               select: {
                 namaLengkap: true,
+              },
+            },
+            semester: {
+              select: {
+                id: true,
+                tahunAkademik: true,
+                periode: true,
+                isActive: true,
               },
             },
           },
@@ -84,6 +104,12 @@ export const getById = asyncHandler(
             dosen: {
               select: {
                 namaLengkap: true,
+              },
+            },
+            semester: {
+              select: {
+                tahunAkademik: true,
+                periode: true,
               },
             },
           },
@@ -380,6 +406,7 @@ export const getStatsKelas = asyncHandler(
 /**
  * GET /api/presensi/dosen/my-classes
  * Get all classes taught by logged-in dosen with attendance summary
+ * ✅ UPDATED: Added semesterId filter
  * Role: DOSEN
  */
 export const getDosenClasses = asyncHandler(
@@ -402,9 +429,22 @@ export const getDosenClasses = asyncHandler(
 
     const { semesterId } = req.query;
 
+    // ✅ Build where clause
     const where: any = { dosenId: dosen.id };
+    
+    // ✅ If semesterId provided, filter by it
+    // ✅ Otherwise, default to active semester only
     if (semesterId) {
       where.semesterId = parseInt(semesterId as string);
+    } else {
+      // ✅ Get active semester
+      const activeSemester = await prisma.semester.findFirst({
+        where: { isActive: true },
+      });
+      
+      if (activeSemester) {
+        where.semesterId = activeSemester.id;
+      }
     }
 
     const classes = await prisma.kelasMataKuliah.findMany({
@@ -419,8 +459,10 @@ export const getDosenClasses = asyncHandler(
         },
         semester: {
           select: {
+            id: true,
             tahunAkademik: true,
             periode: true,
+            isActive: true,
           },
         },
         ruangan: {

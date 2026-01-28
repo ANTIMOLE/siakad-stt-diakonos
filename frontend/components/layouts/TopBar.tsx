@@ -2,12 +2,13 @@
 /**
  * Top Bar
  * Header dengan hamburger menu (mobile), page title, user dropdown, logout
+ * ✅ UPDATED: Added Profil for Dosen/Mahasiswa, removed Bell
  */
 
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
-import { Menu, LogOut, User, Settings, Bell } from 'lucide-react';
+import { Menu, LogOut, KeyRound, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -46,6 +47,36 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
   };
 
   // ============================================
+  // GET SETTINGS LABEL
+  // ============================================
+  const getSettingsLabel = () => {
+    if (user?.role === 'ADMIN' || user?.role === 'KEUANGAN') {
+      return 'Ganti Password/Username';
+    }
+    return 'Ganti Password';
+  };
+
+  // ============================================
+  // GET ROUTES
+  // ============================================
+  const getSettingsRoute = () => {
+    const role = user?.role?.toLowerCase();
+    return `/${role}/settings`;
+  };
+
+  const getProfilRoute = () => {
+    const role = user?.role?.toLowerCase();
+    return `/${role}/profil`;
+  };
+
+  // ============================================
+  // CHECK IF USER CAN ACCESS PROFIL
+  // ============================================
+  const canAccessProfil = () => {
+    return user?.role === 'DOSEN' || user?.role === 'MAHASISWA';
+  };
+
+  // ============================================
   // LOGOUT HANDLER
   // ============================================
   const handleLogout = () => {
@@ -60,71 +91,71 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
     router.push('/login');
   };
 
-// ============================================
-// USER INITIALS
-// ============================================
-const getUserInitials = () => {
-  let nama = '';
-  
-  if (user?.dosen?.namaLengkap) nama = user.dosen.namaLengkap;
-  else if (user?.mahasiswa?.namaLengkap) nama = user.mahasiswa.namaLengkap;
-  else if (user?.admin?.nama) nama = user.admin.nama;
-  
-  if (nama) {
-    // ✅ Clean punctuation + Filter gelar
-    const names = nama
-      .replace(/[,;]/g, '') // Remove koma, semicolon
-      .split(' ')
-      .filter(word => 
-        !word.includes('.') &&  // No dots (gelar)
-        word.length >= 3 &&     // Min 3 chars
-        /^[A-Za-z]+$/.test(word) // Only letters (no numbers/symbols)
-      );
+  // ============================================
+  // USER INITIALS
+  // ============================================
+  const getUserInitials = () => {
+    let nama = '';
     
-    if (names.length >= 2) {
-      return (names[0].charAt(0) + names[1].charAt(0)).toUpperCase();
+    if (user?.dosen?.namaLengkap) nama = user.dosen.namaLengkap;
+    else if (user?.mahasiswa?.namaLengkap) nama = user.mahasiswa.namaLengkap;
+    else if (user?.admin?.nama) nama = user.admin.nama;
+    
+    if (nama) {
+      // ✅ Clean punctuation + Filter gelar
+      const names = nama
+        .replace(/[,;]/g, '') // Remove koma, semicolon
+        .split(' ')
+        .filter(word => 
+          !word.includes('.') &&  // No dots (gelar)
+          word.length >= 3 &&     // Min 3 chars
+          /^[A-Za-z]+$/.test(word) // Only letters (no numbers/symbols)
+        );
+      
+      if (names.length >= 2) {
+        return (names[0].charAt(0) + names[1].charAt(0)).toUpperCase();
+      }
+      return names[0]?.charAt(0).toUpperCase() || 'U';
     }
-    return names[0]?.charAt(0).toUpperCase() || 'U';
-  }
-  return 'U';
-};
+    return 'U';
+  };
 
-// ============================================
-// USER IDENTIFIER (NIK/NIM/NIDN)
-// ============================================
-const getUserIdentifier = () => {
-  if (user?.mahasiswa?.nim) return user.mahasiswa.nim;
-  if (user?.dosen?.nidn) return user.dosen.nidn;
-  if (user?.admin?.nik) return user.admin.nik;
-  return '-';
-};
+  // ============================================
+  // USER IDENTIFIER (NIK/NIM/NIDN)
+  // ============================================
+  const getUserIdentifier = () => {
+    if (user?.mahasiswa?.nim) return user.mahasiswa.nim;
+    if (user?.dosen?.nidn) return user.dosen.nidn;
+    if (user?.admin?.nik) return user.admin.nik;
+    return '-';
+  };
 
-// ============================================
-// USER DISPLAY NAME
-// ============================================
-const getUserDisplayName = () => {
-  let nama = '';
-  
-  if (user?.dosen?.namaLengkap) nama = user.dosen.namaLengkap;
-  else if (user?.mahasiswa?.namaLengkap) nama = user.mahasiswa.namaLengkap;
-  else if (user?.admin?.nama) nama = user.admin.nama;
-  
-  if (nama) {
-    // ✅ Clean punctuation + Filter gelar (SAMA KAYAK getUserInitials)
-    const names = nama
-      .replace(/[,;]/g, '') // Remove koma, semicolon
-      .split(' ')
-      .filter(word => 
-        !word.includes('.') &&     // No dots (gelar)
-        word.length >= 3 &&        // Min 3 chars
-        /^[A-Za-z]+$/.test(word)   // Only letters
-      );
+  // ============================================
+  // USER DISPLAY NAME
+  // ============================================
+  const getUserDisplayName = () => {
+    let nama = '';
     
-    // Return first name aja
-    return names[0] || getUserIdentifier();
-  }
-  return getUserIdentifier();
-};
+    if (user?.dosen?.namaLengkap) nama = user.dosen.namaLengkap;
+    else if (user?.mahasiswa?.namaLengkap) nama = user.mahasiswa.namaLengkap;
+    else if (user?.admin?.nama) nama = user.admin.nama;
+    
+    if (nama) {
+      // ✅ Clean punctuation + Filter gelar (SAMA KAYAK getUserInitials)
+      const names = nama
+        .replace(/[,;]/g, '') // Remove koma, semicolon
+        .split(' ')
+        .filter(word => 
+          !word.includes('.') &&     // No dots (gelar)
+          word.length >= 3 &&        // Min 3 chars
+          /^[A-Za-z]+$/.test(word)   // Only letters
+        );
+      
+      // Return first name aja
+      return names[0] || getUserIdentifier();
+    }
+    return getUserIdentifier();
+  };
 
   return (
     <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-b bg-white px-4 shadow-sm md:px-6">
@@ -150,25 +181,13 @@ const getUserDisplayName = () => {
             {user?.role === 'ADMIN' && 'Administrator'}
             {user?.role === 'DOSEN' && 'Dosen'}
             {user?.role === 'MAHASISWA' && 'Mahasiswa'}
+            {user?.role === 'KEUANGAN' && 'Staff Keuangan'}
           </p>
         </div>
       </div>
 
-      {/* Right Section - Notifications + User Menu */}
+      {/* Right Section - User Menu Only */}
       <div className="flex items-center gap-1 md:gap-2">
-        {/* Notifications (Future Feature) */}
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          className="relative cursor-not-allowed opacity-60 hidden sm:flex" 
-          disabled
-          title="Fitur notifikasi akan segera hadir"
-        >
-          <Bell className="h-5 w-5" />
-          {/* Notification badge */}
-          <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500" />
-        </Button>
-
         {/* User Dropdown Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -192,38 +211,43 @@ const getUserDisplayName = () => {
             <DropdownMenuLabel>
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-medium leading-none">
-                  {user?.profile?.nama || 'User'}
+                  {user?.dosen?.namaLengkap || user?.mahasiswa?.namaLengkap || user?.admin?.nama || 'User'}
                 </p>
                 <p className="text-xs text-muted-foreground font-mono">
-                  {user?.profile?.nim && `NIM: ${user.profile.nim}`}
-                  {user?.profile?.nidn && `NIDN: ${user.profile.nidn}`}
-                  {user?.profile?.nik && `NIK: ${user.profile.nik}`}
-                  {!user?.profile?.nim && !user?.profile?.nidn && !user?.profile?.nik && (getUserIdentifier())}
+                  {getUserIdentifier()}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   {user?.role === 'ADMIN' && 'Administrator'}
                   {user?.role === 'DOSEN' && 'Dosen'}
                   {user?.role === 'MAHASISWA' && 'Mahasiswa'}
+                  {user?.role === 'KEUANGAN' && 'Staff Keuangan'}
                 </p>
               </div>
             </DropdownMenuLabel>
 
             <DropdownMenuSeparator />
 
-            <DropdownMenuItem 
-              disabled
-              className="cursor-not-allowed opacity-60"
-            >
-              <User className="mr-2 h-4 w-4" />
-              <span>Profil</span>
-            </DropdownMenuItem>
+            {/* ✅ Profil - Only for Dosen & Mahasiswa */}
+            {canAccessProfil() && (
+              <>
+                <DropdownMenuItem 
+                  className="cursor-pointer hover:bg-gray-100 active:scale-95 transition-all"
+                  onClick={() => router.push(getProfilRoute())}
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Profil</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
 
+            {/* ✅ Settings - All Roles */}
             <DropdownMenuItem 
-              disabled
-              className="cursor-not-allowed opacity-60"
+              className="cursor-pointer hover:bg-gray-100 active:scale-95 transition-all"
+              onClick={() => router.push(getSettingsRoute())}
             >
-              <Settings className="mr-2 h-4 w-4" />
-              <span>Pengaturan</span>
+              <KeyRound className="mr-2 h-4 w-4" />
+              <span>{getSettingsLabel()}</span>
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />

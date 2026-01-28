@@ -62,9 +62,9 @@ export default function DetailMahasiswaPage() {
 
         setMahasiswa(mhsResponse.data || null);
 
-        // Fetch KRS history - ✅ FIXED: snake_case mahasiswa_id
+        // Fetch KRS history - ✅ FIXED: camelCase mahasiswaId
         try {
-          const krsResponse = await krsAPI.getAll({ mahasiswa_id: mahasiswaId });
+          const krsResponse = await krsAPI.getAll({ mahasiswaId: mahasiswaId });
           if (krsResponse.success) {
             setKrsHistory(krsResponse.data || []);
           }
@@ -72,7 +72,7 @@ export default function DetailMahasiswaPage() {
           console.warn('Failed to fetch KRS history:', err);
         }
 
-        // Fetch KHS history - ✅ FIXED: snake_case mahasiswa_id
+        // Fetch KHS history - ✅ FIXED: camelCase mahasiswaId
         try {
           const khsResponse = await khsAPI.getAll({ mahasiswaId: mahasiswaId });
           if (khsResponse.success) {

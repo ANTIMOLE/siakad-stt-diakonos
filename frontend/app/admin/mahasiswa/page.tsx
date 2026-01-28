@@ -297,8 +297,8 @@ export default function MahasiswaPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Semua Prodi</SelectItem>
-                <SelectItem value="3">PAK</SelectItem>
-                <SelectItem value="4">Teologi</SelectItem>
+                <SelectItem value="1">PAK</SelectItem>
+                <SelectItem value="2">Teologi</SelectItem>
               </SelectContent>
             </Select>
 

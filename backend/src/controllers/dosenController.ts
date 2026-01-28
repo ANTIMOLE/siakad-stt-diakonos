@@ -1,11 +1,13 @@
-
+/**
+ * Dosen Controller
+ * ✅ FIXED: Use proper Prisma nested relation syntax for prodi
+ */
 
 import { Response } from 'express';
 import prisma from '../config/database';
 import { AuthRequest } from '../types';
 import { asyncHandler, AppError } from '../middlewares/errorMiddleware';
 import { Prisma } from '@prisma/client';
-
 
 export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
@@ -17,7 +19,6 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     sortBy = 'nidn',
     sortOrder = 'asc',
   } = req.query;
-
 
   const where: Prisma.DosenWhereInput = {};
 
@@ -37,13 +38,11 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     where.status = status as any;
   }
 
-
   const pageNum = parseInt(page as string);
   const limitNum = parseInt(limit as string);
   const skip = (pageNum - 1) * limitNum;
 
   const total = await prisma.dosen.count({ where });
-
 
   const dosen = await prisma.dosen.findMany({
     where,
@@ -88,7 +87,6 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     },
   });
 });
-
 
 export const getById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -167,6 +165,10 @@ export const getById = asyncHandler(
   }
 );
 
+/**
+ * POST /api/dosen
+ * ✅ FIXED: Use proper nested relation syntax
+ */
 export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
     nidn,
@@ -178,9 +180,11 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
     jafung,
     alumni,
     lamaMengajar,
+    tempatLahir,
+    tanggalLahir,
   } = req.body;
 
-
+  // Check existing NIDN
   const existingDosen = await prisma.dosen.findUnique({
     where: { nidn },
   });
@@ -189,7 +193,7 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
     throw new AppError('NIDN sudah digunakan', 400);
   }
 
-
+  // Check existing NUPTK
   const existingNuptk = await prisma.dosen.findUnique({
     where: { nuptk },
   });
@@ -198,22 +202,31 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
     throw new AppError('NUPTK sudah digunakan', 400);
   }
 
-
+  // Hash password
   const bcrypt = require('bcrypt');
   const hashedPassword = await bcrypt.hash(password, 10);
 
-
+  // ✅ FIXED: Use nested connect syntax for prodi relation
   const dosen = await prisma.dosen.create({
     data: {
       nidn,
       nuptk,
       namaLengkap,
-      prodiId: prodiId || null,
       status: 'AKTIF',
       posisi: posisi || '',
       jafung: jafung || '',
       alumni: alumni || '',
       lamaMengajar: lamaMengajar || '',
+      tempatLahir: tempatLahir || null,
+      tanggalLahir: tanggalLahir ? new Date(tanggalLahir) : null,
+      // ✅ CORRECT: Use nested connect for relation
+      ...(prodiId && {
+        prodi: {
+          connect: {
+            id: parseInt(prodiId),
+          },
+        },
+      }),
       user: {
         create: {
           password: hashedPassword,
@@ -241,6 +254,10 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
   });
 });
 
+/**
+ * PUT /api/dosen/:id
+ * ✅ FIXED: Use proper nested relation syntax for update
+ */
 export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const {
@@ -288,22 +305,41 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     }
   }
 
+  // ✅ FIXED: Build update data with proper prodi handling
+  const updateData: any = {
+    ...(nidn && { nidn }),
+    ...(nuptk && { nuptk }),
+    ...(namaLengkap && { namaLengkap }),
+    ...(status && { status }),
+    ...(posisi !== undefined && { posisi }),
+    ...(jafung !== undefined && { jafung }),
+    ...(alumni !== undefined && { alumni }),
+    ...(lamaMengajar !== undefined && { lamaMengajar }),
+    ...(tempatLahir !== undefined && { tempatLahir }),
+    ...(tanggalLahir !== undefined && { 
+      tanggalLahir: tanggalLahir ? new Date(tanggalLahir) : null 
+    }),
+  };
+
+  // ✅ CORRECT: Handle prodi relation properly
+  if (prodiId !== undefined) {
+    if (prodiId === null || prodiId === '') {
+      // Disconnect prodi
+      updateData.prodi = { disconnect: true };
+    } else {
+      // Connect to new prodi
+      updateData.prodi = {
+        connect: {
+          id: parseInt(prodiId),
+        },
+      };
+    }
+  }
+
   // Update dosen
   const dosen = await prisma.dosen.update({
     where: { id: parseInt(id) },
-    data: {
-      nidn,
-      nuptk,
-      namaLengkap,
-      prodiId: prodiId || null,
-      status,
-      posisi,
-      jafung,
-      alumni,
-      lamaMengajar,
-      tempatLahir,
-      tanggalLahir,
-    },
+    data: updateData,
     include: {
       prodi: true,
       user: {

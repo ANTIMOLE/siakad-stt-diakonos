@@ -459,6 +459,7 @@ export const pembayaranAPI = {
 export const presensiAPI = {
   getAll: (params: {
     kelasMKId: number;
+    semesterId?: number; // ✅ Added
   }): Promise<ApiResponse<Presensi[]>> => 
     api.get('/presensi', { params }),
   
@@ -494,6 +495,7 @@ export const presensiAPI = {
   getStatsKelas: (kelasMKId: number): Promise<ApiResponse<PresensiStatsKelas>> => 
     api.get(`/presensi/kelas/${kelasMKId}/stats`),
   
+  // ✅ UPDATED: Added semesterId parameter
   getDosenClasses: (params?: {
     semesterId?: number;
   }): Promise<ApiResponse<KelasMK[]>> => 

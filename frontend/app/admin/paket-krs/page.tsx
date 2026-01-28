@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -248,8 +249,8 @@ export default function PaketKRSListPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">Semua Prodi</SelectItem>
-                  <SelectItem value="3">PAK</SelectItem>
-                  <SelectItem value="4">Teologi</SelectItem>
+                  <SelectItem value="1">PAK</SelectItem>
+                  <SelectItem value="2">Teologi</SelectItem>
                 </SelectContent>
               </Select>
             </div>

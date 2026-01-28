@@ -1,6 +1,7 @@
 /**
  * Mata Kuliah Controller
  * Handles CRUD operations for courses
+ * ✅ DUAL STATISTICS: Active semester + All time
  */
 
 import { Response } from 'express';
@@ -87,7 +88,8 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
 
 /**
  * GET /api/mata-kuliah/:id
- * Get mata kuliah by ID
+ * Get mata kuliah by ID with detailed statistics
+ * ✅ DUAL STATISTICS: Shows both active semester and all-time stats
  */
 export const getById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -96,20 +98,19 @@ export const getById = asyncHandler(
     const mataKuliah = await prisma.mataKuliah.findUnique({
       where: { id: parseInt(id) },
       include: {
+        // ✅ Get ALL classes with full details
         kelasMataKuliah: {
-          select: {
-            id: true,
-            hari: true,
-            jamMulai: true,
-            jamSelesai: true,
+          include: {
             dosen: {
               select: {
+                id: true,
                 nidn: true,
                 namaLengkap: true,
               },
             },
             semester: {
               select: {
+                id: true,
                 tahunAkademik: true,
                 periode: true,
                 isActive: true,
@@ -117,10 +118,20 @@ export const getById = asyncHandler(
             },
             ruangan: {
               select: {
+                id: true,
                 nama: true,
               },
             },
+            _count: {
+              select: {
+                krsDetail: true, // ✅ Count enrolled students per class
+              },
+            },
           },
+          orderBy: [
+            { semester: { tahunAkademik: 'desc' } },
+            { semester: { periode: 'desc' } },
+          ],
         },
         _count: {
           select: {
@@ -134,10 +145,52 @@ export const getById = asyncHandler(
       throw new AppError('Mata kuliah tidak ditemukan', 404);
     }
 
+    // ✅ SEPARATE CALCULATIONS: Active semester vs All time
+
+    // 1. Active semester statistics
+    const activeClasses = mataKuliah.kelasMataKuliah.filter(
+      (kelas) => kelas.semester.isActive
+    );
+    
+    const activeStudents = activeClasses.reduce(
+      (sum, kelas) => sum + kelas._count.krsDetail,
+      0
+    );
+
+    const activeSemester = activeClasses[0]?.semester || null;
+
+    // 2. All-time statistics
+    const allClasses = mataKuliah.kelasMataKuliah;
+    
+    const totalStudents = allClasses.reduce(
+      (sum, kelas) => sum + kelas._count.krsDetail,
+      0
+    );
+
+    // ✅ Build response with DUAL statistics
+    const response = {
+      ...mataKuliah,
+      statistics: {
+        // ✅ Active Semester Stats
+        active: {
+          classes: activeClasses.length,
+          students: activeStudents,
+          semester: activeSemester,
+        },
+        // ✅ All-Time Stats
+        total: {
+          classes: mataKuliah._count.kelasMataKuliah,
+          students: totalStudents,
+        },
+      },
+      // ✅ Show only active classes in detail list
+      kelasMataKuliah: activeClasses,
+    };
+
     res.status(200).json({
       success: true,
       message: 'Data mata kuliah berhasil diambil',
-      data: mataKuliah,
+      data: response,
     });
   }
 );

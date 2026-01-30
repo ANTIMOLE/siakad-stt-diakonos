@@ -69,12 +69,14 @@ const apiLimiter = rateLimit({
   message: { success: false, message: 'Terlalu banyak request. Coba lagi nanti.' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.path === '/health' || req.path === '/api',
+  skip: (req) => {
+    return req.originalUrl === '/health' || req.originalUrl === '/api';
+  },
 });
 
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
+  windowMs: 5 * 60 * 1000,
+  max: 10,
   message: { success: false, message: 'Terlalu banyak percobaan login. Coba lagi dalam 15 menit.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -165,7 +167,11 @@ app.get('/api', (req: Request, res: Response) => {
   });
 });
 
-app.use('/api', apiLimiter);
+// Hanya terapkan apiLimiter di production
+if (env.NODE_ENV === 'production') {
+  app.use('/api', apiLimiter);
+}
+
 app.use('/api/auth/login', loginLimiter);
 app.use('/api/auth/register', registerLimiter);
 app.use('/api/auth/change-password', passwordChangeLimiter);

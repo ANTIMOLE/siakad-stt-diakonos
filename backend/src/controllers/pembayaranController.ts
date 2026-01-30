@@ -1,6 +1,6 @@
 /**
  * Pembayaran Controller
- * ✅ UPDATED: Handles all payment types
+ * ✅ FIXED: X-Frame-Options header for iframe display
  */
 
 import { Response } from 'express';
@@ -48,8 +48,6 @@ export const upload = multer({
 
 /**
  * POST /api/pembayaran/upload
- * Upload bukti pembayaran (Mahasiswa)
- * ✅ UPDATED: Supports all payment types
  */
 export const uploadBukti = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -59,7 +57,6 @@ export const uploadBukti = asyncHandler(
       throw new AppError('User tidak ditemukan', 401);
     }
 
-    // Get mahasiswa ID from user
     const mahasiswa = await prisma.mahasiswa.findFirst({
       where: { userId: req.user.id },
     });
@@ -68,30 +65,23 @@ export const uploadBukti = asyncHandler(
       throw new AppError('Data mahasiswa tidak ditemukan', 404);
     }
 
-    // Check if file uploaded
     if (!req.file) {
       throw new AppError('Bukti pembayaran wajib diupload', 400);
     }
 
-    // Validate required fields
     if (!jenisPembayaran || !nominal) {
       fs.unlinkSync(req.file.path);
       throw new AppError('Jenis pembayaran dan nominal wajib diisi', 400);
     }
 
-    // Validate enum
     if (!Object.values(JenisPembayaran).includes(jenisPembayaran as JenisPembayaran)) {
       fs.unlinkSync(req.file.path);
       throw new AppError('Jenis pembayaran tidak valid', 400);
     }
 
-    // Get file URL
     const buktiUrl = `/uploads/pembayaran/${req.file.filename}`;
-
-    // Parse bulanPembayaran if exists
     const bulanDate = bulanPembayaran ? new Date(bulanPembayaran) : undefined;
 
-    // Upload pembayaran
     const pembayaran = await pembayaranService.uploadBuktiPembayaran(
       mahasiswa.id,
       jenisPembayaran as JenisPembayaran,
@@ -111,8 +101,6 @@ export const uploadBukti = asyncHandler(
 
 /**
  * GET /api/pembayaran
- * Get all pembayaran with filters
- * ✅ UPDATED: Filter by payment type
  */
 export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
@@ -128,7 +116,6 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   const limitNum = parseInt(limit as string);
   const skip = (pageNum - 1) * limitNum;
 
-  // Build where clause
   const where: any = {};
 
   if (search) {
@@ -160,12 +147,10 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     where.semesterId = parseInt(semesterId as string);
   }
 
-  // ✅ NEW: Filter by payment type
   if (jenisPembayaran && jenisPembayaran !== 'ALL') {
     where.jenisPembayaran = jenisPembayaran;
   }
 
-  // Get data
   const [pembayaranList, total] = await Promise.all([
     prisma.pembayaran.findMany({
       where,
@@ -211,8 +196,6 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
 
 /**
  * GET /api/pembayaran/mahasiswa
- * Get pembayaran history for logged in mahasiswa
- * ✅ UPDATED: Show all payment types
  */
 export const getMahasiswaHistory = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -222,7 +205,6 @@ export const getMahasiswaHistory = asyncHandler(
       throw new AppError('User tidak ditemukan', 401);
     }
 
-    // Get mahasiswa ID from user
     const mahasiswa = await prisma.mahasiswa.findFirst({
       where: { userId: req.user.id },
     });
@@ -231,13 +213,11 @@ export const getMahasiswaHistory = asyncHandler(
       throw new AppError('Data mahasiswa tidak ditemukan', 404);
     }
 
-    // Build where clause
     const where: any = { mahasiswaId: mahasiswa.id };
     if (jenisPembayaran && jenisPembayaran !== 'ALL') {
       where.jenisPembayaran = jenisPembayaran;
     }
 
-    // Get history
     const history = await prisma.pembayaran.findMany({
       where,
       orderBy: { uploadedAt: 'desc' },
@@ -261,7 +241,6 @@ export const getMahasiswaHistory = asyncHandler(
 
 /**
  * GET /api/pembayaran/:id
- * Get pembayaran detail
  */
 export const getById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -311,7 +290,6 @@ export const getById = asyncHandler(
 
 /**
  * POST /api/pembayaran/:id/approve
- * Approve pembayaran (Keuangan)
  */
 export const approve = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -336,7 +314,6 @@ export const approve = asyncHandler(
 
 /**
  * POST /api/pembayaran/:id/reject
- * Reject pembayaran (Keuangan)
  */
 export const reject = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -367,8 +344,6 @@ export const reject = asyncHandler(
 
 /**
  * GET /api/pembayaran/stats
- * Get payment statistics
- * ✅ NEW: For dashboard/reporting
  */
 export const getStats = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -387,6 +362,10 @@ export const getStats = asyncHandler(
   }
 );
 
+/**
+ * ✅ FIXED: GET /api/pembayaran/bukti/:id
+ * Serve bukti file with CORS headers and X-Frame-Options override
+ */
 export const serveBukti = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
@@ -395,7 +374,7 @@ export const serveBukti = asyncHandler(
       throw new AppError('User tidak ditemukan', 401);
     }
 
-    // 1. Get pembayaran dari DB
+    // 1. Get pembayaran
     const pembayaran = await prisma.pembayaran.findUnique({
       where: { id: parseInt(id) },
       include: {
@@ -411,7 +390,7 @@ export const serveBukti = asyncHandler(
       throw new AppError('Pembayaran tidak ditemukan', 404);
     }
 
-    // 2. ✅ Authorization: KEUANGAN bisa lihat semua, MAHASISWA hanya punya sendiri
+    // 2. Authorization
     if (req.user.role === 'MAHASISWA') {
       if (pembayaran.mahasiswa.userId !== req.user.id) {
         throw new AppError('Anda tidak memiliki akses ke file ini', 403);
@@ -424,8 +403,7 @@ export const serveBukti = asyncHandler(
       throw new AppError('Bukti pembayaran tidak tersedia', 404);
     }
 
-    // 3. ✅ Build file path (ambil filename dari buktiUrl)
-    // buktiUrl format: "/uploads/pembayaran/bukti-123456.pdf"
+    // 3. Build file path
     const filename = path.basename(pembayaran.buktiUrl);
     const filePath = path.join(__dirname, '../../uploads/pembayaran', filename);
 
@@ -442,12 +420,30 @@ export const serveBukti = asyncHandler(
       ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
       'application/octet-stream';
 
-    // 6. ✅ Set headers dan stream file
+    // 6. ✅ CRITICAL: Set CORS headers FIRST
+    const origin = req.headers.origin;
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      process.env.FRONTEND_URL,
+    ].filter(Boolean);
+
+    if (origin && allowedOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie');
+    }
+
+    // 7. ✅ CRITICAL FIX: Override X-Frame-Options for iframe display
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+
+    // 8. Set content headers
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
     res.setHeader('Cache-Control', 'private, max-age=3600');
 
-    // 7. Stream file
+    // 9. Stream file
     const fileStream = fs.createReadStream(filePath);
     fileStream.pipe(res);
 
@@ -467,7 +463,6 @@ export const downloadPDFReport = asyncHandler(
       jenisPembayaran,
     } = req.query;
 
-    // Build where clause (same as getAll)
     const where: any = {};
 
     if (search) {
@@ -503,7 +498,6 @@ export const downloadPDFReport = asyncHandler(
       where.jenisPembayaran = jenisPembayaran;
     }
 
-    // Get all data (no pagination for PDF)
     const pembayaranList = await prisma.pembayaran.findMany({
       where,
       orderBy: { uploadedAt: 'desc' },
@@ -523,7 +517,6 @@ export const downloadPDFReport = asyncHandler(
       },
     });
 
-    // Get semester name if filtering by semester
     let semesterName = '';
     if (semesterId) {
       const semester = await prisma.semester.findUnique({
@@ -535,7 +528,6 @@ export const downloadPDFReport = asyncHandler(
       }
     }
 
-    // Calculate stats
     const stats = {
       total: pembayaranList.length,
       pending: pembayaranList.filter((p) => p.status === 'PENDING').length,
@@ -546,7 +538,6 @@ export const downloadPDFReport = asyncHandler(
         .reduce((sum, p) => sum + p.nominal, 0),
     };
 
-    // Prepare data for PDF
     const pdfData = {
       pembayaranList,
       filters: {
@@ -566,10 +557,8 @@ export const downloadPDFReport = asyncHandler(
       }),
     };
 
-    // Generate PDF
     const html = getPembayaranReportHTMLTemplate(pdfData);
     
-    // Generate filename
     const timestamp = new Date().getTime();
     const filterSuffix = jenisPembayaran && jenisPembayaran !== 'ALL' 
       ? `_${jenisPembayaran}` 

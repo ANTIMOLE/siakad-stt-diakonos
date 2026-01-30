@@ -63,7 +63,6 @@ export default function PembayaranPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
   
-  // ✅ PAGINATION STATE
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalData, setTotalData] = useState(0);
@@ -88,8 +87,10 @@ export default function PembayaranPage() {
     KOMITMEN_BULANAN: 'bg-yellow-100 text-yellow-700 border-yellow-200',
   };
 
+  // ✅ FIX: karena NEXT_PUBLIC_API_BASE_URL sudah include /api di akhir
   const getBuktiUrl = (pembayaranId: number) => {
-    return `${process.env.NEXT_PUBLIC_API_BASE_URL}/pembayaran/bukti/${pembayaranId}`;
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
+    return `${baseUrl}/pembayaran/bukti/${pembayaranId}`;
   };
 
   const fetchPembayaran = useCallback(async () => {
@@ -108,7 +109,6 @@ export default function PembayaranPage() {
       if (response.success && response.data) {
         setPembayaranList(response.data);
         
-        // ✅ SET PAGINATION DATA
         if (response.pagination) {
           setTotalPages(response.pagination.totalPages);
           setTotalData(response.pagination.total);
@@ -132,7 +132,6 @@ export default function PembayaranPage() {
     fetchPembayaran();
   }, [fetchPembayaran]);
 
-  // ✅ RESET PAGE WHEN FILTERS CHANGE
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, statusFilter, typeFilter]);
@@ -205,7 +204,6 @@ export default function PembayaranPage() {
       if (response.success) {
         toast.success('Pembayaran berhasil disetujui');
         
-        // Refresh data
         await fetchPembayaran();
 
         setShowApproveDialog(false);
@@ -239,7 +237,6 @@ export default function PembayaranPage() {
       if (response.success) {
         toast.success('Pembayaran berhasil ditolak');
 
-        // Refresh data
         await fetchPembayaran();
 
         setShowRejectDialog(false);
@@ -265,44 +262,41 @@ export default function PembayaranPage() {
   };
 
   const handleDownloadPDF = async () => {
-  try {
-    setIsDownloadingPDF(true);
+    try {
+      setIsDownloadingPDF(true);
 
-    const blob = await pembayaranAPI.downloadPDFReport({
-      search: searchQuery || undefined,
-      status: statusFilter !== 'ALL' ? statusFilter : undefined,
-      jenisPembayaran: typeFilter !== 'ALL' ? typeFilter : undefined,
-    });
+      const blob = await pembayaranAPI.downloadPDFReport({
+        search: searchQuery || undefined,
+        status: statusFilter !== 'ALL' ? statusFilter : undefined,
+        jenisPembayaran: typeFilter !== 'ALL' ? typeFilter : undefined,
+      });
 
-    // Create download link
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    
-    // Generate filename
-    const timestamp = new Date().getTime();
-    const filterSuffix = typeFilter !== 'ALL' 
-      ? `_${typeFilter}` 
-      : statusFilter !== 'ALL' 
-      ? `_${statusFilter}` 
-      : '';
-    link.download = `laporan-pembayaran${filterSuffix}_${timestamp}.pdf`;
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const timestamp = new Date().getTime();
+      const filterSuffix = typeFilter !== 'ALL' 
+        ? `_${typeFilter}` 
+        : statusFilter !== 'ALL' 
+        ? `_${statusFilter}` 
+        : '';
+      link.download = `laporan-pembayaran${filterSuffix}_${timestamp}.pdf`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
 
-    toast.success('PDF berhasil didownload');
-  } catch (err: any) {
-    console.error('Download PDF error:', err);
-    toast.error('Gagal mendownload PDF');
-  } finally {
-    setIsDownloadingPDF(false);
-  }
-};
+      toast.success('PDF berhasil didownload');
+    } catch (err: any) {
+      console.error('Download PDF error:', err);
+      toast.error('Gagal mendownload PDF');
+    } finally {
+      setIsDownloadingPDF(false);
+    }
+  };
 
-  // ✅ PAGINATION HANDLERS
   const handlePreviousPage = () => {
     if (currentPage > 1) {
       setCurrentPage(currentPage - 1);
@@ -319,18 +313,15 @@ export default function PembayaranPage() {
     setCurrentPage(page);
   };
 
-  // ✅ GENERATE PAGE NUMBERS
   const getPageNumbers = () => {
     const pages: (number | string)[] = [];
     const maxVisible = 5;
 
     if (totalPages <= maxVisible) {
-      // Show all pages
       for (let i = 1; i <= totalPages; i++) {
         pages.push(i);
       }
     } else {
-      // Show with ellipsis
       if (currentPage <= 3) {
         pages.push(1, 2, 3, 4, '...', totalPages);
       } else if (currentPage >= totalPages - 2) {
@@ -367,7 +358,6 @@ export default function PembayaranPage() {
     );
   }
 
-  // ✅ CALCULATE DATA RANGE
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE + 1;
   const endIndex = Math.min(currentPage * ITEMS_PER_PAGE, totalData);
 
@@ -573,7 +563,6 @@ export default function PembayaranPage() {
                 </Table>
               </div>
 
-              {/* ✅ PAGINATION CONTROLS */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between border-t px-6 py-4">
                   <div className="text-sm text-muted-foreground">
@@ -853,16 +842,27 @@ export default function PembayaranPage() {
                     <div className="w-full h-[600px]">
                       <iframe
                         src={getBuktiUrl(selectedPembayaran.id)}
-                        className="w-full h-full rounded-lg"
+                        className="w-full h-full rounded-lg border-0"
                         title="Bukti Pembayaran PDF"
+                        allowFullScreen
                       />
                     </div>
                   ) : (
-                    <div className="relative w-full">
+                    <div className="relative w-full flex justify-center">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={getBuktiUrl(selectedPembayaran.id)}
                         alt="Bukti Pembayaran"
-                        className="max-w-full h-auto rounded-lg object-contain max-h-96 mx-auto"
+                        crossOrigin="use-credentials"
+                        className="max-w-full h-auto rounded-lg object-contain max-h-[600px]"
+                        loading="lazy"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (target.src !== '/placeholder-bukti.jpg') {
+                            target.src = '/placeholder-bukti.jpg';
+                            target.alt = 'Gagal memuat bukti pembayaran';
+                          }
+                        }}
                       />
                     </div>
                   )}

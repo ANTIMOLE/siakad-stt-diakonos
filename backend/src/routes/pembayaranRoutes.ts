@@ -173,12 +173,27 @@ router.post(
   pembayaranController.reject
 );
 
-router.get(
-  '/bukti/:id',
-  authenticate,
-  idParamValidation('id'),
-  pembayaranController.serveBukti
-);
+router.options('/bukti/:id', (req, res) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    process.env.FRONTEND_URL,
+  ].filter(Boolean);
+
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie');
+    res.setHeader('Access-Control-Max-Age', '86400');
+  }
+  
+  res.status(204).send();
+});
+
+// Then the GET route
+router.get('/bukti/:id', authenticate, pembayaranController.serveBukti);
 
 
 

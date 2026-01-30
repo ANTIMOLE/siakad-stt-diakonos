@@ -24,30 +24,43 @@ import presensiRoutes from './routes/presensiRoutes';
 
 const app: Application = express();
 
+// Compute allowed frame-ancestors dynamically
+const allowedFrameAncestors = ["'self'"];
+
+if (env.NODE_ENV === 'production') {
+  const frontendUrl = process.env.FRONTEND_URL?.trim();
+  if (frontendUrl) {
+    allowedFrameAncestors.push(frontendUrl);
+  } else {
+    console.warn('⚠️  FRONTEND_URL not set in production – iframe embedding from frontend will be blocked');
+  }
+} else {
+  allowedFrameAncestors.push('http://localhost:3000');
+  allowedFrameAncestors.push('http://localhost:3001');
+}
+
 app.use(
   helmet({
-    contentSecurityPolicy:
-      env.NODE_ENV === 'production'
-        ? {
-            directives: {
-              defaultSrc: ["'self'"],
-              styleSrc: ["'self'", "'unsafe-inline'"],
-              scriptSrc: ["'self'"],
-              imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
-              connectSrc: ["'self'"],
-              fontSrc: ["'self'", 'data:'],
-              objectSrc: ["'self'", 'blob:'],
-              frameSrc: ["'self'", 'blob:'],
-              mediaSrc: ["'self'", 'blob:'],
-              formAction: ["'self'"],
-              baseUri: ["'self'"],
-              ...(env.NODE_ENV === 'production' && {
-                upgradeInsecureRequests: [],
-              }),
-            },
-          }
-        : false,
-    frameguard: { action: 'deny' },
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'", 'data:'],
+        objectSrc: ["'self'", 'blob:'],
+        frameSrc: ["'self'", 'blob:'],
+        mediaSrc: ["'self'", 'blob:'],
+        formAction: ["'self'"],
+        baseUri: ["'self'"],
+        frameAncestors: allowedFrameAncestors,
+        ...(env.NODE_ENV === 'production' && {
+          upgradeInsecureRequests: [],
+        }),
+      },
+    },
+    frameguard: false, // Disabled – we control framing via CSP frame-ancestors
     noSniff: true,
     xssFilter: true,
     hsts:
@@ -167,7 +180,6 @@ app.get('/api', (req: Request, res: Response) => {
   });
 });
 
-// Hanya terapkan apiLimiter di production
 if (env.NODE_ENV === 'production') {
   app.use('/api', apiLimiter);
 }
@@ -245,20 +257,23 @@ const server = app.listen(PORT, () => {
   console.log(`Health: http://localhost:${PORT}/health`);
   console.log('='.repeat(60));
   console.log('Security Features:');
-  console.log('Helmet (CSP + Security Headers)');
-  console.log('Rate Limiting (5-layer protection)');
-  console.log('CORS (Credentials + File Downloads)');
-  console.log('HttpOnly Cookies (JWT)');
-  console.log('File Upload Protection (10/hour)');
-  console.log('Static Files Auth (JWT validation)');
+  console.log('✅ Helmet (CSP + Security Headers)');
+  console.log('✅ CSP frame-ancestors controls iframe embedding');
+  console.log('✅ No X-Frame-Options header (modern approach)');
+  console.log('✅ Rate Limiting (5-layer protection)');
+  console.log('✅ CORS (Credentials + File Downloads)');
+  console.log('✅ HttpOnly Cookies (JWT)');
+  console.log('✅ File Upload Protection (10/hour)');
+  console.log('✅ Static Files Auth (JWT validation)');
   console.log('='.repeat(60));
   console.log('File Operations Enabled:');
-  console.log('Image uploads (JPG, PNG)');
-  console.log('PDF uploads and viewing');
-  console.log('Dynamic PDF generation (Puppeteer)');
-  console.log('Protected /uploads directory');
+  console.log('✅ Image uploads (JPG, PNG)');
+  console.log('✅ PDF uploads and viewing');
+  console.log('✅ Dynamic PDF generation (Puppeteer)');
+  console.log('✅ Protected /uploads directory');
+  console.log('✅ Iframe display for bukti pembayaran (allowed from frontend)');
   console.log('='.repeat(60));
-  console.log('Server ready to accept connections');
+  console.log('🚀 Server ready to accept connections');
   console.log('='.repeat(60));
 });
 

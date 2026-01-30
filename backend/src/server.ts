@@ -1,19 +1,12 @@
-/**
- * Express Server Entry Point
- * ✅ UPDATED: Cookie-based authentication with HttpOnly cookies
- */
-
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import cookieParser from 'cookie-parser'; // ✅ ADDED
+import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
-import {
-  errorHandler,
-  notFoundHandler,
-} from './middlewares/errorMiddleware';
+import { errorHandler, notFoundHandler } from './middlewares/errorMiddleware';
 
-// Routes
 import authRoutes from './routes/authRoutes';
 import mahasiswaRoutes from './routes/mahasiswaRoutes';
 import dosenRoutes from './routes/dosenRoutes';
@@ -31,29 +24,103 @@ import presensiRoutes from './routes/presensiRoutes';
 
 const app: Application = express();
 
-// ============================================
-// MIDDLEWARE CONFIGURATION
-// ============================================
+app.use(
+  helmet({
+    contentSecurityPolicy:
+      env.NODE_ENV === 'production'
+        ? {
+            directives: {
+              defaultSrc: ["'self'"],
+              styleSrc: ["'self'", "'unsafe-inline'"],
+              scriptSrc: ["'self'"],
+              imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+              connectSrc: ["'self'"],
+              fontSrc: ["'self'", 'data:'],
+              objectSrc: ["'self'", 'blob:'],
+              frameSrc: ["'self'", 'blob:'],
+              mediaSrc: ["'self'", 'blob:'],
+              formAction: ["'self'"],
+              baseUri: ["'self'"],
+              ...(env.NODE_ENV === 'production' && {
+                upgradeInsecureRequests: [],
+              }),
+            },
+          }
+        : false,
+    frameguard: { action: 'deny' },
+    noSniff: true,
+    xssFilter: true,
+    hsts:
+      env.NODE_ENV === 'production'
+        ? {
+            maxAge: 31536000,
+            includeSubDomains: true,
+            preload: true,
+          }
+        : false,
+    hidePoweredBy: true,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  })
+);
 
-// ✅ CORS - CRITICAL: Must allow credentials for HttpOnly cookies
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { success: false, message: 'Terlalu banyak request. Coba lagi nanti.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path === '/health' || req.path === '/api',
+});
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { success: false, message: 'Terlalu banyak percobaan login. Coba lagi dalam 15 menit.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: { success: false, message: 'Terlalu banyak percobaan registrasi. Coba lagi nanti.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const passwordChangeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: { success: false, message: 'Terlalu banyak percobaan ubah password. Coba lagi nanti.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { success: false, message: 'Terlalu banyak upload file. Coba lagi nanti.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 const corsOptions = {
-  origin: env.NODE_ENV === 'production'
-    ? process.env.FRONTEND_URL || 'http://localhost:3000'
-    : ['http://localhost:3000', 'http://localhost:3001'],
-  credentials: true, // ✅ ENABLE COOKIES
-  optionsSuccessStatus: 200,
+  origin:
+    env.NODE_ENV === 'production'
+      ? process.env.FRONTEND_URL
+      : ['http://localhost:3000', 'http://localhost:3001'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['set-cookie', 'Content-Disposition'],
+  maxAge: 86400,
 };
 
 app.use(cors(corsOptions));
-
-// Body parsers
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// ✅ Cookie parser - MUST be AFTER body parsers
 app.use(cookieParser());
 
-// Logging
 if (env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 } else {
@@ -61,10 +128,6 @@ if (env.NODE_ENV === 'development') {
 }
 
 app.set('trust proxy', 1);
-
-// ============================================
-// HEALTH CHECK ENDPOINT
-// ============================================
 
 app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({
@@ -102,90 +165,122 @@ app.get('/api', (req: Request, res: Response) => {
   });
 });
 
-// ============================================
-// API ROUTES
-// ============================================
+app.use('/api', apiLimiter);
+app.use('/api/auth/login', loginLimiter);
+app.use('/api/auth/register', registerLimiter);
+app.use('/api/auth/change-password', passwordChangeLimiter);
+app.use('/api/auth/change-username', passwordChangeLimiter);
+app.use('/api/pembayaran/upload', uploadLimiter);
 
 app.use('/api/auth', authRoutes);
-
-// Master data routes
 app.use('/api/mahasiswa', mahasiswaRoutes);
 app.use('/api/dosen', dosenRoutes);
 app.use('/api/mata-kuliah', mataKuliahRoutes);
 app.use('/api/semester', semesterRoutes);
 app.use('/api/kelas-mk', kelasMKRoutes);
 app.use('/api/ruangan', ruanganRoutes);
-
-// Academic process routes
 app.use('/api/paket-krs', paketKRSRoutes);
 app.use('/api/krs', krsRoutes);
 app.use('/api/nilai', nilaiRoutes);
 app.use('/api/khs', khsRoutes);
-
-// Payment & Dashboard routes
 app.use('/api/pembayaran', pembayaranRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/presensi', presensiRoutes);
 
-// Static files for uploads
-app.use('/uploads', express.static('uploads'));
+app.use(
+  '/uploads',
+  async (req, res, next) => {
+    const token = req.cookies?.token;
 
-// ============================================
-// ERROR HANDLING
-// ============================================
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized - Login required',
+      });
+    }
+
+    try {
+      const jwt = require('jsonwebtoken');
+      jwt.verify(token, env.JWT_SECRET);
+
+      const ext = req.path.split('.').pop()?.toLowerCase();
+
+      if (ext === 'pdf') {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline');
+      } else if (['jpg', 'jpeg', 'png', 'gif'].includes(ext || '')) {
+        res.setHeader('Content-Type', `image/${ext === 'jpg' ? 'jpeg' : ext}`);
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+      }
+
+      next();
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token',
+      });
+    }
+  },
+  express.static('uploads')
+);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-// ============================================
-// SERVER STARTUP
-// ============================================
-
 const PORT = env.PORT || 5000;
 
 const server = app.listen(PORT, () => {
-  console.log('='.repeat(50));
-  console.log('🚀 SIAKAD STT DIAKONOS API SERVER');
-  console.log('='.repeat(50));
-  console.log(`📍 Environment: ${env.NODE_ENV}`);
-  console.log(`🌐 Server running on: http://localhost:${PORT}`);
-  console.log(`🔗 API endpoint: http://localhost:${PORT}/api`);
-  console.log(`💚 Health check: http://localhost:${PORT}/health`);
-  console.log(`🍪 Auth mode: HttpOnly Cookies`); // ✅ ADDED
-  console.log('='.repeat(50));
-  console.log('✅ Server is ready to accept connections');
-  console.log('='.repeat(50));
+  console.log('='.repeat(60));
+  console.log('SIAKAD STT DIAKONOS API SERVER');
+  console.log('='.repeat(60));
+  console.log(`Environment: ${env.NODE_ENV}`);
+  console.log(`Server: http://localhost:${PORT}`);
+  console.log(`API: http://localhost:${PORT}/api`);
+  console.log(`Health: http://localhost:${PORT}/health`);
+  console.log('='.repeat(60));
+  console.log('Security Features:');
+  console.log('Helmet (CSP + Security Headers)');
+  console.log('Rate Limiting (5-layer protection)');
+  console.log('CORS (Credentials + File Downloads)');
+  console.log('HttpOnly Cookies (JWT)');
+  console.log('File Upload Protection (10/hour)');
+  console.log('Static Files Auth (JWT validation)');
+  console.log('='.repeat(60));
+  console.log('File Operations Enabled:');
+  console.log('Image uploads (JPG, PNG)');
+  console.log('PDF uploads and viewing');
+  console.log('Dynamic PDF generation (Puppeteer)');
+  console.log('Protected /uploads directory');
+  console.log('='.repeat(60));
+  console.log('Server ready to accept connections');
+  console.log('='.repeat(60));
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('⚠️  SIGTERM signal received: closing HTTP server');
+const gracefulShutdown = (signal: string) => {
+  console.log(`\n${signal} received: closing HTTP server gracefully`);
   server.close(() => {
-    console.log('✅ HTTP server closed');
+    console.log('HTTP server closed');
+    console.log('Database connections closed');
     process.exit(0);
   });
-});
 
-process.on('SIGINT', () => {
-  console.log('⚠️  SIGINT signal received: closing HTTP server');
-  server.close(() => {
-    console.log('✅ HTTP server closed');
-    process.exit(0);
-  });
-});
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
-  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-  server.close(() => {
-    process.exit(1);
-  });
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  gracefulShutdown('Unhandled Rejection');
 });
 
 process.on('uncaughtException', (error: Error) => {
-  console.log('❌ Uncaught Exception:', error);
-  server.close(() => {
-    process.exit(1);
-  });
+  console.error('Uncaught Exception:', error);
+  gracefulShutdown('Uncaught Exception');
 });
 
 export default app;

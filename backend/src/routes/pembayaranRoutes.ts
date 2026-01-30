@@ -108,6 +108,25 @@ router.get(
   pembayaranController.getMahasiswaHistory
 );
 
+router.get(
+  '/report/pdf',
+  authenticate,
+  requireKeuanganOrAdmin,
+  validate([
+    query('search').optional().isString(),
+    query('status')
+      .optional()
+      .isIn(['ALL', 'PENDING', 'APPROVED', 'REJECTED'])
+      .withMessage('Status tidak valid'),
+    query('jenisPembayaran')
+      .optional()
+      .isIn(['ALL', 'KRS', 'TENGAH_SEMESTER', 'PPL', 'SKRIPSI', 'WISUDA', 'KOMITMEN_BULANAN'])
+      .withMessage('Jenis pembayaran tidak valid'),
+    query('semesterId').optional().isInt({ min: 1 }),
+  ]),
+  pembayaranController.downloadPDFReport
+);
+
 /**
  * GET /api/pembayaran/:id
  * Get pembayaran detail
@@ -160,5 +179,7 @@ router.get(
   idParamValidation('id'),
   pembayaranController.serveBukti
 );
+
+
 
 export default router;

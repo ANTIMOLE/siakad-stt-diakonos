@@ -12,6 +12,7 @@ import { JenisPembayaran } from '@prisma/client';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { generatePDF, getPembayaranReportHTMLTemplate } from '../utils/pdfGenerator';
 
 // Configure multer for file upload
 const storage = multer.diskStorage({
@@ -454,5 +455,129 @@ export const serveBukti = asyncHandler(
       console.error('Error streaming file:', error);
       throw new AppError('Error saat membaca file', 500);
     });
+  }
+);
+
+export const downloadPDFReport = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const {
+      search,
+      status,
+      semesterId,
+      jenisPembayaran,
+    } = req.query;
+
+    // Build where clause (same as getAll)
+    const where: any = {};
+
+    if (search) {
+      where.OR = [
+        {
+          mahasiswa: {
+            nim: {
+              contains: search as string,
+              mode: 'insensitive',
+            },
+          },
+        },
+        {
+          mahasiswa: {
+            namaLengkap: {
+              contains: search as string,
+              mode: 'insensitive',
+            },
+          },
+        },
+      ];
+    }
+
+    if (status && status !== 'ALL') {
+      where.status = status;
+    }
+
+    if (semesterId) {
+      where.semesterId = parseInt(semesterId as string);
+    }
+
+    if (jenisPembayaran && jenisPembayaran !== 'ALL') {
+      where.jenisPembayaran = jenisPembayaran;
+    }
+
+    // Get all data (no pagination for PDF)
+    const pembayaranList = await prisma.pembayaran.findMany({
+      where,
+      orderBy: { uploadedAt: 'desc' },
+      include: {
+        mahasiswa: {
+          select: {
+            nim: true,
+            namaLengkap: true,
+          },
+        },
+        semester: {
+          select: {
+            tahunAkademik: true,
+            periode: true,
+          },
+        },
+      },
+    });
+
+    // Get semester name if filtering by semester
+    let semesterName = '';
+    if (semesterId) {
+      const semester = await prisma.semester.findUnique({
+        where: { id: parseInt(semesterId as string) },
+        select: { tahunAkademik: true, periode: true },
+      });
+      if (semester) {
+        semesterName = `${semester.tahunAkademik} ${semester.periode}`;
+      }
+    }
+
+    // Calculate stats
+    const stats = {
+      total: pembayaranList.length,
+      pending: pembayaranList.filter((p) => p.status === 'PENDING').length,
+      approved: pembayaranList.filter((p) => p.status === 'APPROVED').length,
+      rejected: pembayaranList.filter((p) => p.status === 'REJECTED').length,
+      totalNominal: pembayaranList
+        .filter((p) => p.status === 'APPROVED')
+        .reduce((sum, p) => sum + p.nominal, 0),
+    };
+
+    // Prepare data for PDF
+    const pdfData = {
+      pembayaranList,
+      filters: {
+        jenisPembayaran: jenisPembayaran as string,
+        status: status as string,
+        search: search as string,
+        semesterId: semesterId ? parseInt(semesterId as string) : undefined,
+        semester: semesterName,
+      },
+      stats,
+      generatedAt: new Date().toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    };
+
+    // Generate PDF
+    const html = getPembayaranReportHTMLTemplate(pdfData);
+    
+    // Generate filename
+    const timestamp = new Date().getTime();
+    const filterSuffix = jenisPembayaran && jenisPembayaran !== 'ALL' 
+      ? `_${jenisPembayaran}` 
+      : status && status !== 'ALL' 
+      ? `_${status}` 
+      : '';
+    const filename = `laporan-pembayaran${filterSuffix}_${timestamp}.pdf`;
+
+    await generatePDF(html, filename, res);
   }
 );

@@ -37,7 +37,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { FileText, Plus, Eye, Edit, Trash2, AlertCircle, Send } from 'lucide-react';
+import { FileText, Plus, Eye, Edit, Trash2, AlertCircle, Send, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -58,6 +58,12 @@ export default function AdminKRSListPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<KRSStatus | 'ALL'>('ALL');
   const [semesterFilter, setSemesterFilter] = useState<string>('ACTIVE');
+
+  // ✅ PAGINATION STATE
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalData, setTotalData] = useState(0);
+  const limit = 50; // ✅ Show 50 per page
 
   // Delete dialog
   const [deleteDialog, setDeleteDialog] = useState<{
@@ -108,13 +114,22 @@ export default function AdminKRSListPage() {
 
       const status = statusFilter === 'ALL' ? undefined : statusFilter;
 
+      // ✅ FIXED: Send page and limit parameters
       const response = await krsAPI.getAll({
+        page,
+        limit,
         semesterId: semesterId,
         status,
       });
 
       if (response.success && response.data) {
         setKrsList(response.data);
+        
+        // ✅ FIXED: Set pagination info
+        if (response.pagination) {
+          setTotalPages(response.pagination.totalPages || 1);
+          setTotalData(response.pagination.total || 0);
+        }
       } else {
         setError(response.message || 'Gagal memuat daftar KRS');
       }
@@ -130,13 +145,18 @@ export default function AdminKRSListPage() {
     }
   };
 
+  // ✅ FIXED: Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, semesterFilter]);
+
   useEffect(() => {
     if (!isLoadingSemester) {
       fetchKRS();
     }
-  }, [statusFilter, semesterFilter, semesterList, isLoadingSemester]);
+  }, [page, statusFilter, semesterFilter, semesterList, isLoadingSemester]);
 
-  // FILTER KRS BY SEARCH
+  // FILTER KRS BY SEARCH (client-side)
   const filteredKRS = krsList.filter((krs) => {
     if (search === '') return true;
     const mahasiswa = krs.mahasiswa;
@@ -147,7 +167,7 @@ export default function AdminKRSListPage() {
     );
   });
 
-  // STATS
+  // STATS (from filtered data)
   const draftCount = filteredKRS.filter((krs) => krs.status === 'DRAFT').length;
   const submittedCount = filteredKRS.filter(
     (krs) => krs.status === 'SUBMITTED'
@@ -231,6 +251,15 @@ export default function AdminKRSListPage() {
     fetchKRS();
   };
 
+  // ✅ PAGINATION HANDLERS
+  const handlePrevPage = () => {
+    if (page > 1) setPage(page - 1);
+  };
+
+  const handleNextPage = () => {
+    if (page < totalPages) setPage(page + 1);
+  };
+
   if (isLoading && isLoadingSemester) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -266,6 +295,7 @@ export default function AdminKRSListPage() {
         }
       />
 
+      {/* Alert for DRAFT */}
       {draftCount > 0 && (
         <Card className="border-blue-200 bg-blue-50">
           <CardContent className="flex items-center gap-3 pt-6">
@@ -276,6 +306,23 @@ export default function AdminKRSListPage() {
               </p>
               <p className="text-sm text-blue-700">
                 KRS dengan status DRAFT belum disubmit untuk approval dosen
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Alert for REJECTED */}
+      {rejectedCount > 0 && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="flex items-center gap-3 pt-6">
+            <AlertCircle className="h-5 w-5 text-red-600" />
+            <div>
+              <p className="font-medium text-red-900">
+                Ada {rejectedCount} KRS yang DITOLAK
+              </p>
+              <p className="text-sm text-red-700">
+                KRS yang ditolak perlu diedit dan disubmit ulang
               </p>
             </div>
           </CardContent>
@@ -352,120 +399,154 @@ export default function AdminKRSListPage() {
               className="my-8 border-0"
             />
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>NIM</TableHead>
-                    <TableHead>Nama Mahasiswa</TableHead>
-                    <TableHead>Prodi</TableHead>
-                    <TableHead>Semester</TableHead>
-                    <TableHead>Total SKS</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Tanggal Dibuat</TableHead>
-                    <TableHead className="text-right">Aksi</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredKRS.map((krs) => (
-                    <TableRow key={krs.id}>
-                      <TableCell className="font-mono font-medium">
-                        {krs.mahasiswa?.nim || '-'}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {krs.mahasiswa?.namaLengkap || '-'}
-                      </TableCell>
-                      <TableCell>
-                        {krs.mahasiswa?.prodi?.nama || '-'}
-                      </TableCell>
-                      <TableCell>
-                        {krs.semester?.tahunAkademik || '-'} -{' '}
-                        {krs.semester?.periode || '-'}
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-medium">{krs.totalSKS}</span> SKS
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={krs.status} showIcon />
-                      </TableCell>
-                      <TableCell>
-                        {format(new Date(krs.createdAt), 'dd MMM yyyy', {
-                          locale: id,
-                        })}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          {/* ✅ DRAFT - Edit, Submit, Delete */}
-                          {krs.status === 'DRAFT' && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEdit(krs.id)}
-                              >
-                                <Edit className="mr-2 h-4 w-4" />
-                                Edit
-                              </Button>
-                              <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => handleSubmit(krs.id)}
-                              >
-                                <Send className="mr-2 h-4 w-4" />
-                                Submit
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDeleteClick(krs)}
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Hapus
-                              </Button>
-                            </>
-                          )}
-
-                          {/* ✅ REJECTED - Edit, Submit lagi */}
-                          {krs.status === 'REJECTED' && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEdit(krs.id)}
-                              >
-                                <Edit className="mr-2 h-4 w-4" />
-                                Edit
-                              </Button>
-                              <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => handleSubmit(krs.id)}
-                              >
-                                <Send className="mr-2 h-4 w-4" />
-                                Submit Ulang
-                              </Button>
-                            </>
-                          )}
-
-                          {/* ✅ SUBMITTED/APPROVED - View only */}
-                          {(krs.status === 'SUBMITTED' || krs.status === 'APPROVED') && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleView(krs.id)}
-                            >
-                              <Eye className="mr-2 h-4 w-4" />
-                              Detail
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>NIM</TableHead>
+                      <TableHead>Nama Mahasiswa</TableHead>
+                      <TableHead>Prodi</TableHead>
+                      <TableHead>Semester</TableHead>
+                      <TableHead>Total SKS</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Tanggal Dibuat</TableHead>
+                      <TableHead className="text-right">Aksi</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredKRS.map((krs) => (
+                      <TableRow key={krs.id}>
+                        <TableCell className="font-mono font-medium">
+                          {krs.mahasiswa?.nim || '-'}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {krs.mahasiswa?.namaLengkap || '-'}
+                        </TableCell>
+                        <TableCell>
+                          {krs.mahasiswa?.prodi?.nama || '-'}
+                        </TableCell>
+                        <TableCell>
+                          {krs.semester?.tahunAkademik || '-'} -{' '}
+                          {krs.semester?.periode || '-'}
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-medium">{krs.totalSKS}</span> SKS
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={krs.status} showIcon />
+                        </TableCell>
+                        <TableCell>
+                          {format(new Date(krs.createdAt), 'dd MMM yyyy', {
+                            locale: id,
+                          })}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            {/* DRAFT - Edit, Submit, Delete */}
+                            {krs.status === 'DRAFT' && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEdit(krs.id)}
+                                >
+                                  <Edit className="mr-2 h-4 w-4" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  onClick={() => handleSubmit(krs.id)}
+                                >
+                                  <Send className="mr-2 h-4 w-4" />
+                                  Submit
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteClick(krs)}
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Hapus
+                                </Button>
+                              </>
+                            )}
+
+                            {/* REJECTED - Edit, Submit lagi */}
+                            {krs.status === 'REJECTED' && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEdit(krs.id)}
+                                >
+                                  <Edit className="mr-2 h-4 w-4" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  onClick={() => handleSubmit(krs.id)}
+                                >
+                                  <Send className="mr-2 h-4 w-4" />
+                                  Submit Ulang
+                                </Button>
+                              </>
+                            )}
+
+                            {/* SUBMITTED/APPROVED - View only */}
+                            {(krs.status === 'SUBMITTED' || krs.status === 'APPROVED') && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleView(krs.id)}
+                              >
+                                <Eye className="mr-2 h-4 w-4" />
+                                Detail
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* ✅ PAGINATION CONTROLS */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between border-t px-6 py-4">
+                  <div className="text-sm text-muted-foreground">
+                    Menampilkan {(page - 1) * limit + 1} - {Math.min(page * limit, totalData)} dari {totalData} KRS
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePrevPage}
+                      disabled={page === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    <div className="text-sm text-muted-foreground">
+                      Halaman {page} dari {totalPages}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleNextPage}
+                      disabled={page === totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -476,7 +557,7 @@ export default function AdminKRSListPage() {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-sm text-muted-foreground">Total KRS</p>
-              <p className="text-2xl font-bold">{filteredKRS.length}</p>
+              <p className="text-2xl font-bold">{totalData}</p>
             </div>
           </CardContent>
         </Card>

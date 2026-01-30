@@ -502,3 +502,322 @@ export const getTranskripHTMLTemplate = (data: any) => {
     </html>
   `;
 };
+
+export const getPembayaranReportHTMLTemplate = (data: {
+  pembayaranList: any[];
+  filters: {
+    jenisPembayaran?: string;
+    status?: string;
+    search?: string;
+    semesterId?: number;
+    semester?: string;
+  };
+  stats: {
+    total: number;
+    pending: number;
+    approved: number;
+    rejected: number;
+    totalNominal: number;
+  };
+  generatedAt: string;
+}) => {
+  const { pembayaranList, filters, stats, generatedAt } = data;
+
+  // Payment type labels
+  const paymentTypeLabels: Record<string, string> = {
+    KRS: 'Pembayaran KRS',
+    TENGAH_SEMESTER: 'Tengah Semester',
+    PPL: 'PPL',
+    SKRIPSI: 'Skripsi',
+    WISUDA: 'Wisuda',
+    KOMITMEN_BULANAN: 'Komitmen Bulanan',
+  };
+
+  // Status labels
+  const statusLabels: Record<string, string> = {
+    PENDING: 'Pending',
+    APPROVED: 'Disetujui',
+    REJECTED: 'Ditolak',
+  };
+
+  // Format currency
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  // Format date
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+          font-family: 'Arial', sans-serif; 
+          padding: 20px; 
+          font-size: 9px;
+          line-height: 1.3;
+        }
+        .header {
+          text-align: center;
+          margin-bottom: 15px;
+          border-bottom: 2px solid #000;
+          padding-bottom: 10px;
+        }
+        .header h1 { 
+          font-size: 16px; 
+          margin-bottom: 3px;
+          text-transform: uppercase;
+        }
+        .header h2 { 
+          font-size: 12px; 
+          font-weight: normal;
+          margin-bottom: 2px;
+        }
+        .header p {
+          font-size: 8px;
+          color: #666;
+        }
+        .filters {
+          margin-bottom: 12px;
+          background: #f5f5f5;
+          padding: 8px;
+          border-radius: 4px;
+        }
+        .filter-row {
+          display: grid;
+          grid-template-columns: 80px 1fr;
+          margin-bottom: 3px;
+          font-size: 8px;
+        }
+        .filter-label { 
+          font-weight: bold;
+        }
+        .stats {
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+        .stat-card {
+          background: #e8f5e9;
+          padding: 8px;
+          border-radius: 4px;
+          text-align: center;
+        }
+        .stat-card.pending { background: #fff9c4; }
+        .stat-card.approved { background: #c8e6c9; }
+        .stat-card.rejected { background: #ffcdd2; }
+        .stat-card.total-nominal { background: #bbdefb; }
+        .stat-label {
+          font-size: 7px;
+          color: #666;
+          margin-bottom: 3px;
+        }
+        .stat-value {
+          font-size: 14px;
+          font-weight: bold;
+        }
+        table { 
+          width: 100%; 
+          border-collapse: collapse; 
+          margin-top: 10px;
+          font-size: 7px;
+        }
+        th, td { 
+          border: 1px solid #333; 
+          padding: 4px; 
+          text-align: left;
+        }
+        th { 
+          background: #e0e0e0; 
+          font-weight: bold;
+          text-align: center;
+          font-size: 7px;
+        }
+        td.center { text-align: center; }
+        td.right { text-align: right; }
+        .badge {
+          display: inline-block;
+          padding: 2px 6px;
+          border-radius: 3px;
+          font-size: 7px;
+          font-weight: bold;
+        }
+        .badge-pending {
+          background: #fff9c4;
+          color: #f57f17;
+        }
+        .badge-approved {
+          background: #c8e6c9;
+          color: #2e7d32;
+        }
+        .badge-rejected {
+          background: #ffcdd2;
+          color: #c62828;
+        }
+        .badge-type {
+          background: #e3f2fd;
+          color: #1565c0;
+        }
+        .footer {
+          margin-top: 15px;
+          padding-top: 10px;
+          border-top: 1px solid #ccc;
+          font-size: 7px;
+          text-align: center;
+          color: #666;
+        }
+        tfoot tr {
+          background: #f0f0f0;
+          font-weight: bold;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>STT Diakonos</h1>
+        <h2>Laporan Pembayaran Mahasiswa</h2>
+        <p>Dicetak pada: ${generatedAt}</p>
+      </div>
+      
+      <div class="filters">
+        <h3 style="font-size: 10px; margin-bottom: 5px;">Filter Laporan:</h3>
+        ${filters.jenisPembayaran && filters.jenisPembayaran !== 'ALL' ? `
+          <div class="filter-row">
+            <div class="filter-label">Jenis:</div>
+            <div>${paymentTypeLabels[filters.jenisPembayaran] || filters.jenisPembayaran}</div>
+          </div>
+        ` : ''}
+        ${filters.status && filters.status !== 'ALL' ? `
+          <div class="filter-row">
+            <div class="filter-label">Status:</div>
+            <div>${statusLabels[filters.status] || filters.status}</div>
+          </div>
+        ` : ''}
+        ${filters.semester ? `
+          <div class="filter-row">
+            <div class="filter-label">Semester:</div>
+            <div>${filters.semester}</div>
+          </div>
+        ` : ''}
+        ${filters.search ? `
+          <div class="filter-row">
+            <div class="filter-label">Pencarian:</div>
+            <div>${filters.search}</div>
+          </div>
+        ` : ''}
+        ${!filters.jenisPembayaran && !filters.status && !filters.semester && !filters.search ? `
+          <div style="font-size: 8px; font-style: italic; color: #666;">
+            Semua data pembayaran (tanpa filter)
+          </div>
+        ` : ''}
+      </div>
+
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-label">Total Data</div>
+          <div class="stat-value">${stats.total}</div>
+        </div>
+        <div class="stat-card pending">
+          <div class="stat-label">Pending</div>
+          <div class="stat-value">${stats.pending}</div>
+        </div>
+        <div class="stat-card approved">
+          <div class="stat-label">Disetujui</div>
+          <div class="stat-value">${stats.approved}</div>
+        </div>
+        <div class="stat-card rejected">
+          <div class="stat-label">Ditolak</div>
+          <div class="stat-value">${stats.rejected}</div>
+        </div>
+        <div class="stat-card total-nominal">
+          <div class="stat-label">Total Nominal</div>
+          <div class="stat-value" style="font-size: 10px;">${formatCurrency(stats.totalNominal)}</div>
+        </div>
+      </div>
+      
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 3%;">No</th>
+            <th style="width: 9%;">NIM</th>
+            <th style="width: 17%;">Nama</th>
+            <th style="width: 12%;">Jenis</th>
+            <th style="width: 13%;">Semester/Bulan</th>
+            <th style="width: 12%;">Nominal</th>
+            <th style="width: 13%;">Tgl Upload</th>
+            <th style="width: 13%;">Tgl Verifikasi</th>
+            <th style="width: 8%;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${pembayaranList.length === 0 ? `
+            <tr>
+              <td colspan="9" style="text-align: center; padding: 20px; font-style: italic; color: #666;">
+                Tidak ada data pembayaran
+              </td>
+            </tr>
+          ` : pembayaranList.map((p: any, i: number) => `
+            <tr>
+              <td class="center">${i + 1}</td>
+              <td>${p.mahasiswa?.nim || '-'}</td>
+              <td>${p.mahasiswa?.namaLengkap || '-'}</td>
+              <td>
+                <span class="badge badge-type">
+                  ${paymentTypeLabels[p.jenisPembayaran] || p.jenisPembayaran}
+                </span>
+              </td>
+              <td class="center">
+                ${p.jenisPembayaran === 'KOMITMEN_BULANAN' && p.bulanPembayaran
+                  ? new Date(p.bulanPembayaran).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
+                  : p.semester
+                  ? `${p.semester.tahunAkademik} ${p.semester.periode}`
+                  : '-'
+                }
+              </td>
+              <td class="right">${formatCurrency(p.nominal)}</td>
+              <td class="center">${formatDate(p.uploadedAt)}</td>
+              <td class="center">${p.verifiedAt ? formatDate(p.verifiedAt) : '-'}</td>
+              <td class="center">
+                <span class="badge badge-${p.status.toLowerCase()}">
+                  ${statusLabels[p.status] || p.status}
+                </span>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+        ${pembayaranList.length > 0 ? `
+          <tfoot>
+            <tr>
+              <td colspan="5" style="text-align: right; padding-right: 10px;">Total Keseluruhan:</td>
+              <td class="right">${formatCurrency(pembayaranList.reduce((sum, p) => sum + p.nominal, 0))}</td>
+              <td colspan="3"></td>
+            </tr>
+          </tfoot>
+        ` : ''}
+      </table>
+
+      <div class="footer">
+        <p>Laporan ini dicetak otomatis oleh sistem dan sah tanpa tanda tangan</p>
+        <p>STT Diakonos - Sistem Informasi Akademik</p>
+      </div>
+    </body>
+    </html>
+  `;
+};

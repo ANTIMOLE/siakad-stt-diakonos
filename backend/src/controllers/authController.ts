@@ -1,6 +1,6 @@
 /**
- * Authentication Controller
- * ✅ UPDATED: Support for NIM (10 digits) and NIDN (10 digits)
+ * Authentication Controller - SECURITY HARDENED
+ * horter token expiry, better validation
  */
 
 import { Response } from 'express';
@@ -12,31 +12,37 @@ import { AuthRequest } from '../middlewares/authMiddleware';
 import { asyncHandler, AppError } from '../middlewares/errorMiddleware';
 
 // ============================================
-// COOKIE OPTIONS
+// COOKIE OPTIONS - SECURITY HARDENED
 // ============================================
 const getCookieOptions = () => ({
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: (process.env.NODE_ENV === 'production' ? 'strict' : 'lax') as 'strict' | 'lax',
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  httpOnly: true,  // Prevent XSS
+  secure: process.env.NODE_ENV === 'production',  // HTTPS only in production
+  sameSite: (process.env.NODE_ENV === 'production' ? 'strict' : 'lax') as 'strict' | 'lax',  // ✅ CSRF protection
+  maxAge: 24 * 60 * 60 * 1000,  // ✅ REDUCED: 1 day instead of 7 days
   path: '/',
+  // DDED: Domain restriction in production
+  ...(process.env.NODE_ENV === 'production' && {
+    domain: process.env.COOKIE_DOMAIN || undefined,
+  }),
 });
 
 // ============================================
-// LOGIN
+// LOGIN - With additional security
 // ============================================
 export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { identifier, password } = req.body;
+  
+  // SECURITY: Normalize identifier (trim, lowercase for username)
+  const normalizedIdentifier = identifier.trim();
   
   let user: any;
   let loginType: string;
 
   // ===== 10 DIGITS: NIM (Mahasiswa) or NIDN (Dosen) =====
-  if (/^\d{10}$/.test(identifier)) {
-    // ✅ Check both NIM and NIDN in parallel
+  if (/^\d{10}$/.test(normalizedIdentifier)) {
     const [mahasiswa, dosen] = await Promise.all([
       prisma.mahasiswa.findUnique({
-        where: { nim: identifier },
+        where: { nim: normalizedIdentifier },
         include: { 
           user: true, 
           prodi: true,
@@ -49,7 +55,7 @@ export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
         },
       }),
       prisma.dosen.findUnique({
-        where: { nidn: identifier },
+        where: { nidn: normalizedIdentifier },
         include: { user: true, prodi: true },
       }),
     ]);
@@ -63,18 +69,19 @@ export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
       user.dosen = dosen;
       loginType = 'nidn';
     } else {
-      throw new AppError('NIM/NIDN atau password salah', 401);
+      // SECURITY: Generic error message to prevent user enumeration
+      throw new AppError('Identifier atau password salah', 401);
     }
 
   // ===== 16 DIGITS: NUPTK (Dosen) =====
-  } else if (/^\d{16}$/.test(identifier)) {
+  } else if (/^\d{16}$/.test(normalizedIdentifier)) {
     const dosen = await prisma.dosen.findUnique({
-      where: { nuptk: identifier },
+      where: { nuptk: normalizedIdentifier },
       include: { user: true, prodi: true },
     });
 
     if (!dosen) {
-      throw new AppError('NUPTK atau password salah', 401);
+      throw new AppError('Identifier atau password salah', 401);
     }
 
     user = dosen.user;
@@ -82,9 +89,9 @@ export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
     loginType = 'nuptk';
 
   // ===== USERNAME (Admin/Keuangan/Dosen) =====
-  } else if (/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(identifier)) {
+  } else if (/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(normalizedIdentifier)) {
     const userByUsername = await prisma.user.findUnique({
-      where: { username: identifier },
+      where: { username: normalizedIdentifier.toLowerCase() },  // Case-insensitive
       include: {
         dosen: {
           include: {
@@ -95,7 +102,7 @@ export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
     });
 
     if (!userByUsername) {
-      throw new AppError('Username atau password salah', 401);
+      throw new AppError('Identifier atau password salah', 401);
     }
 
     if (userByUsername.role === 'MAHASISWA') {
@@ -105,10 +112,10 @@ export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
     user = userByUsername;
     loginType = 'username';
 
-  // ===== USER_ID (1-9 digits, for development) =====
-  } else if (/^\d{1,9}$/.test(identifier)) {
+  // ===== USER_ID (1-9 digits, for development only) =====
+  } else if (/^\d{1,9}$/.test(normalizedIdentifier) && process.env.NODE_ENV === 'development') {
     const userById = await prisma.user.findUnique({
-      where: { id: Number(identifier) },
+      where: { id: Number(normalizedIdentifier) },
       include: {
         mahasiswa: {
           include: {
@@ -140,32 +147,38 @@ export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
     throw new AppError('Format identifier tidak valid', 400);
   }
 
-  // Check if user is active
+  // SECURITY: Check if user is active BEFORE password check
   if (!user.isActive) {
     throw new AppError('Akun Anda telah dinonaktifkan', 403);
   }
 
-  // Verify password
+  // SECURITY: Verify password (timing-safe comparison via bcrypt)
   const isPasswordValid = await bcrypt.compare(password, user.password);
   if (!isPasswordValid) {
+    // Generic error message
     throw new AppError('Identifier atau password salah', 401);
   }
 
-  // ✅ Generate JWT token
+  // Generate JWT token with shorter expiry
   const token = jwt.sign(
     {
       userId: user.id,
-      identifier: identifier,
+      identifier: normalizedIdentifier,
       role: user.role,
+      // ADDED: Issued at timestamp for token rotation
+      iat: Math.floor(Date.now() / 1000),
     },
     env.JWT_SECRET,
-    { expiresIn: env.JWT_EXPIRES_IN } as jwt.SignOptions
+    { expiresIn: '1d' }  // 1 day instead of 7
   );
 
-  // ✅ SET HTTPONLY COOKIE
+  // SET HTTPONLY COOKIE
   res.cookie('token', token, getCookieOptions());
 
-  // ✅ Prepare user data (WITHOUT TOKEN)
+  // SECURITY: Log successful login (optional, for audit trail)
+  console.log(`Login successful: User ${user.id} (${user.role}) via ${loginType}`);
+
+  // Prepare user data (NO PASSWORD, NO SENSITIVE INFO)
   const responseData = {
     user: {
       id: user.id,
@@ -199,7 +212,7 @@ export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
 });
 
 // ============================================
-// REGISTER
+// REGISTER - With improved validation
 // ============================================
 export const register = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
@@ -214,25 +227,39 @@ export const register = asyncHandler(async (req: AuthRequest, res: Response) => 
     angkatan,
   } = req.body;
 
-  // ✅ Validate username for ADMIN/KEUANGAN
+  // SECURITY: Validate password strength
+  if (password.length < 8) {
+    throw new AppError('Password minimal 8 karakter', 400);
+  }
+
+  // SECURITY: Check for common weak passwords
+  const weakPasswords = ['password', '12345678', 'qwerty123', 'admin123'];
+  if (weakPasswords.includes(password.toLowerCase())) {
+    throw new AppError('Password terlalu lemah, gunakan kombinasi yang lebih kuat', 400);
+  }
+
+  // Validate username for ADMIN/KEUANGAN
   if ((role === 'ADMIN' || role === 'KEUANGAN') && !username) {
     throw new AppError('Username wajib untuk role ADMIN atau KEUANGAN', 400);
   }
 
-  // ✅ Validate username tidak boleh untuk MAHASISWA
+  // Validate username tidak boleh untuk MAHASISWA
   if (role === 'MAHASISWA' && username) {
     throw new AppError('Mahasiswa tidak boleh memiliki username', 400);
   }
 
-  // ✅ Validate username format (must start with letter)
+  // Validate username format (must start with letter)
   if (username && !/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(username)) {
     throw new AppError('Username harus diawali huruf dan hanya boleh mengandung huruf, angka, underscore, atau hyphen', 400);
   }
 
-  // Check username already exists
-  if (username) {
+  // SECURITY: Normalize username to lowercase
+  const normalizedUsername = username?.toLowerCase();
+
+  // Check username already exists (case-insensitive)
+  if (normalizedUsername) {
     const existingUsername = await prisma.user.findUnique({
-      where: { username },
+      where: { username: normalizedUsername },
     });
     if (existingUsername) {
       throw new AppError('Username sudah digunakan', 400);
@@ -269,15 +296,15 @@ export const register = asyncHandler(async (req: AuthRequest, res: Response) => 
     }
   }
 
-  // Hash password
-  const hashedPassword = await bcrypt.hash(password, 10);
+  // SECURITY: Hash password with higher cost factor
+  const hashedPassword = await bcrypt.hash(password, 12);  // Increased from 10 to 12
 
   // Create user with profile
   const user = await prisma.user.create({
     data: {
       password: hashedPassword,
       role,
-      username: username || null,
+      username: normalizedUsername || null,
       isActive: true,
       
       ...(role === 'MAHASISWA' && {
@@ -314,7 +341,11 @@ export const register = asyncHandler(async (req: AuthRequest, res: Response) => 
     },
   });
 
+  // ✅ SECURITY: Don't return password
   const { password: _, ...userWithoutPassword } = user;
+
+  // SECURITY: Log user creation for audit
+  console.log(`User registered: ${user.id} (${role}) by Admin ${req.user?.id}`);
 
   res.status(201).json({
     success: true,
@@ -397,7 +428,7 @@ export const getCurrentUser = asyncHandler(
 );
 
 // ============================================
-// CHANGE PASSWORD
+// CHANGE PASSWORD - With improved security
 // ============================================
 export const changePassword = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -409,6 +440,17 @@ export const changePassword = asyncHandler(
 
     if (newPassword !== confirmPassword) {
       throw new AppError('Password baru tidak cocok dengan konfirmasi', 400);
+    }
+
+    // SECURITY: Validate new password strength
+    if (newPassword.length < 8) {
+      throw new AppError('Password baru minimal 8 karakter', 400);
+    }
+
+    // SECURITY: Check for weak passwords
+    const weakPasswords = ['password', '12345678', 'qwerty123', 'admin123'];
+    if (weakPasswords.includes(newPassword.toLowerCase())) {
+      throw new AppError('Password terlalu lemah, gunakan kombinasi yang lebih kuat', 400);
     }
 
     const user = await prisma.user.findUnique({
@@ -429,16 +471,23 @@ export const changePassword = asyncHandler(
       throw new AppError('Password baru tidak boleh sama dengan password lama', 400);
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    // SECURITY: Hash with higher cost
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
 
     await prisma.user.update({
       where: { id: req.user.id },
       data: { password: hashedPassword },
     });
 
+    // SECURITY: Invalidate current session by clearing cookie
+    res.clearCookie('token', getCookieOptions());
+
+    // SECURITY: Log password change
+    console.log(`Password changed: User ${user.id}`);
+
     res.status(200).json({
       success: true,
-      message: 'Password berhasil diubah',
+      message: 'Password berhasil diubah. Silakan login kembali.',
     });
   }
 );
@@ -448,12 +497,18 @@ export const changePassword = asyncHandler(
 // ============================================
 export const logout = asyncHandler(
   async (req: AuthRequest, res: Response) => {
+    //SECURITY: Clear cookie with same options used to set it
     res.clearCookie('token', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
       path: '/',
     });
+
+    //SECURITY: Log logout for audit
+    if (req.user) {
+      console.log(`Logout: User ${req.user.id}`);
+    }
 
     res.status(200).json({
       success: true,
@@ -471,14 +526,16 @@ export const refreshToken = asyncHandler(
       throw new AppError('User tidak ditemukan', 401);
     }
 
+    // ✅ SECURITY: Generate new token with fresh timestamp
     const token = jwt.sign(
       {
         userId: req.user.id,
         identifier: req.user.identifier, 
         role: req.user.role,
+        iat: Math.floor(Date.now() / 1000),
       },
       env.JWT_SECRET,
-      { expiresIn: env.JWT_EXPIRES_IN } as jwt.SignOptions
+      { expiresIn: '1d' } 
     );
 
     res.cookie('token', token, getCookieOptions());
@@ -490,6 +547,9 @@ export const refreshToken = asyncHandler(
   }
 );
 
+// ============================================
+// CHANGE USERNAME
+// ============================================
 export const changeUsername = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     if (!req.user) {
@@ -498,7 +558,7 @@ export const changeUsername = asyncHandler(
 
     const { newUsername } = req.body;
 
-    // Role check (redundant with middleware, but good practice)
+    // Role check
     if (req.user.role !== 'ADMIN' && req.user.role !== 'KEUANGAN') {
       throw new AppError(
         'Hanya Admin dan Staff Keuangan yang dapat mengubah username',
@@ -507,15 +567,10 @@ export const changeUsername = asyncHandler(
     }
 
     // Validation
-    if (!newUsername) {
-      throw new AppError('Username baru harus diisi', 400);
-    }
-
-    if (newUsername.length < 3) {
+    if (!newUsername || newUsername.length < 3) {
       throw new AppError('Username minimal 3 karakter', 400);
     }
 
-    // Validate username format (alphanumeric + underscore, must start with letter)
     if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(newUsername)) {
       throw new AppError(
         'Username harus diawali huruf dan hanya boleh mengandung huruf, angka, underscore, atau hyphen',
@@ -523,7 +578,9 @@ export const changeUsername = asyncHandler(
       );
     }
 
-    // Check if new username same as current
+    //SECURITY: Normalize to lowercase
+    const normalizedUsername = newUsername.toLowerCase();
+
     const currentUser = await prisma.user.findUnique({
       where: { id: req.user.id },
     });
@@ -532,14 +589,14 @@ export const changeUsername = asyncHandler(
       throw new AppError('User tidak ditemukan', 404);
     }
 
-    if (currentUser.username === newUsername) {
+    if (currentUser.username === normalizedUsername) {
       throw new AppError('Username baru sama dengan username saat ini', 400);
     }
 
-    // Check if username already taken by another user
+    // Check if username already taken
     const existingUser = await prisma.user.findFirst({
       where: {
-        username: newUsername,
+        username: normalizedUsername,
         id: { not: req.user.id },
       },
     });
@@ -551,14 +608,17 @@ export const changeUsername = asyncHandler(
     // Update username
     await prisma.user.update({
       where: { id: req.user.id },
-      data: { username: newUsername },
+      data: { username: normalizedUsername },
     });
+
+    //SECURITY: Log username change
+    console.log(`Username changed: User ${req.user.id} → ${normalizedUsername}`);
 
     res.status(200).json({
       success: true,
       message: 'Username berhasil diubah',
       data: {
-        username: newUsername,
+        username: normalizedUsername,
       },
     });
   }

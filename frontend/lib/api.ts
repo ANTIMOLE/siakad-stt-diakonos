@@ -300,12 +300,16 @@ export const paketKRSAPI = {
 // ============================================
 export const krsAPI = {
   getAll: (params?: {
-    semesterId?: number;        // ✅ Matches backend req.query.semesterId
-    status?: string;
-    mahasiswaId?: number;        // ✅ Matches backend req.query.mahasiswaId
-  }): Promise<ApiResponse<KRS[]>> => 
+    page?: number;           // ✅ ADDED: Pagination support
+    limit?: number;          // ✅ ADDED: Limit per page
+    search?: string;         // ✅ ADDED: Search query (optional)
+    semesterId?: number;     // ✅ EXISTING: Filter by semester
+    status?: string;         // ✅ EXISTING: Filter by status
+    mahasiswaId?: number;    // ✅ EXISTING: Filter by mahasiswa
+  }): Promise<PaginatedApiResponse<KRS>> =>  // ✅ FIXED: Return type changed from ApiResponse to PaginatedApiResponse
     api.get('/krs', { params }),
   
+  // ... rest of krsAPI functions stay the same
   getById: (id: number): Promise<ApiResponse<KRS>> => 
     api.get(`/krs/${id}`),
   
@@ -451,6 +455,17 @@ export const pembayaranAPI = {
     totalNominal: number;
   }>> =>
     api.get('/pembayaran/stats', { params }),
+
+    downloadPDFReport: (params?: {
+  search?: string;
+  semesterId?: number;
+  jenisPembayaran?: JenisPembayaran;
+  status?: string;
+}): Promise<Blob> =>
+  api.get('/pembayaran/report/pdf', { 
+    params,
+    responseType: 'blob' 
+  }),
 };
 
 // ============================================

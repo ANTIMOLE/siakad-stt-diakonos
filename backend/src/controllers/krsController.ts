@@ -29,7 +29,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   // Build where clause
   const where: Prisma.KRSWhereInput = {};
 
-  // ✅ TAMBAH: Filter untuk DOSEN - hanya mahasiswa bimbingan
+  // ✅ FILTER for DOSEN - only mahasiswa bimbingan
   let dosenWaliId: number | undefined;
   if (req.user?.role === 'DOSEN') {
     const dosen = await prisma.dosen.findUnique({
@@ -41,7 +41,10 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     dosenWaliId = dosen.id;
   }
 
-  if (search) {
+  // ✅ FIXED: Check for non-empty search string
+  const hasSearch = search && typeof search === 'string' && search.trim().length > 0;
+
+  if (hasSearch) {
     where.mahasiswa = {
       ...(dosenWaliId ? { dosenWaliId } : {}),
       OR: [
@@ -50,6 +53,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
       ],
     };
   } else if (dosenWaliId) {
+    // ✅ IMPORTANT: Always filter by dosenWaliId for DOSEN role
     where.mahasiswa = { dosenWaliId };
   }
 
@@ -215,6 +219,14 @@ export const getById = asyncHandler(
             },
           },
         },
+        paketKRS: {
+          select: {
+            id: true,
+            namaPaket: true,
+            angkatan: true,
+            semesterPaket: true,
+          },
+        },
       },
     });
 
@@ -330,7 +342,7 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
   const existingKRS = await prisma.kRS.findUnique({
     where: { id: parseInt(id) },
     include: {
-      semester: true, // ✅ Include semester for period check
+      semester: true,
     },
   });
 
@@ -346,7 +358,7 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     );
   }
 
-  // ✅ FIXED: Admin bypasses period validation
+  // ✅ Admin bypasses period validation
   const isAdmin = req.user?.role === 'ADMIN';
   
   // Only validate period for non-admin users
@@ -364,8 +376,7 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
       );
     }
   } else {
-    // ✅ For admin, only validate technical requirements (schedule conflicts, kuota)
-    // Skip period validation
+    // ✅ For admin, only validate technical requirements
     
     // 1. Check schedule conflicts
     const conflictCheck = await krsService.detectJadwalConflict(kelasMKIds);
@@ -382,9 +393,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     if (!sksCheck.isValid) {
       throw new AppError(sksCheck.message || 'SKS tidak valid', 400);
     }
-
-    // 3. Check kuota (but allow admin to override if needed)
-    // Skip kuota check for admin - they can force add students
   }
 
   const totalSKS = await krsService.calculateTotalSKS(kelasMKIds);
@@ -490,7 +498,7 @@ export const submit = asyncHandler(
       throw new AppError('KRS tidak ditemukan', 404);
     }
 
-    // ✅ FIXED: Allow both DRAFT and REJECTED
+    // ✅ Allow both DRAFT and REJECTED
     if (krs.status !== 'DRAFT' && krs.status !== 'REJECTED') {
       throw new AppError('KRS hanya dapat disubmit saat status DRAFT atau REJECTED', 400);
     }
@@ -552,6 +560,7 @@ export const submit = asyncHandler(
 export const approve = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
+    const { catatan_admin } = req.body;
 
     if (!req.user) {
       throw new AppError('User tidak ditemukan', 401);
@@ -567,7 +576,7 @@ export const approve = asyncHandler(
       throw new AppError('KRS tidak ditemukan', 404);
     }
 
-    // ✅ TAMBAH: Check jika DOSEN, harus dosen wali
+    // ✅ Check jika DOSEN, harus dosen wali
     if (req.user.role === 'DOSEN') {
       const dosen = await prisma.dosen.findUnique({
         where: { userId: req.user.id },
@@ -589,6 +598,7 @@ export const approve = asyncHandler(
         status: 'APPROVED',
         tanggalApproval: new Date(),
         approvedById: req.user.id,
+        catatanAdmin: catatan_admin || null,
       },
       include: {
         mahasiswa: true,
@@ -621,7 +631,7 @@ export const approve = asyncHandler(
 export const reject = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
-    const { catatanAdmin } = req.body;
+    const { catatan_admin } = req.body;
 
     if (!req.user) {
       throw new AppError('User tidak ditemukan', 401);
@@ -630,10 +640,21 @@ export const reject = asyncHandler(
     // Get KRS
     const krs = await prisma.kRS.findUnique({
       where: { id: parseInt(id) },
+      include: { mahasiswa: true },
     });
 
     if (!krs) {
       throw new AppError('KRS tidak ditemukan', 404);
+    }
+
+    // ✅ Check jika DOSEN, harus dosen wali
+    if (req.user.role === 'DOSEN') {
+      const dosen = await prisma.dosen.findUnique({
+        where: { userId: req.user.id },
+      });
+      if (!dosen || krs.mahasiswa.dosenWaliId !== dosen.id) {
+        throw new AppError('Anda bukan dosen wali mahasiswa ini', 403);
+      }
     }
 
     // Can only reject if status is SUBMITTED
@@ -648,7 +669,7 @@ export const reject = asyncHandler(
         status: 'REJECTED',
         tanggalApproval: new Date(),
         approvedById: req.user.id,
-        catatanAdmin,
+        catatanAdmin: catatan_admin,
       },
       include: {
         mahasiswa: true,

@@ -21,7 +21,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Check, ChevronsUpDown, ArrowLeft, AlertCircle, Plus, Package } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 
 import { krsAPI, mahasiswaAPI, semesterAPI, paketKRSAPI } from '@/lib/api';
 import { Mahasiswa, Semester, PaketKRS } from '@/types/model';
@@ -71,12 +70,9 @@ export default function AssignKRSPage() {
       try {
         setIsLoadingMahasiswa(true);
         const response = await mahasiswaAPI.getAll({
-          search: '',
-          prodi: undefined,
-          angkatan: undefined,
-          status: undefined,
           page: 1,
-          limit: 50, // naikkan sedikit biar lebih banyak opsi langsung
+          limit: 100, // ✅ INCREASED for better selection
+          status: 'AKTIF', // ✅ Only active students
         });
 
         if (response.success && response.data) {
@@ -116,7 +112,7 @@ export default function AssignKRSPage() {
     fetchSemester();
   }, []);
 
-  // FETCH PAKET KRS
+  // ✅ FIXED: FETCH PAKET KRS with proper filtering
   useEffect(() => {
     if (!selectedMahasiswaId || !selectedSemesterId) {
       setPaketKRSList([]);
@@ -130,7 +126,11 @@ export default function AssignKRSPage() {
         const mahasiswa = mahasiswaList.find((m) => m.id === selectedMahasiswaId);
         if (!mahasiswa) return;
 
+        // ✅ FIXED: Filter by angkatan and prodi
         const response = await paketKRSAPI.getAll({
+          angkatan: mahasiswa.angkatan,
+          prodi: mahasiswa.prodiId,
+          // Note: semester_paket filtering removed - paket can be for any semester
         });
 
         if (response.success && response.data) {

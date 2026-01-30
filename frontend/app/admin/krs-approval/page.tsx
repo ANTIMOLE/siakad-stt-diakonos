@@ -27,7 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { CheckSquare, Eye, AlertCircle } from 'lucide-react';
+import { CheckSquare, Eye, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -38,9 +38,7 @@ import { KRS, Semester, KRSStatus } from '@/types/model';
 export default function KRSApprovalListPage() {
   const router = useRouter();
 
-  // ============================================
-  // STATE MANAGEMENT
-  // ============================================
+  // STATE
   const [krsList, setKrsList] = useState<KRS[]>([]);
   const [semesterList, setSemesterList] = useState<Semester[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -51,9 +49,13 @@ export default function KRSApprovalListPage() {
   const [statusFilter, setStatusFilter] = useState<KRSStatus | 'ALL'>('SUBMITTED');
   const [semesterFilter, setSemesterFilter] = useState<string>('ACTIVE');
 
-  // ============================================
+  // ✅ PAGINATION STATE
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalData, setTotalData] = useState(0);
+  const limit = 50;
+
   // FETCH SEMESTER LIST
-  // ============================================
   useEffect(() => {
     const fetchSemester = async () => {
       try {
@@ -74,9 +76,12 @@ export default function KRSApprovalListPage() {
     fetchSemester();
   }, []);
 
-  // ============================================
+  // ✅ RESET PAGE when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, semesterFilter]);
+
   // FETCH KRS LIST
-  // ============================================
   useEffect(() => {
     const fetchKRS = async () => {
       try {
@@ -95,14 +100,22 @@ export default function KRSApprovalListPage() {
         // Determine status
         const status = statusFilter === 'ALL' ? undefined : statusFilter;
 
-        // Backend akan auto filter by dosen wali dari JWT token
+        // ✅ FIXED: Send pagination parameters
         const response = await krsAPI.getAll({
+          page,
+          limit,
           semesterId: semesterId,
           status,
         });
 
         if (response.success && response.data) {
           setKrsList(response.data);
+          
+          // ✅ Set pagination info
+          if (response.pagination) {
+            setTotalPages(response.pagination.totalPages || 1);
+            setTotalData(response.pagination.total || 0);
+          }
         } else {
           setError(response.message || 'Gagal memuat daftar KRS');
         }
@@ -118,15 +131,12 @@ export default function KRSApprovalListPage() {
       }
     };
 
-    // Only fetch if semester list is loaded
     if (!isLoadingSemester) {
       fetchKRS();
     }
-  }, [statusFilter, semesterFilter, semesterList, isLoadingSemester]);
+  }, [page, statusFilter, semesterFilter, semesterList, isLoadingSemester]);
 
-  // ============================================
-  // FILTER KRS BY SEARCH
-  // ============================================
+  // FILTER KRS BY SEARCH (client-side)
   const filteredKRS = krsList.filter((krs) => {
     if (search === '') return true;
     const mahasiswa = krs.mahasiswa;
@@ -136,27 +146,30 @@ export default function KRSApprovalListPage() {
     );
   });
 
-  // ============================================
   // STATS
-  // ============================================
   const pendingCount = filteredKRS.filter((krs) => krs.status === 'SUBMITTED').length;
   const approvedCount = filteredKRS.filter((krs) => krs.status === 'APPROVED').length;
   const rejectedCount = filteredKRS.filter((krs) => krs.status === 'REJECTED').length;
 
-  // ============================================
   // HANDLERS
-  // ============================================
   const handleReview = (id: number) => {
-    router.push(`/admin/krs-approval/${id}`);
+    router.push(`/dosen/krs-approval/${id}`);
   };
 
   const handleRetry = () => {
     window.location.reload();
   };
 
-  // ============================================
+  // ✅ PAGINATION HANDLERS
+  const handlePrevPage = () => {
+    if (page > 1) setPage(page - 1);
+  };
+
+  const handleNextPage = () => {
+    if (page < totalPages) setPage(page + 1);
+  };
+
   // LOADING STATE
-  // ============================================
   if (isLoading || isLoadingSemester) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -165,9 +178,7 @@ export default function KRSApprovalListPage() {
     );
   }
 
-  // ============================================
   // ERROR STATE
-  // ============================================
   if (error) {
     return (
       <ErrorState
@@ -178,17 +189,14 @@ export default function KRSApprovalListPage() {
     );
   }
 
-  // ============================================
   // RENDER
-  // ============================================
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <PageHeader
         title="Approval KRS"
         description="Review dan setujui KRS mahasiswa bimbingan"
         breadcrumbs={[
-          { label: 'Dashboard', href: '/admin/dashboard' },
+          { label: 'Dashboard', href: '/dosen/dashboard' },
           { label: 'Approval KRS' },
         ]}
       />
@@ -203,8 +211,7 @@ export default function KRSApprovalListPage() {
                 Ada {pendingCount} KRS menunggu approval dari Anda
               </p>
               <p className="text-sm text-yellow-700">
-                Segera review dan berikan approval untuk KRS mahasiswa bimbingan
-                Anda
+                Segera review dan berikan approval untuk KRS mahasiswa bimbingan Anda
               </p>
             </div>
           </CardContent>
@@ -271,62 +278,96 @@ export default function KRSApprovalListPage() {
               className="my-8 border-0"
             />
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>NIM</TableHead>
-                    <TableHead>Nama Mahasiswa</TableHead>
-                    <TableHead>Semester</TableHead>
-                    <TableHead>Total SKS</TableHead>
-                    <TableHead>Tanggal Submit</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Aksi</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredKRS.map((krs) => (
-                    <TableRow key={krs.id}>
-                      <TableCell className="font-mono font-medium">
-                        {krs.mahasiswa?.nim || '-'}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {krs.mahasiswa?.namaLengkap || '-'}
-                      </TableCell>
-                      <TableCell>
-                        {krs.semester?.tahunAkademik || '-'} -{' '}
-                        {krs.semester?.periode || '-'}
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-medium">{krs.totalSKS}</span> SKS
-                      </TableCell>
-                      <TableCell>
-                        {krs.tanggalSubmit
-                          ? format(new Date(krs.tanggalSubmit), 'dd MMM yyyy', {
-                              locale: id,
-                            })
-                          : '-'}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={krs.status} showIcon />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant={
-                            krs.status === 'SUBMITTED' ? 'default' : 'ghost'
-                          }
-                          size="sm"
-                          onClick={() => handleReview(krs.id)}
-                        >
-                          <Eye className="mr-2 h-4 w-4" />
-                          {krs.status === 'SUBMITTED' ? 'Review' : 'Detail'}
-                        </Button>
-                      </TableCell>
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>NIM</TableHead>
+                      <TableHead>Nama Mahasiswa</TableHead>
+                      <TableHead>Semester</TableHead>
+                      <TableHead>Total SKS</TableHead>
+                      <TableHead>Tanggal Submit</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Aksi</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredKRS.map((krs) => (
+                      <TableRow key={krs.id}>
+                        <TableCell className="font-mono font-medium">
+                          {krs.mahasiswa?.nim || '-'}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {krs.mahasiswa?.namaLengkap || '-'}
+                        </TableCell>
+                        <TableCell>
+                          {krs.semester?.tahunAkademik || '-'} -{' '}
+                          {krs.semester?.periode || '-'}
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-medium">{krs.totalSKS}</span> SKS
+                        </TableCell>
+                        <TableCell>
+                          {krs.tanggalSubmit
+                            ? format(new Date(krs.tanggalSubmit), 'dd MMM yyyy', {
+                                locale: id,
+                              })
+                            : '-'}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={krs.status} showIcon />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant={
+                              krs.status === 'SUBMITTED' ? 'default' : 'ghost'
+                            }
+                            size="sm"
+                            onClick={() => handleReview(krs.id)}
+                          >
+                            <Eye className="mr-2 h-4 w-4" />
+                            {krs.status === 'SUBMITTED' ? 'Review' : 'Detail'}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* ✅ PAGINATION CONTROLS */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between border-t px-6 py-4">
+                  <div className="text-sm text-muted-foreground">
+                    Menampilkan {(page - 1) * limit + 1} - {Math.min(page * limit, totalData)} dari {totalData} KRS
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePrevPage}
+                      disabled={page === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    <div className="text-sm text-muted-foreground">
+                      Halaman {page} dari {totalPages}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleNextPage}
+                      disabled={page === totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -337,7 +378,7 @@ export default function KRSApprovalListPage() {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-sm text-muted-foreground">Total KRS</p>
-              <p className="text-2xl font-bold">{filteredKRS.length}</p>
+              <p className="text-2xl font-bold">{totalData}</p>
             </div>
           </CardContent>
         </Card>

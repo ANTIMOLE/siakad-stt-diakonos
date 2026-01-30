@@ -36,7 +36,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { CheckCircle, XCircle, Eye, FileText, AlertCircle } from 'lucide-react';
+import { CheckCircle, XCircle, Eye, FileText, AlertCircle, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -62,6 +62,13 @@ export default function PembayaranPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
+  
+  // ✅ PAGINATION STATE
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalData, setTotalData] = useState(0);
+  const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
+  const ITEMS_PER_PAGE = 10;
 
   const PAYMENT_TYPE_LABELS: Record<JenisPembayaran, string> = {
     KRS: 'Pembayaran KRS',
@@ -91,17 +98,21 @@ export default function PembayaranPage() {
       setError(null);
 
       const response = await pembayaranAPI.getAll({
+        page: currentPage,
+        limit: ITEMS_PER_PAGE,
         search: searchQuery || undefined,
         status: statusFilter !== 'ALL' ? statusFilter : undefined,
         jenisPembayaran: typeFilter !== 'ALL' ? typeFilter : undefined,
-        limit: 100,
       });
 
       if (response.success && response.data) {
-        const sortedData = response.data.sort((a, b) => {
-          return new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime();
-        });
-        setPembayaranList(sortedData);
+        setPembayaranList(response.data);
+        
+        // ✅ SET PAGINATION DATA
+        if (response.pagination) {
+          setTotalPages(response.pagination.totalPages);
+          setTotalData(response.pagination.total);
+        }
       } else {
         setError(response.message || 'Gagal memuat data pembayaran');
       }
@@ -115,11 +126,16 @@ export default function PembayaranPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, statusFilter, typeFilter]);
+  }, [currentPage, searchQuery, statusFilter, typeFilter]);
 
   useEffect(() => {
     fetchPembayaran();
   }, [fetchPembayaran]);
+
+  // ✅ RESET PAGE WHEN FILTERS CHANGE
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, typeFilter]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -189,13 +205,8 @@ export default function PembayaranPage() {
       if (response.success) {
         toast.success('Pembayaran berhasil disetujui');
         
-        setPembayaranList((prev) =>
-          prev.map((p) =>
-            p.id === selectedPembayaran.id
-              ? { ...p, status: 'APPROVED' as const, verifiedAt: new Date().toISOString() }
-              : p
-          )
-        );
+        // Refresh data
+        await fetchPembayaran();
 
         setShowApproveDialog(false);
         setSelectedPembayaran(null);
@@ -228,18 +239,8 @@ export default function PembayaranPage() {
       if (response.success) {
         toast.success('Pembayaran berhasil ditolak');
 
-        setPembayaranList((prev) =>
-          prev.map((p) =>
-            p.id === selectedPembayaran.id
-              ? {
-                  ...p,
-                  status: 'REJECTED' as const,
-                  catatan: catatan.trim(),
-                  verifiedAt: new Date().toISOString(),
-                }
-              : p
-          )
-        );
+        // Refresh data
+        await fetchPembayaran();
 
         setShowRejectDialog(false);
         setSelectedPembayaran(null);
@@ -261,6 +262,85 @@ export default function PembayaranPage() {
 
   const handleRetry = () => {
     fetchPembayaran();
+  };
+
+  const handleDownloadPDF = async () => {
+  try {
+    setIsDownloadingPDF(true);
+
+    const blob = await pembayaranAPI.downloadPDFReport({
+      search: searchQuery || undefined,
+      status: statusFilter !== 'ALL' ? statusFilter : undefined,
+      jenisPembayaran: typeFilter !== 'ALL' ? typeFilter : undefined,
+    });
+
+    // Create download link
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    
+    // Generate filename
+    const timestamp = new Date().getTime();
+    const filterSuffix = typeFilter !== 'ALL' 
+      ? `_${typeFilter}` 
+      : statusFilter !== 'ALL' 
+      ? `_${statusFilter}` 
+      : '';
+    link.download = `laporan-pembayaran${filterSuffix}_${timestamp}.pdf`;
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    toast.success('PDF berhasil didownload');
+  } catch (err: any) {
+    console.error('Download PDF error:', err);
+    toast.error('Gagal mendownload PDF');
+  } finally {
+    setIsDownloadingPDF(false);
+  }
+};
+
+  // ✅ PAGINATION HANDLERS
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const handlePageClick = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  // ✅ GENERATE PAGE NUMBERS
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    const maxVisible = 5;
+
+    if (totalPages <= maxVisible) {
+      // Show all pages
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      // Show with ellipsis
+      if (currentPage <= 3) {
+        pages.push(1, 2, 3, 4, '...', totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+      } else {
+        pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages);
+      }
+    }
+
+    return pages;
   };
 
   const stats = {
@@ -287,6 +367,10 @@ export default function PembayaranPage() {
     );
   }
 
+  // ✅ CALCULATE DATA RANGE
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+  const endIndex = Math.min(currentPage * ITEMS_PER_PAGE, totalData);
+
   return (
     <div className="space-y-6">
       <div>
@@ -300,11 +384,22 @@ export default function PembayaranPage() {
         <Alert className="border-yellow-200 bg-yellow-50">
           <AlertCircle className="h-4 w-4 text-yellow-600" />
           <AlertDescription className="text-yellow-900">
-            Ada <span className="font-bold">{stats.pending}</span> pembayaran menunggu
+            Ada <span className="font-bold">{stats.pending}</span> pembayaran pada halaman ini menunggu
             verifikasi Anda
           </AlertDescription>
         </Alert>
       )}
+
+      <div className="flex justify-end">
+        <Button
+          onClick={handleDownloadPDF}
+          disabled={isDownloadingPDF}
+          className="gap-2"
+        >
+          <Download className="h-4 w-4" />
+          {isDownloadingPDF ? 'Mengunduh PDF...' : 'Download PDF'}
+        </Button>
+      </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="border-yellow-200">
@@ -314,7 +409,7 @@ export default function PembayaranPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
-            <p className="text-xs text-muted-foreground">Perlu verifikasi</p>
+            <p className="text-xs text-muted-foreground">Halaman ini</p>
           </CardContent>
         </Card>
 
@@ -325,7 +420,7 @@ export default function PembayaranPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{stats.approved}</div>
-            <p className="text-xs text-muted-foreground">Pembayaran valid</p>
+            <p className="text-xs text-muted-foreground">Halaman ini</p>
           </CardContent>
         </Card>
 
@@ -336,7 +431,7 @@ export default function PembayaranPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">{stats.rejected}</div>
-            <p className="text-xs text-muted-foreground">Pembayaran invalid</p>
+            <p className="text-xs text-muted-foreground">Halaman ini</p>
           </CardContent>
         </Card>
       </div>
@@ -396,90 +491,145 @@ export default function PembayaranPage() {
               className="my-8 border-0"
             />
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>NIM</TableHead>
-                    <TableHead>Nama</TableHead>
-                    <TableHead>Jenis</TableHead>
-                    <TableHead>Semester/Bulan</TableHead>
-                    <TableHead className="text-right">Nominal</TableHead>
-                    <TableHead>Tanggal Upload</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Aksi</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pembayaranList.map((pembayaran) => (
-                    <TableRow key={pembayaran.id}>
-                      <TableCell className="font-mono font-medium">
-                        {pembayaran.mahasiswa?.nim || '-'}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {pembayaran.mahasiswa?.namaLengkap || '-'}
-                      </TableCell>
-                      <TableCell>{getTypeBadge(pembayaran.jenisPembayaran)}</TableCell>
-                      <TableCell>
-                        {pembayaran.jenisPembayaran === 'KOMITMEN_BULANAN' && pembayaran.bulanPembayaran ? (
-                          format(new Date(pembayaran.bulanPembayaran), 'MMMM yyyy', {
-                            locale: id,
-                          })
-                        ) : pembayaran.semester ? (
-                          `${pembayaran.semester.tahunAkademik} ${pembayaran.semester.periode}`
-                        ) : (
-                          '-'
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(pembayaran.nominal)}
-                      </TableCell>
-                      <TableCell>
-                        {format(new Date(pembayaran.uploadedAt), 'dd MMM yyyy HH:mm', {
-                          locale: id,
-                        })}
-                      </TableCell>
-                      <TableCell>{getStatusBadge(pembayaran.status)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleViewDetail(pembayaran)}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          {pembayaran.status === 'PENDING' && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                                onClick={() => handleApprove(pembayaran)}
-                              >
-                                <CheckCircle className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                onClick={() => handleReject(pembayaran)}
-                              >
-                                <XCircle className="h-4 w-4" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </TableCell>
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>NIM</TableHead>
+                      <TableHead>Nama</TableHead>
+                      <TableHead>Jenis</TableHead>
+                      <TableHead>Semester/Bulan</TableHead>
+                      <TableHead className="text-right">Nominal</TableHead>
+                      <TableHead>Tanggal Upload</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Aksi</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {pembayaranList.map((pembayaran) => (
+                      <TableRow key={pembayaran.id}>
+                        <TableCell className="font-mono font-medium">
+                          {pembayaran.mahasiswa?.nim || '-'}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {pembayaran.mahasiswa?.namaLengkap || '-'}
+                        </TableCell>
+                        <TableCell>{getTypeBadge(pembayaran.jenisPembayaran)}</TableCell>
+                        <TableCell>
+                          {pembayaran.jenisPembayaran === 'KOMITMEN_BULANAN' && pembayaran.bulanPembayaran ? (
+                            format(new Date(pembayaran.bulanPembayaran), 'MMMM yyyy', {
+                              locale: id,
+                            })
+                          ) : pembayaran.semester ? (
+                            `${pembayaran.semester.tahunAkademik} ${pembayaran.semester.periode}`
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatCurrency(pembayaran.nominal)}
+                        </TableCell>
+                        <TableCell>
+                          {format(new Date(pembayaran.uploadedAt), 'dd MMM yyyy HH:mm', {
+                            locale: id,
+                          })}
+                        </TableCell>
+                        <TableCell>{getStatusBadge(pembayaran.status)}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleViewDetail(pembayaran)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            {pembayaran.status === 'PENDING' && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                  onClick={() => handleApprove(pembayaran)}
+                                >
+                                  <CheckCircle className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  onClick={() => handleReject(pembayaran)}
+                                >
+                                  <XCircle className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* ✅ PAGINATION CONTROLS */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between border-t px-6 py-4">
+                  <div className="text-sm text-muted-foreground">
+                    Menampilkan <span className="font-medium">{startIndex}</span> - <span className="font-medium">{endIndex}</span> dari{' '}
+                    <span className="font-medium">{totalData}</span> data
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePreviousPage}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      <span className="hidden sm:inline ml-1">Previous</span>
+                    </Button>
+
+                    <div className="flex items-center gap-1">
+                      {getPageNumbers().map((page, index) => (
+                        page === '...' ? (
+                          <span key={`ellipsis-${index}`} className="px-2 text-muted-foreground">
+                            ...
+                          </span>
+                        ) : (
+                          <Button
+                            key={page}
+                            variant={currentPage === page ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => handlePageClick(page as number)}
+                            className="w-9"
+                          >
+                            {page}
+                          </Button>
+                        )
+                      ))}
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleNextPage}
+                      disabled={currentPage === totalPages}
+                    >
+                      <span className="hidden sm:inline mr-1">Next</span>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
 
+      {/* APPROVE DIALOG */}
       <Dialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
         <DialogContent className="bg-white">
           <DialogHeader>
@@ -550,6 +700,7 @@ export default function PembayaranPage() {
         </DialogContent>
       </Dialog>
 
+      {/* REJECT DIALOG */}
       <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
         <DialogContent className="bg-white">
           <DialogHeader>
@@ -606,6 +757,7 @@ export default function PembayaranPage() {
         </DialogContent>
       </Dialog>
 
+      {/* DETAIL DIALOG */}
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
         <DialogContent className="max-w-3xl bg-white max-h-[90vh] overflow-y-auto">
           <DialogHeader>

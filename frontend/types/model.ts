@@ -671,3 +671,27 @@ export interface PresensiFilters {
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
 }
+
+export enum TipeFileKelas {
+  RPS = 'RPS',
+  RPP = 'RPP',
+  MATERI = 'MATERI',
+}
+
+export interface KelasMKFile {
+  id: number;
+  kelasMKId: number;
+  tipeFile: TipeFileKelas;
+  namaFile: string;
+  fileUrl: string;
+  mingguKe?: number;
+  keterangan?: string;
+  uploadedById: number;
+  uploadedAt: string;
+  updatedAt: string;
+  
+  // Relations (optional)
+  uploadedBy?: {
+    namaLengkap: string;
+  };
+}

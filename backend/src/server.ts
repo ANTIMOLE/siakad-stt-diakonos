@@ -21,6 +21,7 @@ import khsRoutes from './routes/khsRoutes';
 import pembayaranRoutes from './routes/pembayaranRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import presensiRoutes from './routes/presensiRoutes';
+import kelasMKFileRoutes from './routes/kelasMKFileRoutes';
 
 const app: Application = express();
 
@@ -204,6 +205,7 @@ app.use('/api/khs', khsRoutes);
 app.use('/api/pembayaran', pembayaranRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/presensi', presensiRoutes);
+app.use('/api/kelas-mk-files', kelasMKFileRoutes);
 
 app.use(
   '/uploads',

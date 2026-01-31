@@ -191,6 +191,7 @@ model Dosen {
   @@index([nidn])
   @@index([prodiId])
   @@map("dosen")
+  kelasMKFiles KelasMKFile[]
 }
 
 // ============================================
@@ -309,6 +310,7 @@ model KelasMataKuliah {
   @@index([dosenId])
   @@index([hari, jamMulai])
   @@map("kelas_mata_kuliah")
+  kelasMKFiles KelasMKFile[]
 }
 
 // ============================================
@@ -589,6 +591,37 @@ model PresensiDetail {
   @@index([mahasiswaId])
   @@map("presensi_detail")
 }
+
+//BELUM MIGRASI
+
+enum TipeFileKelas {
+  RPS
+  RPP
+  MATERI
+}
+
+model KelasMKFile {
+  id          Int      @id @default(autoincrement())
+  kelasMKId   Int
+  tipeFile    TipeFileKelas
+  namaFile    String   // Display name: "RPS Teologi Sistematika"
+  fileUrl     String   // Actual path: "/uploads/kelasmkfiles/rps-12345.pdf"
+  mingguKe    Int?     // For MATERI only (week 1-16)
+  keterangan  String?  // Optional custom text
+  
+  uploadedById Int
+  uploadedAt   DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  kelasMK     KelasMataKuliah @relation(fields: [kelasMKId], references: [id], onDelete: Cascade)
+  uploadedBy  Dosen           @relation(fields: [uploadedById], references: [id])
+
+  @@index([kelasMKId])
+  @@index([tipeFile])
+  @@map("kelas_mk_file")
+}
+
 
 
 

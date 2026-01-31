@@ -1,7 +1,6 @@
 /**
  * Presensi Routes
- * Define API endpoints for attendance management
- * ✅ FIXED: Using existing middleware patterns
+ * ✅ UPDATED: Added mahasiswa my-classes endpoint
  */
 
 import { Router } from 'express';
@@ -32,6 +31,21 @@ router.get(
   '/dosen/my-classes',
   requireRole('DOSEN'),
   presensiController.getDosenClasses
+);
+
+// ============================================
+// MAHASISWA SPECIFIC ROUTES - ✅ NEW
+// ============================================
+
+/**
+ * GET /api/presensi/mahasiswa/my-classes
+ * Get all classes for logged-in mahasiswa
+ * ✅ NEW: For mahasiswa presensi dashboard
+ */
+router.get(
+  '/mahasiswa/my-classes',
+  requireRole('MAHASISWA'),
+  presensiController.getMahasiswaClasses
 );
 
 // ============================================

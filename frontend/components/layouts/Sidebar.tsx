@@ -22,7 +22,8 @@ import {
   FileText,
   DollarSign,
   Award,
-  School
+  School,
+  File
 } from 'lucide-react';
 
 // Icon mapping
@@ -37,7 +38,8 @@ const iconMap: Record<string, any> = {
   FileText,
   DollarSign,
   Award,
-  School
+  School,
+  File
 };
 
 interface SidebarProps {

@@ -515,6 +515,11 @@ export const presensiAPI = {
     semesterId?: number;
   }): Promise<ApiResponse<KelasMK[]>> => 
     api.get('/presensi/dosen/my-classes', { params }),
+
+    getMahasiswaClasses: (params?: {
+  semesterId?: number;
+}): Promise<ApiResponse<KelasMK[]>> => 
+  api.get('/presensi/mahasiswa/my-classes', { params }),
 };
 
 // ============================================
@@ -543,5 +548,38 @@ export const ruanganAPI = {
   delete: (id: number): Promise<ApiResponse<any>> => 
     api.delete(`/ruangan/${id}`),
 };
+
+/**
+ * ✅ FIXED: Add proper return types to kelasMKFileAPI
+ * 
+ * REPLACE the kelasMKFileAPI section in frontend/lib/api.ts with this:
+ */
+
+export const kelasMKFileAPI = {
+  // Dosen
+  uploadFile: (formData: FormData): Promise<ApiResponse<any>> => 
+    api.post('/kelas-mk-files/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  
+  deleteFile: (id: number): Promise<ApiResponse<any>> => 
+    api.delete(`/kelas-mk-files/${id}`),
+  
+  renameFile: (id: number, namaFile: string): Promise<ApiResponse<any>> => 
+    api.patch(`/kelas-mk-files/${id}/rename`, { namaFile }),
+  
+  getFilesByKelasForDosen: (kelasMKId: number, params?: { tipeFile?: string , mingguKe?: string }): Promise<ApiResponse<any[]>> => 
+    api.get(`/kelas-mk-files/kelas/${kelasMKId}/dosen`, { params }),
+  
+  // Mahasiswa
+  getFilesByKelasForMahasiswa: (kelasMKId: number, params?: { tipeFile?: string, mingguKe?: string }): Promise<ApiResponse<any[]>> => 
+    api.get(`/kelas-mk-files/kelas/${kelasMKId}/mahasiswa`, { params }),
+  
+  // Serve file
+  getFileUrl: (id: number): string => 
+    `${BASE_URL}/kelas-mk-files/serve/${id}`,
+};
+
+
 
 export default api;

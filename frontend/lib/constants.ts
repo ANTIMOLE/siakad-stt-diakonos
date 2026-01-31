@@ -1,6 +1,8 @@
 // API endpoints, status mappings, role constants
 // Nilai huruf mapping, SKS limits, dll
 
+import { TipeFileKelas } from "@/types/model";
+
 /**
  * Constants & Configurations
  * Centralized constants untuk seluruh aplikasi
@@ -299,6 +301,7 @@ export const DOSEN_MENU = [
   { label: 'Input Nilai', href: '/dosen/input-nilai', icon: 'FileText' },
   { label: 'KRS Approval', href: '/dosen/krs-approval', icon: 'CheckSquare' },
   { label: 'Presensi', href: '/dosen/presensi', icon: 'Calendar' },
+  { label: 'File Kelas MK', href: '/dosen/kelas-mk-files', icon: 'File' },
 ] as const;
 
 export const MAHASISWA_MENU = [
@@ -308,6 +311,8 @@ export const MAHASISWA_MENU = [
   { label: 'KHS', href: '/mahasiswa/khs', icon: 'Award' },
   { label: 'Nilai', href: '/mahasiswa/nilai', icon: 'FileText' },
   { label: 'Pembayaran', href: '/mahasiswa/pembayaran', icon: 'DollarSign' },
+  { label: 'Presensi', href: '/mahasiswa/presensi', icon: 'CheckSquare' },
+  { label: 'File Kelas MK', href: '/mahasiswa/kelas-mk-files', icon: 'File' },
 ] as const;
 
 export const KEUANGAN_MENU = [
@@ -352,3 +357,21 @@ export const SUCCESS_MESSAGES = {
   REJECT: 'Berhasil ditolak',
   FINALIZE: 'Nilai berhasil di-finalize',
 } as const;
+
+
+export const FILE_TYPE_LABELS: Record<TipeFileKelas, string> = {
+  RPS: 'Rencana Pembelajaran Semester',
+  RPP: 'Rencana Pelaksanaan Pembelajaran',
+  MATERI: 'Materi Pembelajaran',
+};
+
+export const FILE_TYPE_COLORS: Record<TipeFileKelas, string> = {
+  RPS: 'bg-blue-100 text-blue-700 border-blue-200',
+  RPP: 'bg-purple-100 text-purple-700 border-purple-200',
+  MATERI: 'bg-green-100 text-green-700 border-green-200',
+};
+
+export const WEEK_OPTIONS = Array.from({ length: 16 }, (_, i) => ({
+  value: i + 1,
+  label: `Minggu ${i + 1}`,
+}));

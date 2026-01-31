@@ -487,3 +487,130 @@ export const getDosenClasses = asyncHandler(
     });
   }
 );
+
+export const getMahasiswaClasses = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    if (!req.user) {
+      throw new AppError('User tidak ditemukan', 401);
+    }
+
+    if (req.user.role !== 'MAHASISWA') {
+      throw new AppError('Hanya mahasiswa yang bisa mengakses endpoint ini', 403);
+    }
+
+    const mahasiswa = await prisma.mahasiswa.findUnique({
+      where: { userId: req.user.id },
+    });
+
+    if (!mahasiswa) {
+      throw new AppError('Data mahasiswa tidak ditemukan', 404);
+    }
+
+    const { semesterId } = req.query;
+
+    // ✅ Build where clause
+    const where: any = {
+      krs: {
+        mahasiswaId: mahasiswa.id,
+        status: 'APPROVED', // Only approved KRS
+      },
+    };
+
+    // ✅ Add semester filter if provided
+    if (semesterId) {
+      where.kelasMK = {
+        semesterId: parseInt(semesterId as string),
+      };
+    } else {
+      // ✅ Default to active semester
+      const activeSemester = await prisma.semester.findFirst({
+        where: { isActive: true },
+      });
+
+      if (activeSemester) {
+        where.kelasMK = {
+          semesterId: activeSemester.id,
+        };
+      }
+    }
+
+    // ✅ Get distinct kelas from approved KRS
+    const krsDetails = await prisma.kRSDetail.findMany({
+      where,
+      include: {
+        kelasMK: {
+          include: {
+            mataKuliah: {
+              select: {
+                kodeMK: true,
+                namaMK: true,
+                sks: true,
+              },
+            },
+            semester: {
+              select: {
+                id: true,
+                tahunAkademik: true,
+                periode: true,
+                isActive: true,
+              },
+            },
+            dosen: {
+              select: {
+                namaLengkap: true,
+              },
+            },
+            ruangan: {
+              select: {
+                nama: true,
+              },
+            },
+            _count: {
+              select: {
+                presensi: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // ✅ Extract unique kelas and add presensi stats
+    const uniqueKelas = new Map();
+
+    for (const detail of krsDetails) {
+      if (!uniqueKelas.has(detail.kelasMKId)) {
+        // Get mahasiswa's presensi stats for this class
+        const presensiStats = await prisma.presensiDetail.findMany({
+          where: {
+            mahasiswaId: mahasiswa.id,
+            presensi: {
+              kelasMKId: detail.kelasMKId,
+            },
+          },
+        });
+
+        const totalPertemuan = presensiStats.length;
+        const hadir = presensiStats.filter((p) => p.status === 'HADIR').length;
+        const persentase = totalPertemuan > 0 ? (hadir / totalPertemuan) * 100 : 0;
+
+        uniqueKelas.set(detail.kelasMKId, {
+          ...detail.kelasMK,
+          presensiStats: {
+            totalPertemuan,
+            hadir,
+            persentase: parseFloat(persentase.toFixed(2)),
+          },
+        });
+      }
+    }
+
+    const classes = Array.from(uniqueKelas.values());
+
+    res.status(200).json({
+      success: true,
+      message: 'Data kelas mahasiswa berhasil diambil',
+      data: classes,
+    });
+  }
+);

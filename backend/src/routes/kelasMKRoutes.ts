@@ -7,13 +7,7 @@ import { body, query } from 'express-validator';
 
 const router = Router();
 
-/**
- * GET /api/kelas-mk
- * Get all kelas mata kuliah
- * Access: Admin, Dosen
- * 
- * ✅ FIXED: Increased limit max from 100 to 5000
- */
+
 router.get(
   '/',
   authenticate,
@@ -42,15 +36,11 @@ router.get(
   kelasMKController.getAll
 );
 
-/**
- * GET /api/kelas-mk/:id
- * Get kelas by ID
- * Access: Admin, Dosen
- */
+
 router.get(
   '/:id',
   authenticate,
-  requireAdminOrDosen,
+  // requireAdminOrDosen, SEMENTARA DIHAPUS UNTUK MEMUDAHKAN MAHASISWA MENGAKSES DETAIL KELAS ?
   idParamValidation('id'),
   kelasMKController.getById
 );

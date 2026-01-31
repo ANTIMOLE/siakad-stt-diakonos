@@ -47,7 +47,7 @@ export default function PresensiKelasPage() {
   const params = useParams();
   const router = useRouter();
   
-  // ✅ FIX: Handle both [id] and [kelasMKId] folder naming
+
   const kelasMKId = parseInt((params.kelasMKId || params.id) as string);
 
   const [presensiList, setPresensiList] = useState<Presensi[]>([]);
@@ -69,7 +69,7 @@ export default function PresensiKelasPage() {
   // FETCH PRESENSI LIST
   // ============================================
   const fetchPresensi = async () => {
-    // ✅ Validate kelasMKId first
+
     if (!kelasMKId || isNaN(kelasMKId)) {
       setError('ID kelas tidak valid');
       setIsLoading(false);

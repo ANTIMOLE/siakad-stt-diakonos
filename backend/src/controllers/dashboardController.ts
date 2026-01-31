@@ -1,10 +1,11 @@
-
 import { Response } from 'express';
 import prisma from '../config/database';
 import { AuthRequest } from '../types';
 import { asyncHandler } from '../middlewares/errorMiddleware';
 
-
+/**
+ * ✅ FIXED: Admin dashboard stats
+ */
 export const getAdminStats = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const activeSemester = await prisma.semester.findFirst({
@@ -90,7 +91,9 @@ export const getAdminStats = asyncHandler(
   }
 );
 
-
+/**
+ * ✅ FIXED: Dosen dashboard stats
+ */
 export const getDosenStats = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const userId = req.user?.id;
@@ -155,6 +158,7 @@ export const getDosenStats = asyncHandler(
       },
     });
 
+    // Get today's schedule
     const today = new Date();
     const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     const todayName = days[today.getDay()] as any;
@@ -198,7 +202,10 @@ export const getDosenStats = asyncHandler(
   }
 );
 
-
+/**
+ * ✅ FIXED: Mahasiswa dashboard stats
+ * FIXED: Total SKS calculation - use latest KHS cumulative, not sum of all
+ */
 export const getMahasiswaStats = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const userId = req.user?.id;
@@ -210,7 +217,7 @@ export const getMahasiswaStats = asyncHandler(
       });
     }
 
-
+    // Get mahasiswa data
     const mahasiswa = await prisma.mahasiswa.findUnique({
       where: { userId },
       include: {
@@ -235,28 +242,21 @@ export const getMahasiswaStats = asyncHandler(
       });
     }
 
-
+    // Get active semester
     const activeSemester = await prisma.semester.findFirst({
       where: { isActive: true },
     });
 
-
+    // Get latest KHS for IPS and IPK
     const latestKHS = await prisma.kHS.findFirst({
       where: { mahasiswaId: mahasiswa.id },
-      orderBy: { semester: { tahunAkademik: 'desc' } },
+      orderBy: { semesterId: 'desc' }, 
     });
 
 
-    const allKHS = await prisma.kHS.findMany({
-      where: { mahasiswaId: mahasiswa.id },
-    });
+    const totalSKSLulus = latestKHS?.totalSKSKumulatif || 0;
 
-    const totalSKSLulus = allKHS.reduce(
-      (sum, khs) => sum + khs.totalSKSKumulatif,
-      0
-    );
-
-
+    // Get KRS status for current semester
     let krsStatus = null;
     if (activeSemester) {
       const activeKRS = await prisma.kRS.findFirst({
@@ -269,55 +269,54 @@ export const getMahasiswaStats = asyncHandler(
       krsStatus = activeKRS?.status || null;
     }
 
-
+    // Get today's schedule
     const today = new Date();
     const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     const todayName = days[today.getDay()] as any;
 
     let jadwalHariIni: any[] = [];
-if (activeSemester) {
-  const activeKRS = await prisma.kRS.findFirst({
-    where: {
-      mahasiswaId: mahasiswa.id,
-      semesterId: activeSemester.id,
-      status: 'APPROVED',
-    },
-    include: {
-      detail: {
+    if (activeSemester) {
+      const activeKRS = await prisma.kRS.findFirst({
+        where: {
+          mahasiswaId: mahasiswa.id,
+          semesterId: activeSemester.id,
+          status: 'APPROVED',
+        },
         include: {
-          kelasMK: { 
+          detail: {
             include: {
-              mataKuliah: {
-                select: {
-                  kodeMK: true,
-                  namaMK: true,
-                  sks: true,
-                },
-              },
-              dosen: {
-                select: {
-                  namaLengkap: true,
-                },
-              },
-              ruangan: {
-                select: {
-                  nama: true,
+              kelasMK: {
+                include: {
+                  mataKuliah: {
+                    select: {
+                      kodeMK: true,
+                      namaMK: true,
+                      sks: true,
+                    },
+                  },
+                  dosen: {
+                    select: {
+                      namaLengkap: true,
+                    },
+                  },
+                  ruangan: {
+                    select: {
+                      nama: true,
+                    },
+                  },
                 },
               },
             },
           },
         },
-      },
-    },
-  });
+      });
 
-  if (activeKRS?.detail) {
-    jadwalHariIni = activeKRS.detail
-      .map((d) => d.kelasMK)
-      .filter((k) => k !== null && k.hari === todayName);
-  }
-}
-
+      if (activeKRS?.detail) {
+        jadwalHariIni = activeKRS.detail
+          .map((d) => d.kelasMK)
+          .filter((k) => k !== null && k.hari === todayName);
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -325,14 +324,13 @@ if (activeSemester) {
       data: {
         nim: mahasiswa.nim,
         nama: mahasiswa.namaLengkap,
-        prodi: mahasiswa.prodi.kode,
+        prodi: mahasiswa.prodi.nama, // ✅ Use nama instead of kode for display
         angkatan: mahasiswa.angkatan,
         dosenWali: mahasiswa.dosenWali?.namaLengkap || null,
         ips: latestKHS?.ips || null,
         ipk: latestKHS?.ipk || null,
-        totalSKSLulus,
+        totalSKSLulus, // ✅ Now correct - no double counting
         krsStatus,
-        semesterAktif: activeSemester,
         jadwalHariIni,
       },
     });

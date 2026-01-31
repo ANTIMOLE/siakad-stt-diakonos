@@ -177,7 +177,7 @@ export const finalizeNilai = async (kelasMKId: number, dosenId: number) => {
     data: { isFinalized: true },
   });
 
-  // Trigger KHS generation for affected students
+
   const mahasiswaIds = nilaiList.map((n) => n.mahasiswaId);
   await generateKHSForMahasiswa(mahasiswaIds, kelasMK.semesterId);
 
@@ -188,9 +188,7 @@ export const finalizeNilai = async (kelasMKId: number, dosenId: number) => {
   };
 };
 
-/**
- * Unlock nilai for a class (allow editing again)
- */
+
 export const unlockNilai = async (kelasMKId: number) => {
   // Validate kelas exists
   const kelasMK = await prisma.kelasMataKuliah.findUnique({

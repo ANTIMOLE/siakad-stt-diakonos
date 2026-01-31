@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -190,10 +191,10 @@ export default function MahasiswaBimbinganDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {latestKHS?.ipk ? latestKHS.ipk.toFixed(2) : '-'}
+              {latestKHS?.ipk ? Number(latestKHS.ipk).toFixed(2) : '-'}
             </div>
             <p className="text-xs text-muted-foreground">
-              IPS: {latestKHS?.ips ? latestKHS.ips.toFixed(2) : '-'}
+              IPS: {latestKHS?.ips ? Number(latestKHS.ips).toFixed(2) : '-'}
             </p>
           </CardContent>
         </Card>
@@ -430,12 +431,12 @@ export default function MahasiswaBimbinganDetailPage() {
                           </TableCell>
                           <TableCell>
                             <span className="font-medium text-lg">
-                              {khs.ips.toFixed(2)}
+                              {Number(khs.ips).toFixed(2)}
                             </span>
                           </TableCell>
                           <TableCell>
                             <span className="font-medium text-lg">
-                              {khs.ipk.toFixed(2)}
+                              {Number(khs.ipk).toFixed(2)}
                             </span>
                           </TableCell>
                           <TableCell>
@@ -477,9 +478,10 @@ export default function MahasiswaBimbinganDetailPage() {
                 <div className="space-y-2">
                   {khsHistory.map((khs, index) => {
                     const prevKHS = khsHistory[index + 1];
-                    const trend = prevKHS
-                      ? khs.ipk - prevKHS.ipk
-                      : 0;
+                    const currentIPK = Number(khs.ipk);
+                    const prevIPK = prevKHS ? Number(prevKHS.ipk) : 0;
+                    const trend = prevKHS ? currentIPK - prevIPK : 0;
+                    
                     return (
                       <div
                         key={khs.id}
@@ -489,7 +491,7 @@ export default function MahasiswaBimbinganDetailPage() {
                           {khs.semester?.tahunAkademik} {khs.semester?.periode}
                         </span>
                         <div className="flex items-center gap-2">
-                          <span className="font-medium">{khs.ipk.toFixed(2)}</span>
+                          <span className="font-medium">{currentIPK.toFixed(2)}</span>
                           {trend !== 0 && (
                             <span
                               className={`text-xs ${

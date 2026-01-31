@@ -1,6 +1,8 @@
 /**
  * Kelas MK File Service
  * Business logic for file management
+ * 
+ * ✅ FIXED: Allow multiple MATERI files per week (PPT, PDF, exercises, etc.)
  */
 
 import prisma from '../config/database';
@@ -71,7 +73,8 @@ export async function uploadFile(
     throw new AppError('Minggu ke wajib diisi untuk MATERI', 400);
   }
 
-  // Check duplicate for RPS/RPP
+  // ✅ FIXED: Only check duplicate for RPS/RPP (single file policy)
+  // MATERI can have multiple files per week (PPT, PDF, exercises, etc.)
   if (tipeFile === 'RPS' || tipeFile === 'RPP') {
     const existing = await prisma.kelasMKFile.findFirst({
       where: {
@@ -88,23 +91,8 @@ export async function uploadFile(
     }
   }
 
-  // Check duplicate for MATERI with same mingguKe
-  if (tipeFile === 'MATERI' && mingguKe) {
-    const existing = await prisma.kelasMKFile.findFirst({
-      where: {
-        kelasMKId,
-        tipeFile: 'MATERI',
-        mingguKe,
-      },
-    });
-
-    if (existing) {
-      throw new AppError(
-        `MATERI untuk minggu ${mingguKe} sudah ada. Hapus file lama terlebih dahulu.`,
-        400
-      );
-    }
-  }
+  // ✅ NO duplicate check for MATERI - allow multiple files per week!
+  // Dosen can upload: PPT, PDF, Handout, Exercises, etc. for same week
 
   // Create file record
   const file = await prisma.kelasMKFile.create({

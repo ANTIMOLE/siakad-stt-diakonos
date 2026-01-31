@@ -147,7 +147,7 @@ export const getById = asyncHandler(
       },
     });
 
-    // ✅ Calculate predikat based on IPK
+
     let predikat = 'Belum tersedia';
     const ipk = khs.ipk.toNumber();
 

@@ -2,7 +2,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Save, Users, Calendar, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Save, Users, Calendar, RefreshCw, Trash2, Info, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
@@ -29,9 +29,10 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { presensiAPI } from '@/lib/api';
-import { Presensi, PresensiDetail, StatusPresensi } from '@/types/model';
+import { Presensi, StatusPresensi } from '@/types/model';
+
 const STATUS_OPTIONS: { value: StatusPresensi; label: string; color: string }[] = [
   { value: 'HADIR', label: 'Hadir', color: 'bg-green-500' },
   { value: 'ALPHA', label: 'Alpha', color: 'bg-red-500' },
@@ -39,6 +40,7 @@ const STATUS_OPTIONS: { value: StatusPresensi; label: string; color: string }[] 
   { value: 'SAKIT', label: 'Sakit', color: 'bg-blue-500' },
   { value: 'TIDAK_HADIR', label: 'Tidak Hadir', color: 'bg-gray-500' },
 ];
+
 export default function PresensiKelasPage() {
   const params = useParams();
   const router = useRouter();
@@ -51,18 +53,21 @@ export default function PresensiKelasPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Form states
+
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newPertemuan, setNewPertemuan] = useState<number>(1);
   const [newMateri, setNewMateri] = useState('');
   const [newCatatan, setNewCatatan] = useState('');
-  // Edit states
+
   const [attendance, setAttendance] = useState<Record<number, { status: StatusPresensi; keterangan?: string }>>({});
-  // Delete confirmation dialog
+
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  // ============================================
-  // FETCH PRESENSI LIST
-  // ============================================
+  
+  // ✅ NEW: Keterangan Dialog State
+  const [isKeteranganDialogOpen, setIsKeteranganDialogOpen] = useState(false);
+  const [selectedMahasiswaId, setSelectedMahasiswaId] = useState<number | null>(null);
+  const [tempKeterangan, setTempKeterangan] = useState('');
+
   const fetchPresensi = async () => {
     if (!kelasMKId || isNaN(kelasMKId)) {
       setError('ID kelas tidak valid');
@@ -72,7 +77,6 @@ export default function PresensiKelasPage() {
     try {
       setIsLoading(true);
       setError(null);
-      console.log('Fetching presensi for kelasMKId:', kelasMKId);
      
       const response = await presensiAPI.getAll({
         kelasMKId: kelasMKId
@@ -80,7 +84,6 @@ export default function PresensiKelasPage() {
       if (response.success) {
         setPresensiList(response.data || []);
        
-        // Auto-calculate next pertemuan
         const maxPertemuan = Math.max(0, ...(response.data?.map(p => p.pertemuan) || []));
         setNewPertemuan(Math.min(16, maxPertemuan + 1));
       } else {
@@ -97,12 +100,11 @@ export default function PresensiKelasPage() {
       setIsLoading(false);
     }
   };
+
   useEffect(() => {
     fetchPresensi();
-  }, [kelasMKId]); // Re-fetch if kelasMKId changes
-  // ============================================
-  // LOAD PRESENSI DETAIL
-  // ============================================
+  }, [kelasMKId]);
+
   const loadPresensiDetail = async (presensiId: number) => {
     try {
       const response = await presensiAPI.getById(presensiId);
@@ -110,7 +112,6 @@ export default function PresensiKelasPage() {
       if (response.success && response.data) {
         setSelectedPresensi(response.data);
        
-        // Initialize attendance state
         const initialAttendance: Record<number, { status: StatusPresensi; keterangan?: string }> = {};
         response.data.detail?.forEach((detail) => {
           initialAttendance[detail.mahasiswaId] = {
@@ -124,9 +125,7 @@ export default function PresensiKelasPage() {
       toast.error(err.response?.data?.message || 'Gagal memuat detail presensi');
     }
   };
-  // ============================================
-  // CREATE NEW PRESENSI
-  // ============================================
+
   const handleCreatePresensi = async () => {
     try {
       setIsSaving(true);
@@ -143,7 +142,6 @@ export default function PresensiKelasPage() {
         setNewCatatan('');
         await fetchPresensi();
        
-        // Auto-open newly created presensi
         if (response.data) {
           loadPresensiDetail(response.data.id);
         }
@@ -154,9 +152,7 @@ export default function PresensiKelasPage() {
       setIsSaving(false);
     }
   };
-  // ============================================
-  // UPDATE ATTENDANCE
-  // ============================================
+
   const handleSaveAttendance = async () => {
     if (!selectedPresensi) return;
     try {
@@ -178,9 +174,7 @@ export default function PresensiKelasPage() {
       setIsSaving(false);
     }
   };
-  // ============================================
-  // REFRESH MAHASISWA LIST
-  // ============================================
+
   const handleRefreshMahasiswa = async () => {
     if (!selectedPresensi) return;
     try {
@@ -193,7 +187,6 @@ export default function PresensiKelasPage() {
           toast.success(`${added} mahasiswa baru ditambahkan`, {
             description: `Total mahasiswa sekarang: ${total}`,
           });
-          // Refresh presensi data
           await loadPresensiDetail(selectedPresensi.id);
         } else {
           toast.info('Daftar mahasiswa sudah lengkap', {
@@ -210,9 +203,7 @@ export default function PresensiKelasPage() {
       setIsRefreshing(false);
     }
   };
-  // ============================================
-  // DELETE PRESENSI
-  // ============================================
+
   const handleDeletePresensi = async () => {
     if (!selectedPresensi) return;
     try {
@@ -231,9 +222,42 @@ export default function PresensiKelasPage() {
       setIsDeleteDialogOpen(false);
     }
   };
-  // ============================================
-  // LOADING STATE
-  // ============================================
+
+  // ✅ NEW: Open Keterangan Dialog
+  const handleOpenKeteranganDialog = (mahasiswaId: number) => {
+    setSelectedMahasiswaId(mahasiswaId);
+    setTempKeterangan(attendance[mahasiswaId]?.keterangan || '');
+    setIsKeteranganDialogOpen(true);
+  };
+
+  // ✅ NEW: Save Keterangan
+  const handleSaveKeterangan = () => {
+    if (selectedMahasiswaId === null) return;
+    
+    setAttendance((prev) => ({
+      ...prev,
+      [selectedMahasiswaId]: {
+        ...prev[selectedMahasiswaId],
+        keterangan: tempKeterangan || undefined,
+      },
+    }));
+    
+    toast.success('Keterangan berhasil diubah', {
+      description: 'Jangan lupa klik "Simpan" untuk menyimpan perubahan',
+    });
+    
+    setIsKeteranganDialogOpen(false);
+    setSelectedMahasiswaId(null);
+    setTempKeterangan('');
+  };
+
+  // ✅ NEW: Cancel Keterangan
+  const handleCancelKeterangan = () => {
+    setIsKeteranganDialogOpen(false);
+    setSelectedMahasiswaId(null);
+    setTempKeterangan('');
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -241,9 +265,7 @@ export default function PresensiKelasPage() {
       </div>
     );
   }
-  // ============================================
-  // ERROR STATE
-  // ============================================
+
   if (error) {
     return (
       <ErrorState
@@ -253,10 +275,14 @@ export default function PresensiKelasPage() {
       />
     );
   }
+
   const kelasInfo = presensiList[0]?.kelasMK;
-  // ============================================
-  // RENDER
-  // ============================================
+  
+  // ✅ NEW: Get selected mahasiswa name for dialog title
+  const selectedMahasiswa = selectedPresensi?.detail?.find(
+    (d) => d.mahasiswaId === selectedMahasiswaId
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -280,7 +306,7 @@ export default function PresensiKelasPage() {
                   Buat Pertemuan Baru
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="bg-white">
                 <DialogHeader>
                   <DialogTitle>Buat Presensi Baru</DialogTitle>
                   <DialogDescription>
@@ -341,8 +367,19 @@ export default function PresensiKelasPage() {
           </div>
         }
       />
+
+      <Alert className="border-blue-200 bg-blue-50">
+        <Info className="h-4 w-4 text-blue-600" />
+        <AlertTitle className="text-blue-900 font-semibold">Tips Presensi</AlertTitle>
+        <AlertDescription className="text-blue-800 text-sm space-y-1">
+          <p>• Pilih pertemuan dari daftar untuk mengisi atau mengubah presensi</p>
+          <p>• Klik &quot;Refresh Daftar Mahasiswa&quot; jika ada mahasiswa baru yang KRS-nya baru disetujui</p>
+          <p>• Klik tombol &quot;Keterangan&quot; untuk menambahkan catatan per mahasiswa</p>
+          <p>• Jangan lupa simpan perubahan setelah mengisi presensi</p>
+        </AlertDescription>
+      </Alert>
+
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* LEFT: Pertemuan List */}
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -360,22 +397,29 @@ export default function PresensiKelasPage() {
                 <button
                   key={p.id}
                   onClick={() => loadPresensiDetail(p.id)}
-                  className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                  className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
                     selectedPresensi?.id === p.id
-                      ? 'bg-primary text-primary-foreground border-primary shadow-md ring-2 ring-primary/50'
-                      : 'hover:bg-muted'
+                      ? 'bg-primary text-primary-foreground border-primary shadow-lg ring-4 ring-primary/20'
+                      : 'hover:bg-muted hover:border-primary/30 border-transparent'
                   }`}
                 >
-                  <div className="font-medium">Pertemuan {p.pertemuan}</div>
-                  <div className="text-xs mt-1 opacity-80">
+                  <div className="flex items-center justify-between">
+                    <div className="font-semibold text-base">Pertemuan {p.pertemuan}</div>
+                    {selectedPresensi?.id === p.id && (
+                      <Badge variant="secondary" className="bg-primary-foreground/20">
+                        Terpilih
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-sm mt-2 opacity-90">
                     {new Date(p.tanggal).toLocaleDateString('id-ID', {
                       day: 'numeric',
-                      month: 'short',
+                      month: 'long',
                       year: 'numeric',
                     })}
                   </div>
                   {p.materi && (
-                    <div className="text-xs mt-1 opacity-70 line-clamp-1">
+                    <div className="text-sm mt-1 opacity-75 line-clamp-2 font-medium">
                       {p.materi}
                     </div>
                   )}
@@ -384,7 +428,7 @@ export default function PresensiKelasPage() {
             )}
           </CardContent>
         </Card>
-        {/* RIGHT: Attendance Input */}
+
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
@@ -398,29 +442,36 @@ export default function PresensiKelasPage() {
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
+                    size="sm"
                     onClick={handleRefreshMahasiswa}
                     disabled={isRefreshing || isSaving}
                     className="gap-2"
                   >
                     <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                    {isRefreshing ? 'Refreshing...' : 'Refresh Daftar Mahasiswa'}
+                    Refresh Mahasiswa
                   </Button>
-                  <Button onClick={handleSaveAttendance} disabled={isSaving} className="gap-2">
+                  <Button 
+                    size="sm"
+                    onClick={handleSaveAttendance} 
+                    disabled={isSaving} 
+                    className="gap-2"
+                  >
                     <Save className="h-4 w-4" />
                     {isSaving ? 'Menyimpan...' : 'Simpan'}
                   </Button>
                   <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                     <DialogTrigger asChild>
-                      <Button variant="destructive" className="gap-2">
+                      <Button variant="ghost" size="sm" className="gap-2">
                         <Trash2 className="h-4 w-4" />
                         Hapus
                       </Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent className="bg-white">
                       <DialogHeader>
                         <DialogTitle>Konfirmasi Hapus Pertemuan</DialogTitle>
                         <DialogDescription>
-                          Apakah Anda yakin ingin menghapus presensi pertemuan {selectedPresensi.pertemuan}? Tindakan ini tidak dapat dibatalkan dan semua data presensi akan hilang.
+                          Apakah Anda yakin ingin menghapus presensi pertemuan {selectedPresensi.pertemuan}? 
+                          Tindakan ini tidak dapat dibatalkan dan semua data presensi akan hilang.
                         </DialogDescription>
                       </DialogHeader>
                       <DialogFooter>
@@ -443,46 +494,46 @@ export default function PresensiKelasPage() {
           </CardHeader>
           <CardContent>
             {!selectedPresensi ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Pilih pertemuan di sebelah kiri untuk mengisi presensi</p>
+              <div className="text-center py-16 text-muted-foreground">
+                <Users className="h-16 w-16 mx-auto mb-4 opacity-30" />
+                <p className="text-lg font-medium">Pilih pertemuan untuk mengisi presensi</p>
+                <p className="text-sm mt-1">Klik pertemuan di sebelah kiri untuk mulai mengisi</p>
               </div>
             ) : (
               <>
-                <Alert>
-                  <AlertDescription>
-                    💡 <strong>Tips:</strong> Jika ada mahasiswa baru yang terdaftar setelah presensi dibuat,
-                    klik tombol <strong>&quot;Refresh Daftar Mahasiswa&quot;</strong> untuk menambahkan mereka ke daftar presensi.
-                  </AlertDescription>
-                </Alert>
-                <div className="space-y-4 mt-4">
-                  {/* Materi & Catatan */}
+                <div className="space-y-4">
                   {(selectedPresensi.materi || selectedPresensi.catatan) && (
-                    <div className="p-3 bg-muted rounded-lg space-y-2 text-sm">
+                    <div className="p-4 bg-muted rounded-lg space-y-2 text-sm border">
                       {selectedPresensi.materi && (
                         <div>
-                          <strong>Materi:</strong> {selectedPresensi.materi}
+                          <strong className="text-primary">Materi:</strong> {selectedPresensi.materi}
                         </div>
                       )}
                       {selectedPresensi.catatan && (
                         <div>
-                          <strong>Catatan:</strong> {selectedPresensi.catatan}
+                          <strong className="text-primary">Catatan:</strong> {selectedPresensi.catatan}
                         </div>
                       )}
                     </div>
                   )}
-                  {/* Mahasiswa List */}
+
                   <div className="space-y-2 max-h-[500px] overflow-y-auto">
                     {selectedPresensi.detail?.map((detail) => (
                       <div
                         key={detail.id}
-                        className="flex items-center gap-4 p-3 border rounded-lg"
+                        className="flex items-center gap-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors"
                       >
                         <div className="flex-1">
-                          <div className="font-medium">{detail.mahasiswa?.namaLengkap}</div>
-                          <div className="text-sm text-muted-foreground">
+                          <div className="font-medium text-base">{detail.mahasiswa?.namaLengkap}</div>
+                          <div className="text-sm text-muted-foreground font-mono">
                             {detail.mahasiswa?.nim}
                           </div>
+                          {/* ✅ NEW: Show keterangan if exists */}
+                          {(attendance[detail.mahasiswaId]?.keterangan || detail.keterangan) && (
+                            <div className="text-xs text-muted-foreground mt-1 italic">
+                              💬 {attendance[detail.mahasiswaId]?.keterangan || detail.keterangan}
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <Select
@@ -497,38 +548,31 @@ export default function PresensiKelasPage() {
                               }))
                             }
                           >
-                            <SelectTrigger className="w-[140px]">
+                            <SelectTrigger className="w-[130px]">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
                               {STATUS_OPTIONS.map((opt) => (
                                 <SelectItem key={opt.value} value={opt.value}>
                                   <div className="flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${opt.color}`} />
+                                    <div className={`w-3 h-3 rounded-full ${opt.color}`} />
                                     {opt.label}
                                   </div>
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
-                          <Badge
+                          
+                          {/* ✅ NEW: Keterangan Button */}
+                          <Button
                             variant="outline"
-                            className={
-                              STATUS_OPTIONS.find(
-                                (s) =>
-                                  s.value ===
-                                  (attendance[detail.mahasiswaId]?.status || detail.status)
-                              )?.color.replace('bg-', 'border-') || ''
-                            }
+                            size="sm"
+                            onClick={() => handleOpenKeteranganDialog(detail.mahasiswaId)}
+                            className="gap-1 h-9"
                           >
-                            {
-                              STATUS_OPTIONS.find(
-                                (s) =>
-                                  s.value ===
-                                  (attendance[detail.mahasiswaId]?.status || detail.status)
-                              )?.label
-                            }
-                          </Badge>
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            Keterangan
+                          </Button>
                         </div>
                       </div>
                     ))}
@@ -539,6 +583,48 @@ export default function PresensiKelasPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ✅ NEW: Keterangan Dialog */}
+      <Dialog open={isKeteranganDialogOpen} onOpenChange={setIsKeteranganDialogOpen}>
+        <DialogContent className="bg-white">
+          <DialogHeader>
+            <DialogTitle>Tambah Keterangan</DialogTitle>
+            <DialogDescription>
+              {selectedMahasiswa && (
+                <>
+                  <span className="font-medium">{selectedMahasiswa.mahasiswa?.namaLengkap}</span>
+                  {' '}({selectedMahasiswa.mahasiswa?.nim})
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="keterangan-input">Keterangan</Label>
+            <Textarea
+              id="keterangan-input"
+              placeholder="Contoh: Sakit demam, Izin keperluan keluarga, dll..."
+              value={tempKeterangan}
+              onChange={(e) => setTempKeterangan(e.target.value)}
+              rows={4}
+              className="mt-2"
+            />
+            <p className="text-xs text-muted-foreground mt-2">
+              Kosongkan jika tidak ada keterangan khusus
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={handleCancelKeterangan}
+            >
+              Batal
+            </Button>
+            <Button onClick={handleSaveKeterangan}>
+              Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

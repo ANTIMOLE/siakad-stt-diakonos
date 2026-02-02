@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { KeyRound, User, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { KeyRound, User, AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { authAPI } from '@/lib/api';
@@ -21,9 +21,6 @@ import { authAPI } from '@/lib/api';
 export default function SettingsPage() {
   const router = useRouter();
 
-  // ============================================
-  // GET USER FROM LOCALSTORAGE
-  // ============================================
   const [user, setUser] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
@@ -41,14 +38,8 @@ export default function SettingsPage() {
     setIsAuthLoading(false);
   }, []);
 
-  // ============================================
-  // DETERMINE USER CAPABILITIES
-  // ============================================
   const canChangeUsername = user?.role === 'ADMIN' || user?.role === 'KEUANGAN';
 
-  // ============================================
-  // STATE MANAGEMENT - PASSWORD
-  // ============================================
   const [passwordForm, setPasswordForm] = useState({
     oldPassword: '',
     newPassword: '',
@@ -56,18 +47,16 @@ export default function SettingsPage() {
   });
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
-  // ============================================
-  // STATE MANAGEMENT - USERNAME
-  // ============================================
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   const [usernameForm, setUsernameForm] = useState({
     currentUsername: '',
     newUsername: '',
   });
   const [isChangingUsername, setIsChangingUsername] = useState(false);
 
-  // ============================================
-  // LOAD CURRENT USERNAME
-  // ============================================
   useEffect(() => {
     if (user && canChangeUsername) {
       setUsernameForm({
@@ -77,13 +66,9 @@ export default function SettingsPage() {
     }
   }, [user, canChangeUsername]);
 
-  // ============================================
-  // PASSWORD CHANGE HANDLER
-  // ============================================
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation
     if (!passwordForm.oldPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
       toast.error('Semua field password harus diisi');
       return;
@@ -116,18 +101,15 @@ export default function SettingsPage() {
       if (response.success) {
         toast.success('Password berhasil diubah');
         
-        // Reset form
         setPasswordForm({
           oldPassword: '',
           newPassword: '',
           confirmPassword: '',
         });
-
-        // Optional: Logout user and redirect to login
-        // setTimeout(() => {
-        //   localStorage.removeItem('user');
-        //   router.push('/login');
-        // }, 1500);
+        
+        setShowOldPassword(false);
+        setShowNewPassword(false);
+        setShowConfirmPassword(false);
       } else {
         toast.error(response.message || 'Gagal mengubah password');
       }
@@ -143,13 +125,9 @@ export default function SettingsPage() {
     }
   };
 
-  // ============================================
-  // USERNAME CHANGE HANDLER
-  // ============================================
   const handleUsernameChange = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation
     if (!usernameForm.newUsername) {
       toast.error('Username baru harus diisi');
       return;
@@ -165,7 +143,6 @@ export default function SettingsPage() {
       return;
     }
 
-    // Validate username format (alphanumeric + underscore + hyphen, must start with letter)
     if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(usernameForm.newUsername)) {
       toast.error('Username harus diawali huruf dan hanya boleh berisi huruf, angka, underscore, atau hyphen');
       return;
@@ -174,25 +151,7 @@ export default function SettingsPage() {
     try {
       setIsChangingUsername(true);
 
-      // ⚠️ TODO: Add API endpoint for changing username
-      // const response = await authAPI.changeUsername(usernameForm.newUsername);
-      
-      // For now, show not implemented
       toast.error('Fitur ganti username akan segera tersedia');
-      
-      // When implemented:
-      // if (response.success) {
-      //   toast.success('Username berhasil diubah');
-      //   const updatedUser = { ...user, username: usernameForm.newUsername };
-      //   localStorage.setItem('user', JSON.stringify(updatedUser));
-      //   setUser(updatedUser);
-      //   setUsernameForm({
-      //     currentUsername: usernameForm.newUsername,
-      //     newUsername: '',
-      //   });
-      // } else {
-      //   toast.error(response.message || 'Gagal mengubah username');
-      // }
     } catch (err: any) {
       console.error('Change username error:', err);
       toast.error(
@@ -205,16 +164,10 @@ export default function SettingsPage() {
     }
   };
 
-  // ============================================
-  // LOADING STATE
-  // ============================================
   if (isAuthLoading) {
     return <LoadingSpinner size="lg" text="Memuat pengaturan..." />;
   }
 
-  // ============================================
-  // NOT LOGGED IN
-  // ============================================
   if (!user) {
     return (
       <ErrorState
@@ -225,22 +178,33 @@ export default function SettingsPage() {
     );
   }
 
-  // ============================================
-  // RENDER
-  // ============================================
+  const getRoleDashboard = () => {
+    switch (user.role) {
+      case 'ADMIN':
+        return '/admin/dashboard';
+      case 'DOSEN':
+        return '/dosen/dashboard';
+      case 'MAHASISWA':
+        return '/mahasiswa/dashboard';
+      case 'KEUANGAN':
+        return '/keuangan/dashboard';
+      default:
+        return '/';
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Pengaturan Akun"
         description="Kelola keamanan dan informasi akun Anda"
         breadcrumbs={[
-          { label: 'Dashboard', href: `/${user.role.toLowerCase()}/dashboard` },
+          { label: 'Dashboard', href: getRoleDashboard() },
           { label: 'Pengaturan' },
         ]}
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* PASSWORD CHANGE SECTION */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -257,49 +221,97 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handlePasswordChange} className="space-y-4">
-              {/* Old Password */}
               <div className="space-y-2">
                 <Label htmlFor="oldPassword">Password Lama</Label>
-                <Input
-                  id="oldPassword"
-                  type="password"
-                  placeholder="Masukkan password lama"
-                  value={passwordForm.oldPassword}
-                  onChange={(e) =>
-                    setPasswordForm({ ...passwordForm, oldPassword: e.target.value })
-                  }
-                  disabled={isChangingPassword}
-                />
+                <div className="relative">
+                  <Input
+                    id="oldPassword"
+                    type={showOldPassword ? 'text' : 'password'}
+                    placeholder="Masukkan password lama"
+                    value={passwordForm.oldPassword}
+                    onChange={(e) =>
+                      setPasswordForm({ ...passwordForm, oldPassword: e.target.value })
+                    }
+                    disabled={isChangingPassword}
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowOldPassword(!showOldPassword)}
+                    disabled={isChangingPassword}
+                  >
+                    {showOldPassword ? (
+                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
               </div>
 
-              {/* New Password */}
               <div className="space-y-2">
                 <Label htmlFor="newPassword">Password Baru</Label>
-                <Input
-                  id="newPassword"
-                  type="password"
-                  placeholder="Masukkan password baru (min. 6 karakter)"
-                  value={passwordForm.newPassword}
-                  onChange={(e) =>
-                    setPasswordForm({ ...passwordForm, newPassword: e.target.value })
-                  }
-                  disabled={isChangingPassword}
-                />
+                <div className="relative">
+                  <Input
+                    id="newPassword"
+                    type={showNewPassword ? 'text' : 'password'}
+                    placeholder="Masukkan password baru (min. 6 karakter)"
+                    value={passwordForm.newPassword}
+                    onChange={(e) =>
+                      setPasswordForm({ ...passwordForm, newPassword: e.target.value })
+                    }
+                    disabled={isChangingPassword}
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    disabled={isChangingPassword}
+                  >
+                    {showNewPassword ? (
+                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
               </div>
 
-              {/* Confirm Password */}
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Konfirmasi Password Baru</Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  placeholder="Ulangi password baru"
-                  value={passwordForm.confirmPassword}
-                  onChange={(e) =>
-                    setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })
-                  }
-                  disabled={isChangingPassword}
-                />
+                <div className="relative">
+                  <Input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    placeholder="Ulangi password baru"
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) =>
+                      setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })
+                    }
+                    disabled={isChangingPassword}
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    disabled={isChangingPassword}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
               </div>
 
               <Alert className="border-blue-200 bg-blue-50">
@@ -328,7 +340,6 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* USERNAME CHANGE SECTION (Admin & Keuangan only) */}
         {canChangeUsername && (
           <Card>
             <CardHeader>
@@ -346,7 +357,6 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleUsernameChange} className="space-y-4">
-                {/* Current Username */}
                 <div className="space-y-2">
                   <Label htmlFor="currentUsername">Username Saat Ini</Label>
                   <Input
@@ -358,7 +368,6 @@ export default function SettingsPage() {
                   />
                 </div>
 
-                {/* New Username */}
                 <div className="space-y-2">
                   <Label htmlFor="newUsername">Username Baru</Label>
                   <Input
@@ -403,7 +412,6 @@ export default function SettingsPage() {
           </Card>
         )}
 
-        {/* INFO CARD (for Dosen & Mahasiswa) */}
         {!canChangeUsername && (
           <Card className="border-gray-200">
             <CardHeader>

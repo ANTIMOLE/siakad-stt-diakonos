@@ -1,5 +1,3 @@
-
-
 import { Response } from 'express';
 import prisma from '../config/database';
 import { AuthRequest } from '../types';
@@ -101,10 +99,36 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     },
   });
 
+  // ✅ FIX: Add isNilaiFinalized check for each kelas
+  const kelasWithFinalizedStatus = await Promise.all(
+    kelasMK.map(async (kelas) => {
+      // Count total nilai for this kelas
+      const nilaiCount = await prisma.nilai.count({
+        where: { kelasMKId: kelas.id },
+      });
+
+      // Count finalized nilai
+      const finalizedCount = await prisma.nilai.count({
+        where: {
+          kelasMKId: kelas.id,
+          isFinalized: true,
+        },
+      });
+
+      // All nilai must be finalized for kelas to be finalized
+      const isNilaiFinalized = nilaiCount > 0 && nilaiCount === finalizedCount;
+
+      return {
+        ...kelas,
+        isNilaiFinalized, // ✅ ADD THIS FIELD
+      };
+    })
+  );
+
   res.status(200).json({
     success: true,
     message: 'Data kelas mata kuliah berhasil diambil',
-    data: kelasMK,
+    data: kelasWithFinalizedStatus, // ✅ SEND MODIFIED DATA
     pagination: {
       page: pageNum,
       limit: limitNum,

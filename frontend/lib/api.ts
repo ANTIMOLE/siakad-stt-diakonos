@@ -520,6 +520,13 @@ export const presensiAPI = {
   semesterId?: number;
 }): Promise<ApiResponse<KelasMK[]>> => 
   api.get('/presensi/mahasiswa/my-classes', { params }),
+
+
+   refreshMahasiswaList: (presensiId: number): Promise<ApiResponse<{
+    added: number;
+    total: number;
+  }>> => 
+    api.post(`/presensi/${presensiId}/refresh-mahasiswa`),
 };
 
 // ============================================

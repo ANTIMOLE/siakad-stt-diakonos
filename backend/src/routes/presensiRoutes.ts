@@ -10,6 +10,7 @@ import {
   requireRole,
   requireAdminOrDosen,
 } from '../middlewares/roleMiddleware';
+import { idParamValidation } from '../middlewares/validationMiddleware';
 
 const router = Router();
 
@@ -99,6 +100,14 @@ router.post('/', requireAdminOrDosen, presensiController.create);
  */
 router.put('/:id', requireAdminOrDosen, presensiController.update);
 
+router.post(
+  '/:id/refresh-mahasiswa',
+  authenticate,
+  requireAdminOrDosen,
+  idParamValidation('id'),
+  presensiController.refreshMahasiswaList
+);
+
 /**
  * DELETE /api/presensi/:id
  * Delete presensi session
@@ -106,7 +115,10 @@ router.put('/:id', requireAdminOrDosen, presensiController.update);
 router.delete(
   '/:id',
   requireAdminOrDosen,
+  idParamValidation('id'),
   presensiController.deletePresensi
 );
+
+
 
 export default router;

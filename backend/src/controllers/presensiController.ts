@@ -614,3 +614,92 @@ export const getMahasiswaClasses = asyncHandler(
     });
   }
 );
+
+
+export const refreshMahasiswaList = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+
+    // Get presensi with kelas info
+    const presensi = await prisma.presensi.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        kelasMK: {
+          select: {
+            id: true,
+            semesterId: true,
+          },
+        },
+      },
+    });
+
+    if (!presensi) {
+      throw new AppError('Presensi tidak ditemukan', 404);
+    }
+
+    // Get all mahasiswa who are enrolled in this class (APPROVED KRS only)
+    const enrolledMahasiswa = await prisma.kRSDetail.findMany({
+      where: {
+        kelasMKId: presensi.kelasMKId,
+        krs: {
+          status: 'APPROVED',
+          semesterId: presensi.kelasMK.semesterId,
+        },
+      },
+      select: {
+        krs: {
+          select: {
+            mahasiswaId: true,
+          },
+        },
+      },
+    });
+
+    const enrolledMahasiswaIds = enrolledMahasiswa.map(
+      (detail) => detail.krs.mahasiswaId
+    );
+
+    // Get existing presensi detail
+    const existingDetails = await prisma.presensiDetail.findMany({
+      where: { presensiId: parseInt(id) },
+      select: { mahasiswaId: true },
+    });
+
+    const existingMahasiswaIds = existingDetails.map((d) => d.mahasiswaId);
+
+    // Find missing mahasiswa (enrolled but not in presensi yet)
+    const missingMahasiswaIds = enrolledMahasiswaIds.filter(
+      (id) => !existingMahasiswaIds.includes(id)
+    );
+
+    if (missingMahasiswaIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'Daftar mahasiswa sudah lengkap',
+        data: {
+          added: 0,
+          total: existingMahasiswaIds.length,
+        },
+      });
+    }
+
+    // Add missing mahasiswa with ALPHA status (default)
+    const newDetails = await prisma.presensiDetail.createMany({
+      data: missingMahasiswaIds.map((mahasiswaId) => ({
+        presensiId: parseInt(id),
+        mahasiswaId,
+        status: 'ALPHA', // ✅ Default status for late enrollments
+        keterangan: 'Ditambahkan otomatis (terdaftar setelah presensi dibuat)',
+      })),
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `${newDetails.count} mahasiswa berhasil ditambahkan`,
+      data: {
+        added: newDetails.count,
+        total: existingMahasiswaIds.length + newDetails.count,
+      },
+    });
+  }
+);

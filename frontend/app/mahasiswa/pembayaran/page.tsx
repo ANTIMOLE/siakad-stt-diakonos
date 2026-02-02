@@ -1,9 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/**
- * Upload Pembayaran Page
- * ✅ UPDATED: Sesuai schema baru + dropdown semester untuk KRS
- */
-
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -56,8 +51,7 @@ import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { toast } from 'sonner';
 
-import { pembayaranAPI } from '@/lib/api';
-import { semesterAPI } from '@/lib/api'; // ✅ Tambahkan import
+import { pembayaranAPI, semesterAPI } from '@/lib/api';
 import { Pembayaran, JenisPembayaran, Semester } from '@/types/model';
 
 type PembayaranStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -71,15 +65,14 @@ const JENIS_PEMBAYARAN_OPTIONS: Array<{ value: JenisPembayaran; label: string }>
   { value: 'KOMITMEN_BULANAN', label: 'Komitmen Bulanan' },
 ];
 
+const JENIS_WITH_SEMESTER = ['KRS', 'TENGAH_SEMESTER'];
+
 export default function UploadPembayaranPage() {
-  // ============================================
-  // STATE MANAGEMENT
-  // ============================================
   const [jenisPembayaran, setJenisPembayaran] = useState<JenisPembayaran>('KRS');
   const [nominal, setNominal] = useState('');
   const [bulanPembayaran, setBulanPembayaran] = useState('');
-  const [selectedSemesterId, setSelectedSemesterId] = useState<number | null>(null); // ✅ NEW
-  const [semesters, setSemesters] = useState<Semester[]>([]); // ✅ NEW
+  const [selectedSemesterId, setSelectedSemesterId] = useState<number | null>(null);
+  const [semesters, setSemesters] = useState<Semester[]>([]);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -92,9 +85,11 @@ export default function UploadPembayaranPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  // ============================================
-  // FETCH HISTORY & SEMESTERS
-  // ============================================
+  const getBuktiUrl = (pembayaranId: number) => {
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
+    return `${baseUrl}/pembayaran/bukti/${pembayaranId}`;
+  };
+
   const fetchHistory = async () => {
     try {
       const response = await pembayaranAPI.getHistory();
@@ -115,7 +110,6 @@ export default function UploadPembayaranPage() {
     try {
       const response = await semesterAPI.getAll();
       if (response.success && response.data) {
-        // Sort descending by tahunAkademik
         const sorted = response.data.sort((a: Semester, b: Semester) =>
           b.tahunAkademik.localeCompare(a.tahunAkademik)
         );
@@ -137,9 +131,6 @@ export default function UploadPembayaranPage() {
     loadData();
   }, [fetchSemesters]);
 
-  // ============================================
-  // HELPERS
-  // ============================================
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
@@ -150,6 +141,10 @@ export default function UploadPembayaranPage() {
 
   const getJenisPembayaranLabel = (jenis: JenisPembayaran) => {
     return JENIS_PEMBAYARAN_OPTIONS.find(opt => opt.value === jenis)?.label || jenis;
+  };
+
+  const requiresSemester = (jenis: JenisPembayaran) => {
+    return JENIS_WITH_SEMESTER.includes(jenis);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -198,9 +193,8 @@ export default function UploadPembayaranPage() {
       return;
     }
 
-    // ✅ Validasi semester untuk KRS
-    if (jenisPembayaran === 'KRS' && !selectedSemesterId) {
-      toast.error('Semester harus dipilih untuk pembayaran KRS');
+    if (requiresSemester(jenisPembayaran) && !selectedSemesterId) {
+      toast.error('Semester harus dipilih');
       return;
     }
 
@@ -223,8 +217,7 @@ export default function UploadPembayaranPage() {
         formData.append('bulanPembayaran', bulanPembayaran);
       }
 
-      // ✅ Kirim semesterId untuk KRS
-      if (jenisPembayaran === 'KRS' && selectedSemesterId) {
+      if (requiresSemester(jenisPembayaran) && selectedSemesterId) {
         formData.append('semesterId', selectedSemesterId.toString());
       }
 
@@ -246,15 +239,13 @@ export default function UploadPembayaranPage() {
       if (response.success) {
         toast.success('Bukti pembayaran berhasil diupload!');
         
-        // Reset form
         setJenisPembayaran('KRS');
         setNominal('');
         setBulanPembayaran('');
-        setSelectedSemesterId(null); // ✅ Reset semester
+        setSelectedSemesterId(null);
         setSelectedFile(null);
         setPreviewUrl(null);
         
-        // Refresh data
         await Promise.all([fetchHistory(), fetchSemesters()]);
       } else {
         throw new Error(response.message || 'Upload gagal');
@@ -305,9 +296,6 @@ export default function UploadPembayaranPage() {
     window.location.reload();
   };
 
-  // ============================================
-  // LOADING / ERROR STATE
-  // ============================================
   if (isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -326,9 +314,6 @@ export default function UploadPembayaranPage() {
     );
   }
 
-  // ============================================
-  // RENDER
-  // ============================================
   return (
     <div className="space-y-6">
       <PageHeader
@@ -336,14 +321,12 @@ export default function UploadPembayaranPage() {
         description="Upload bukti pembayaran untuk verifikasi"
       />
 
-      {/* Upload Form */}
       <Card>
         <CardHeader>
           <CardTitle>Upload Bukti Pembayaran</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Jenis Pembayaran */}
             <div className="space-y-2">
               <Label htmlFor="jenis-pembayaran">
                 Jenis Pembayaran <span className="text-red-500">*</span>
@@ -352,7 +335,6 @@ export default function UploadPembayaranPage() {
                 value={jenisPembayaran} 
                 onValueChange={(value) => {
                   setJenisPembayaran(value as JenisPembayaran);
-                  // Reset conditional fields
                   setSelectedSemesterId(null);
                   setBulanPembayaran('');
                 }}
@@ -371,8 +353,7 @@ export default function UploadPembayaranPage() {
               </Select>
             </div>
 
-            {/* ✅ Dropdown Semester (hanya untuk KRS) */}
-            {jenisPembayaran === 'KRS' && (
+            {requiresSemester(jenisPembayaran) && (
               <div className="space-y-2">
                 <Label htmlFor="semester">
                   Semester <span className="text-red-500">*</span>
@@ -397,12 +378,11 @@ export default function UploadPembayaranPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Pilih semester akademik untuk pembayaran KRS
+                  Pilih semester akademik untuk pembayaran
                 </p>
               </div>
             )}
 
-            {/* Bulan Pembayaran (hanya untuk KOMITMEN_BULANAN) */}
             {jenisPembayaran === 'KOMITMEN_BULANAN' && (
               <div className="space-y-2">
                 <Label htmlFor="bulan-pembayaran">
@@ -421,7 +401,6 @@ export default function UploadPembayaranPage() {
               </div>
             )}
 
-            {/* Nominal */}
             <div className="space-y-2">
               <Label htmlFor="nominal">
                 Nominal Pembayaran <span className="text-red-500">*</span>
@@ -449,7 +428,6 @@ export default function UploadPembayaranPage() {
               )}
             </div>
 
-            {/* File Upload */}
             <div className="space-y-2">
               <Label htmlFor="bukti">
                 Bukti Pembayaran <span className="text-red-500">*</span>
@@ -603,7 +581,6 @@ export default function UploadPembayaranPage() {
         </CardContent>
       </Card>
 
-      {/* Riwayat Pembayaran (tidak berubah) */}
       <Card>
         <CardHeader>
           <CardTitle>Riwayat Pembayaran</CardTitle>
@@ -673,9 +650,8 @@ export default function UploadPembayaranPage() {
         </CardContent>
       </Card>
 
-      {/* Detail Dialog (tidak berubah) */}
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-white">
           <DialogHeader>
             <DialogTitle>Detail Pembayaran</DialogTitle>
           </DialogHeader>
@@ -738,27 +714,37 @@ export default function UploadPembayaranPage() {
               <div>
                 <p className="text-sm text-muted-foreground mb-2">Bukti Pembayaran</p>
                 <div className="border rounded-lg p-4 bg-muted/30">
-                  {selectedPembayaran.buktiUrl.endsWith('.pdf') ? (
-                    <div className="flex items-center justify-center p-8">
-                      <FileText className="h-16 w-16 text-muted-foreground" />
-                      <div className="ml-4">
-                        <p className="font-medium">PDF Document</p>
-                        <a
-                          href={selectedPembayaran.buktiUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-primary hover:underline"
-                        >
-                          Buka PDF
-                        </a>
-                      </div>
+                  {!selectedPembayaran.id ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      Bukti pembayaran tidak tersedia
+                    </p>
+                  ) : selectedPembayaran.buktiUrl?.toLowerCase().endsWith('.pdf') ? (
+                    <div className="w-full h-[600px]">
+                      <iframe
+                        src={getBuktiUrl(selectedPembayaran.id)}
+                        className="w-full h-full rounded-lg border-0"
+                        title="Bukti Pembayaran PDF"
+                        allowFullScreen
+                      />
                     </div>
                   ) : (
-                    <img
-                      src={selectedPembayaran.buktiUrl}
-                      alt="Bukti Pembayaran"
-                      className="max-w-full h-auto rounded object-contain max-h-96 mx-auto"
-                    />
+                    <div className="relative w-full flex justify-center">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={getBuktiUrl(selectedPembayaran.id)}
+                        alt="Bukti Pembayaran"
+                        crossOrigin="use-credentials"
+                        className="max-w-full h-auto rounded-lg object-contain max-h-[600px]"
+                        loading="lazy"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (target.src !== '/placeholder-bukti.jpg') {
+                            target.src = '/placeholder-bukti.jpg';
+                            target.alt = 'Gagal memuat bukti pembayaran';
+                          }
+                        }}
+                      />
+                    </div>
                   )}
                 </div>
               </div>

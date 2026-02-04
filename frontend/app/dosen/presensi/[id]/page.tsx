@@ -2,7 +2,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Save, Users, Calendar, RefreshCw, Trash2, Info, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Plus, Save, Users, Calendar, RefreshCw, Trash2, Info, MessageSquare, Edit } from 'lucide-react';
 import { toast } from 'sonner';
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
@@ -44,7 +44,7 @@ const STATUS_OPTIONS: { value: StatusPresensi; label: string; color: string }[] 
 export default function PresensiKelasPage() {
   const params = useParams();
   const router = useRouter();
- 
+
   const kelasMKId = parseInt((params.kelasMKId || params.id) as string);
   const [presensiList, setPresensiList] = useState<Presensi[]>([]);
   const [selectedPresensi, setSelectedPresensi] = useState<Presensi | null>(null);
@@ -59,14 +59,19 @@ export default function PresensiKelasPage() {
   const [newMateri, setNewMateri] = useState('');
   const [newCatatan, setNewCatatan] = useState('');
 
-  const [attendance, setAttendance] = useState<Record<number, { status: StatusPresensi; keterangan?: string }>>({});
+  const [attendance, setAttendance] = useState<
+    Record<number, { status: StatusPresensi; keterangan?: string }>
+  >({});
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  
-  // ✅ NEW: Keterangan Dialog State
+
   const [isKeteranganDialogOpen, setIsKeteranganDialogOpen] = useState(false);
   const [selectedMahasiswaId, setSelectedMahasiswaId] = useState<number | null>(null);
   const [tempKeterangan, setTempKeterangan] = useState('');
+
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editMateri, setEditMateri] = useState('');
+  const [editCatatan, setEditCatatan] = useState('');
 
   const fetchPresensi = async () => {
     if (!kelasMKId || isNaN(kelasMKId)) {
@@ -77,14 +82,14 @@ export default function PresensiKelasPage() {
     try {
       setIsLoading(true);
       setError(null);
-     
+
       const response = await presensiAPI.getAll({
-        kelasMKId: kelasMKId
+        kelasMKId: kelasMKId,
       });
       if (response.success) {
         setPresensiList(response.data || []);
-       
-        const maxPertemuan = Math.max(0, ...(response.data?.map(p => p.pertemuan) || []));
+
+        const maxPertemuan = Math.max(0, ...(response.data?.map((p) => p.pertemuan) || []));
         setNewPertemuan(Math.min(16, maxPertemuan + 1));
       } else {
         setError(response.message || 'Gagal memuat data presensi');
@@ -93,8 +98,8 @@ export default function PresensiKelasPage() {
       console.error('Fetch error:', err);
       setError(
         err.response?.data?.message ||
-        err.message ||
-        'Terjadi kesalahan saat memuat data presensi'
+          err.message ||
+          'Terjadi kesalahan saat memuat data presensi',
       );
     } finally {
       setIsLoading(false);
@@ -108,11 +113,12 @@ export default function PresensiKelasPage() {
   const loadPresensiDetail = async (presensiId: number) => {
     try {
       const response = await presensiAPI.getById(presensiId);
-     
+
       if (response.success && response.data) {
         setSelectedPresensi(response.data);
-       
-        const initialAttendance: Record<number, { status: StatusPresensi; keterangan?: string }> = {};
+
+        const initialAttendance: Record<number, { status: StatusPresensi; keterangan?: string }> =
+          {};
         response.data.detail?.forEach((detail) => {
           initialAttendance[detail.mahasiswaId] = {
             status: detail.status,
@@ -141,7 +147,7 @@ export default function PresensiKelasPage() {
         setNewMateri('');
         setNewCatatan('');
         await fetchPresensi();
-       
+
         if (response.data) {
           loadPresensiDetail(response.data.id);
         }
@@ -182,7 +188,7 @@ export default function PresensiKelasPage() {
       const response = await presensiAPI.refreshMahasiswaList(selectedPresensi.id);
       if (response.success && response.data) {
         const { added, total } = response.data;
-      
+
         if (added > 0) {
           toast.success(`${added} mahasiswa baru ditambahkan`, {
             description: `Total mahasiswa sekarang: ${total}`,
@@ -196,9 +202,7 @@ export default function PresensiKelasPage() {
       }
     } catch (err: any) {
       console.error('Refresh error:', err);
-      toast.error(
-        err.response?.data?.message || 'Gagal refresh daftar mahasiswa'
-      );
+      toast.error(err.response?.data?.message || 'Gagal refresh daftar mahasiswa');
     } finally {
       setIsRefreshing(false);
     }
@@ -223,17 +227,15 @@ export default function PresensiKelasPage() {
     }
   };
 
-  // ✅ NEW: Open Keterangan Dialog
   const handleOpenKeteranganDialog = (mahasiswaId: number) => {
     setSelectedMahasiswaId(mahasiswaId);
     setTempKeterangan(attendance[mahasiswaId]?.keterangan || '');
     setIsKeteranganDialogOpen(true);
   };
 
-  // ✅ NEW: Save Keterangan
   const handleSaveKeterangan = () => {
     if (selectedMahasiswaId === null) return;
-    
+
     setAttendance((prev) => ({
       ...prev,
       [selectedMahasiswaId]: {
@@ -241,21 +243,51 @@ export default function PresensiKelasPage() {
         keterangan: tempKeterangan || undefined,
       },
     }));
-    
+
     toast.success('Keterangan berhasil diubah', {
       description: 'Jangan lupa klik "Simpan" untuk menyimpan perubahan',
     });
-    
+
     setIsKeteranganDialogOpen(false);
     setSelectedMahasiswaId(null);
     setTempKeterangan('');
   };
 
-  // ✅ NEW: Cancel Keterangan
-  const handleCancelKeterangan = () => {
-    setIsKeteranganDialogOpen(false);
-    setSelectedMahasiswaId(null);
-    setTempKeterangan('');
+  const handleOpenEditDialog = () => {
+    if (!selectedPresensi) return;
+    setEditMateri(selectedPresensi.materi || '');
+    setEditCatatan(selectedPresensi.catatan || '');
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedPresensi) return;
+    try {
+      setIsSaving(true);
+
+      const updates = Object.entries(attendance).map(([mahasiswaId, data]) => ({
+        mahasiswaId: parseInt(mahasiswaId),
+        status: data.status,
+        keterangan: data.keterangan,
+      }));
+
+      const response = await presensiAPI.update(selectedPresensi.id, {
+        updates,
+        materi: editMateri || undefined,
+        catatan: editCatatan || undefined,
+      });
+
+      if (response.success) {
+        toast.success('Materi dan catatan berhasil diupdate');
+        setIsEditDialogOpen(false);
+        await fetchPresensi();
+        await loadPresensiDetail(selectedPresensi.id);
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Gagal update materi/catatan');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (isLoading) {
@@ -267,27 +299,22 @@ export default function PresensiKelasPage() {
   }
 
   if (error) {
-    return (
-      <ErrorState
-        title="Gagal Memuat Data"
-        message={error}
-        onRetry={fetchPresensi}
-      />
-    );
+    return <ErrorState title="Gagal Memuat Data" message={error} onRetry={fetchPresensi} />;
   }
 
   const kelasInfo = presensiList[0]?.kelasMK;
-  
-  // ✅ NEW: Get selected mahasiswa name for dialog title
+
   const selectedMahasiswa = selectedPresensi?.detail?.find(
-    (d) => d.mahasiswaId === selectedMahasiswaId
+    (d) => d.mahasiswaId === selectedMahasiswaId,
   );
 
   return (
     <div className="space-y-6">
       <PageHeader
         title={kelasInfo?.mataKuliah?.namaMK || 'Presensi Kelas'}
-        description={`${kelasInfo?.mataKuliah?.kodeMK || ''} • ${kelasInfo?.hari || ''}, ${kelasInfo?.jamMulai || ''} - ${kelasInfo?.jamSelesai || ''}`}
+        description={`${kelasInfo?.mataKuliah?.kodeMK || ''} • ${
+          kelasInfo?.hari || ''
+        }, ${kelasInfo?.jamMulai || ''} - ${kelasInfo?.jamSelesai || ''}`}
         breadcrumbs={[
           { label: 'Dashboard', href: '/dosen/dashboard' },
           { label: 'Presensi', href: '/dosen/presensi' },
@@ -373,8 +400,12 @@ export default function PresensiKelasPage() {
         <AlertTitle className="text-blue-900 font-semibold">Tips Presensi</AlertTitle>
         <AlertDescription className="text-blue-800 text-sm space-y-1">
           <p>• Pilih pertemuan dari daftar untuk mengisi atau mengubah presensi</p>
-          <p>• Klik &quot;Refresh Daftar Mahasiswa&quot; jika ada mahasiswa baru yang KRS-nya baru disetujui</p>
+          <p>
+            • Klik &quot;Refresh Daftar Mahasiswa&quot; jika ada mahasiswa baru yang KRS-nya baru
+            disetujui
+          </p>
           <p>• Klik tombol &quot;Keterangan&quot; untuk menambahkan catatan per mahasiswa</p>
+          <p>• Klik ikon edit untuk mengubah materi dan catatan pertemuan</p>
           <p>• Jangan lupa simpan perubahan setelah mengisi presensi</p>
         </AlertDescription>
       </Alert>
@@ -397,21 +428,26 @@ export default function PresensiKelasPage() {
                 <button
                   key={p.id}
                   onClick={() => loadPresensiDetail(p.id)}
-                  className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+                  className={`relative w-full text-left p-4 rounded-lg border-2 transition-all duration-200 ${
                     selectedPresensi?.id === p.id
-                      ? 'bg-primary text-primary-foreground border-primary shadow-lg ring-4 ring-primary/20'
-                      : 'hover:bg-muted hover:border-primary/30 border-transparent'
+                      ? 'bg-primary text-primary-foreground border-primary shadow-lg ring-4 ring-primary/20 scale-[1.02]'
+                      : 'border-gray-200 hover:bg-primary/5 hover:border-primary/50 hover:shadow-md active:scale-[0.98] cursor-pointer'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="font-semibold text-base">Pertemuan {p.pertemuan}</div>
-                    {selectedPresensi?.id === p.id && (
-                      <Badge variant="secondary" className="bg-primary-foreground/20">
-                        Terpilih
-                      </Badge>
-                    )}
+                  {selectedPresensi?.id === p.id && (
+                    <Badge
+                      variant="secondary"
+                      className="absolute right-3 top-3 bg-primary-foreground/20 text-primary-foreground text-[11px] px-2 py-0.5"
+                    >
+                      ✓ Terpilih
+                    </Badge>
+                  )}
+
+                  <div className="mb-2">
+                    <div className="font-semibold text-base pr-16">Pertemuan {p.pertemuan}</div>
                   </div>
-                  <div className="text-sm mt-2 opacity-90">
+
+                  <div className="text-sm opacity-90">
                     {new Date(p.tanggal).toLocaleDateString('id-ID', {
                       day: 'numeric',
                       month: 'long',
@@ -434,9 +470,7 @@ export default function PresensiKelasPage() {
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
-                {selectedPresensi
-                  ? `Pertemuan ${selectedPresensi.pertemuan}`
-                  : 'Pilih Pertemuan'}
+                {selectedPresensi ? `Pertemuan ${selectedPresensi.pertemuan}` : 'Pilih Pertemuan'}
               </div>
               {selectedPresensi && (
                 <div className="flex gap-2">
@@ -448,12 +482,12 @@ export default function PresensiKelasPage() {
                     className="gap-2"
                   >
                     <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                    Refresh Mahasiswa
+                    Refresh
                   </Button>
-                  <Button 
+                  <Button
                     size="sm"
-                    onClick={handleSaveAttendance} 
-                    disabled={isSaving} 
+                    onClick={handleSaveAttendance}
+                    disabled={isSaving}
                     className="gap-2"
                   >
                     <Save className="h-4 w-4" />
@@ -470,8 +504,9 @@ export default function PresensiKelasPage() {
                       <DialogHeader>
                         <DialogTitle>Konfirmasi Hapus Pertemuan</DialogTitle>
                         <DialogDescription>
-                          Apakah Anda yakin ingin menghapus presensi pertemuan {selectedPresensi.pertemuan}? 
-                          Tindakan ini tidak dapat dibatalkan dan semua data presensi akan hilang.
+                          Apakah Anda yakin ingin menghapus presensi pertemuan{' '}
+                          {selectedPresensi.pertemuan}? Tindakan ini tidak dapat dibatalkan dan
+                          semua data presensi akan hilang.
                         </DialogDescription>
                       </DialogHeader>
                       <DialogFooter>
@@ -482,7 +517,11 @@ export default function PresensiKelasPage() {
                         >
                           Batal
                         </Button>
-                        <Button variant="destructive" onClick={handleDeletePresensi} disabled={isDeleting}>
+                        <Button
+                          variant="destructive"
+                          onClick={handleDeletePresensi}
+                          disabled={isDeleting}
+                        >
                           {isDeleting ? 'Menghapus...' : 'Ya, Hapus'}
                         </Button>
                       </DialogFooter>
@@ -503,18 +542,42 @@ export default function PresensiKelasPage() {
               <>
                 <div className="space-y-4">
                   {(selectedPresensi.materi || selectedPresensi.catatan) && (
-                    <div className="p-4 bg-muted rounded-lg space-y-2 text-sm border">
+                    <div className="p-4 bg-muted rounded-lg space-y-2 text-sm border relative">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-2 top-2 h-8 gap-1"
+                        onClick={handleOpenEditDialog}
+                      >
+                        <Edit className="h-3.5 w-3.5" />
+                        Edit
+                      </Button>
                       {selectedPresensi.materi && (
-                        <div>
-                          <strong className="text-primary">Materi:</strong> {selectedPresensi.materi}
+                        <div className="pr-16">
+                          <strong className="text-primary">Materi:</strong>{' '}
+                          {selectedPresensi.materi}
                         </div>
                       )}
                       {selectedPresensi.catatan && (
-                        <div>
-                          <strong className="text-primary">Catatan:</strong> {selectedPresensi.catatan}
+                        <div className="pr-16">
+                          <strong className="text-primary">Catatan:</strong>{' '}
+                          {selectedPresensi.catatan}
                         </div>
                       )}
                     </div>
+                  )}
+
+                  {!selectedPresensi.materi && !selectedPresensi.catatan && (
+                    <Alert className="border-dashed">
+                      <Info className="h-4 w-4" />
+                      <AlertDescription className="flex items-center justify-between">
+                        <span>Belum ada materi atau catatan untuk pertemuan ini</span>
+                        <Button variant="outline" size="sm" onClick={handleOpenEditDialog} className="gap-1">
+                          <Edit className="h-3.5 w-3.5" />
+                          Tambah
+                        </Button>
+                      </AlertDescription>
+                    </Alert>
                   )}
 
                   <div className="space-y-2 max-h-[500px] overflow-y-auto">
@@ -524,14 +587,16 @@ export default function PresensiKelasPage() {
                         className="flex items-center gap-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors"
                       >
                         <div className="flex-1">
-                          <div className="font-medium text-base">{detail.mahasiswa?.namaLengkap}</div>
+                          <div className="font-medium text-base">
+                            {detail.mahasiswa?.namaLengkap}
+                          </div>
                           <div className="text-sm text-muted-foreground font-mono">
                             {detail.mahasiswa?.nim}
                           </div>
-                          {/* ✅ NEW: Show keterangan if exists */}
                           {(attendance[detail.mahasiswaId]?.keterangan || detail.keterangan) && (
                             <div className="text-xs text-muted-foreground mt-1 italic">
-                              💬 {attendance[detail.mahasiswaId]?.keterangan || detail.keterangan}
+                              💬{' '}
+                              {attendance[detail.mahasiswaId]?.keterangan || detail.keterangan}
                             </div>
                           )}
                         </div>
@@ -562,8 +627,7 @@ export default function PresensiKelasPage() {
                               ))}
                             </SelectContent>
                           </Select>
-                          
-                          {/* ✅ NEW: Keterangan Button */}
+
                           <Button
                             variant="outline"
                             size="sm"
@@ -584,7 +648,6 @@ export default function PresensiKelasPage() {
         </Card>
       </div>
 
-      {/* ✅ NEW: Keterangan Dialog */}
       <Dialog open={isKeteranganDialogOpen} onOpenChange={setIsKeteranganDialogOpen}>
         <DialogContent className="bg-white">
           <DialogHeader>
@@ -592,8 +655,10 @@ export default function PresensiKelasPage() {
             <DialogDescription>
               {selectedMahasiswa && (
                 <>
-                  <span className="font-medium">{selectedMahasiswa.mahasiswa?.namaLengkap}</span>
-                  {' '}({selectedMahasiswa.mahasiswa?.nim})
+                  <span className="font-medium">
+                    {selectedMahasiswa.mahasiswa?.namaLengkap}
+                  </span>{' '}
+                  ({selectedMahasiswa.mahasiswa?.nim})
                 </>
               )}
             </DialogDescription>
@@ -613,14 +678,55 @@ export default function PresensiKelasPage() {
             </p>
           </div>
           <DialogFooter>
+            <Button variant="outline" onClick={() => setIsKeteranganDialogOpen(false)}>
+              Batal
+            </Button>
+            <Button onClick={handleSaveKeterangan}>Simpan</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="bg-white">
+          <DialogHeader>
+            <DialogTitle>Edit Materi & Catatan</DialogTitle>
+            <DialogDescription>
+              Pertemuan {selectedPresensi?.pertemuan}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="edit-materi">Materi</Label>
+              <Input
+                id="edit-materi"
+                placeholder="Contoh: Pengenalan Database"
+                value={editMateri}
+                onChange={(e) => setEditMateri(e.target.value)}
+                className="mt-2"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-catatan">Catatan</Label>
+              <Textarea
+                id="edit-catatan"
+                placeholder="Catatan tambahan..."
+                value={editCatatan}
+                onChange={(e) => setEditCatatan(e.target.value)}
+                rows={4}
+                className="mt-2"
+              />
+            </div>
+          </div>
+          <DialogFooter>
             <Button
               variant="outline"
-              onClick={handleCancelKeterangan}
+              onClick={() => setIsEditDialogOpen(false)}
+              disabled={isSaving}
             >
               Batal
             </Button>
-            <Button onClick={handleSaveKeterangan}>
-              Simpan
+            <Button onClick={handleSaveEdit} disabled={isSaving}>
+              {isSaving ? 'Menyimpan...' : 'Simpan'}
             </Button>
           </DialogFooter>
         </DialogContent>

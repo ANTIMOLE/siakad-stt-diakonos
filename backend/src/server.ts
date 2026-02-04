@@ -120,17 +120,39 @@ const uploadLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// const corsOptions = {
+//   origin:
+//     env.NODE_ENV === 'production'
+//       ? process.env.FRONTEND_URL
+//       : ['http://localhost:3000', 'http://localhost:3001'],
+//   credentials: true,
+//   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+//   allowedHeaders: ['Content-Type', 'Authorization'],
+//   exposedHeaders: ['set-cookie', 'Content-Disposition'],
+//   maxAge: 86400,
+// };
+
 const corsOptions = {
-  origin:
-    env.NODE_ENV === 'production'
-      ? process.env.FRONTEND_URL
-      : ['http://localhost:3000', 'http://localhost:3001'],
+  origin: (origin: string | undefined, callback: (arg0: Error | null, arg1: boolean | undefined) => void) => {
+    const allowedOrigins =
+      env.NODE_ENV === 'production'
+        ? [process.env.FRONTEND_URL, 'http://localhost:3000', 'http://localhost:3001'].filter(Boolean)
+        : ['http://localhost:3000', 'http://localhost:3001'];
+
+    // Allow requests with no origin (like mobile apps or Postman)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'), false);
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   exposedHeaders: ['set-cookie', 'Content-Disposition'],
   maxAge: 86400,
 };
+
 
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));

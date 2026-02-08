@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -313,7 +314,7 @@ export default function DetailPaketKRSPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus Paket KRS?</AlertDialogTitle>
             <AlertDialogDescription>
-              Apakah Anda yakin ingin menghapus paket KRS "{paket.namaPaket}"?
+              Apakah Anda yakin ingin menghapus paket KRS &quot;{paket.namaPaket}&quot;?
               Tindakan ini tidak dapat dibatalkan dan akan menghapus semua data
               terkait.
             </AlertDialogDescription>

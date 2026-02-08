@@ -11,16 +11,30 @@ import ErrorState from '@/components/shared/ErrorState';
 import EmptyState from '@/components/shared/EmptyState';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 
 import { paketKRSAPI, semesterAPI } from '@/lib/api';
 import { Semester } from '@/types/model';
 
-// ============================================
 // TYPES
-// ============================================
 interface PaketKRS {
   id: number;
   namaPaket: string;
@@ -47,15 +61,12 @@ interface PaketKRS {
 export default function PaketKRSListPage() {
   const router = useRouter();
 
-  // ============================================
   // STATE MANAGEMENT
-  // ============================================
   const [paketList, setPaketList] = useState<PaketKRS[]>([]);
   const [semesterList, setSemesterList] = useState<Semester[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSemesterLoading, setIsSemesterLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [filters, setFilters] = useState({
     angkatan: 'ALL',
     prodiId: 'ALL',
@@ -63,15 +74,24 @@ export default function PaketKRSListPage() {
     semesterPaket: 'ALL',
   });
 
-  // ============================================
+  // ✅ DELETE DIALOG STATE
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    id: number | null;
+    name: string;
+  }>({
+    open: false,
+    id: null,
+    name: '',
+  });
+  const [isDeleting, setIsDeleting] = useState(false);
+
   // FETCH SEMESTER LIST
-  // ============================================
   useEffect(() => {
     const fetchSemesters = async () => {
       try {
         setIsSemesterLoading(true);
         const response = await semesterAPI.getAll();
-        
         if (response.success && response.data) {
           setSemesterList(response.data);
         }
@@ -85,19 +105,20 @@ export default function PaketKRSListPage() {
     fetchSemesters();
   }, []);
 
-  // ============================================
   // FETCH PAKET KRS DATA
-  // ============================================
   const fetchPaketKRS = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
 
       const params: any = {};
-      if (filters.angkatan !== 'ALL') params.angkatan = parseInt(filters.angkatan);
+      if (filters.angkatan !== 'ALL')
+        params.angkatan = parseInt(filters.angkatan);
       if (filters.prodiId !== 'ALL') params.prodiId = parseInt(filters.prodiId);
-      if (filters.semesterId !== 'ALL') params.semesterId = parseInt(filters.semesterId);
-      if (filters.semesterPaket !== 'ALL') params.semesterPaket = parseInt(filters.semesterPaket);
+      if (filters.semesterId !== 'ALL')
+        params.semesterId = parseInt(filters.semesterId);
+      if (filters.semesterPaket !== 'ALL')
+        params.semesterPaket = parseInt(filters.semesterPaket);
 
       const response = await paketKRSAPI.getAll(params);
 
@@ -110,26 +131,19 @@ export default function PaketKRSListPage() {
       console.error('Fetch paket KRS error:', err);
       setError(
         err.response?.data?.message ||
-        err.message ||
-        'Terjadi kesalahan saat memuat data paket KRS'
+          err.message ||
+          'Terjadi kesalahan saat memuat data paket KRS'
       );
     } finally {
       setIsLoading(false);
     }
-  }, [
-    filters.angkatan,
-    filters.prodiId,
-    filters.semesterId,
-    filters.semesterPaket,
-  ]);
+  }, [filters.angkatan, filters.prodiId, filters.semesterId, filters.semesterPaket]);
 
   useEffect(() => {
     fetchPaketKRS();
   }, [fetchPaketKRS]);
 
-  // ============================================
-  // HANDLERS
-  // ============================================
+  // ✅ HANDLERS
   const handleFilterChange = (key: string, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
@@ -142,17 +156,26 @@ export default function PaketKRSListPage() {
     router.push(`/admin/paket-krs/${id}/edit`);
   };
 
-  const handleDelete = async (id: number, namaPaket: string) => {
-    if (!confirm(`Apakah Anda yakin ingin menghapus paket "${namaPaket}"?`)) {
-      return;
-    }
+  // ✅ Open delete confirmation dialog
+  const handleDelete = (id: number, namaPaket: string) => {
+    setDeleteDialog({
+      open: true,
+      id,
+      name: namaPaket,
+    });
+  };
+
+  // ✅ Confirm delete action
+  const confirmDelete = async () => {
+    if (!deleteDialog.id) return;
 
     try {
-      const response = await paketKRSAPI.delete(id);
+      setIsDeleting(true);
+      const response = await paketKRSAPI.delete(deleteDialog.id);
 
       if (response.success) {
         toast.success('Paket KRS berhasil dihapus');
-        fetchPaketKRS();
+        fetchPaketKRS(); // Refresh list
       } else {
         toast.error(response.message || 'Gagal menghapus paket KRS');
       }
@@ -160,9 +183,12 @@ export default function PaketKRSListPage() {
       console.error('Delete error:', err);
       toast.error(
         err.response?.data?.message ||
-        err.message ||
-        'Terjadi kesalahan saat menghapus paket KRS'
+          err.message ||
+          'Terjadi kesalahan saat menghapus paket KRS'
       );
+    } finally {
+      setIsDeleting(false);
+      setDeleteDialog({ open: false, id: null, name: '' });
     }
   };
 
@@ -174,9 +200,7 @@ export default function PaketKRSListPage() {
     fetchPaketKRS();
   };
 
-  // ============================================
   // LOADING STATE
-  // ============================================
   if (isLoading && paketList.length === 0) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -185,9 +209,7 @@ export default function PaketKRSListPage() {
     );
   }
 
-  // ============================================
   // ERROR STATE
-  // ============================================
   if (error && paketList.length === 0) {
     return (
       <ErrorState
@@ -198,11 +220,10 @@ export default function PaketKRSListPage() {
     );
   }
 
-  // ============================================
   // RENDER
-  // ============================================
   return (
     <div className="space-y-6">
+      {/* Page Header */}
       <PageHeader
         title="Paket KRS"
         description="Kelola paket KRS per angkatan dan prodi"
@@ -225,7 +246,10 @@ export default function PaketKRSListPage() {
             {/* Filter Angkatan */}
             <div>
               <label className="text-sm font-medium mb-2 block">Angkatan</label>
-              <Select value={filters.angkatan} onValueChange={(value) => handleFilterChange('angkatan', value)}>
+              <Select
+                value={filters.angkatan}
+                onValueChange={(value) => handleFilterChange('angkatan', value)}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -242,8 +266,13 @@ export default function PaketKRSListPage() {
 
             {/* Filter Program Studi */}
             <div>
-              <label className="text-sm font-medium mb-2 block">Program Studi</label>
-              <Select value={filters.prodiId} onValueChange={(value) => handleFilterChange('prodiId', value)}>
+              <label className="text-sm font-medium mb-2 block">
+                Program Studi
+              </label>
+              <Select
+                value={filters.prodiId}
+                onValueChange={(value) => handleFilterChange('prodiId', value)}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -257,9 +286,11 @@ export default function PaketKRSListPage() {
 
             {/* Filter Semester Akademik */}
             <div>
-              <label className="text-sm font-medium mb-2 block">Semester Akademik</label>
-              <Select 
-                value={filters.semesterId} 
+              <label className="text-sm font-medium mb-2 block">
+                Semester Akademik
+              </label>
+              <Select
+                value={filters.semesterId}
                 onValueChange={(value) => handleFilterChange('semesterId', value)}
                 disabled={isSemesterLoading}
               >
@@ -279,8 +310,15 @@ export default function PaketKRSListPage() {
 
             {/* Filter Semester Paket */}
             <div>
-              <label className="text-sm font-medium mb-2 block">Semester Paket</label>
-              <Select value={filters.semesterPaket} onValueChange={(value) => handleFilterChange('semesterPaket', value)}>
+              <label className="text-sm font-medium mb-2 block">
+                Semester Paket
+              </label>
+              <Select
+                value={filters.semesterPaket}
+                onValueChange={(value) =>
+                  handleFilterChange('semesterPaket', value)
+                }
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -332,16 +370,22 @@ export default function PaketKRSListPage() {
                       </div>
                     )}
                   </div>
-                  <Badge className="ml-2 shrink-0">{paket.prodi?.kode || 'N/A'}</Badge>
+                  <Badge className="ml-2 shrink-0">
+                    {paket.prodi?.kode || 'N/A'}
+                  </Badge>
                 </div>
               </CardHeader>
+
               <CardContent className="space-y-4">
+                {/* Stats */}
                 <div className="grid grid-cols-2 gap-4 text-center">
                   <div className="rounded-lg border p-3">
                     <div className="text-2xl font-bold">
                       {paket._count?.detail || 0}
                     </div>
-                    <div className="text-xs text-muted-foreground">Mata Kuliah</div>
+                    <div className="text-xs text-muted-foreground">
+                      Mata Kuliah
+                    </div>
                   </div>
                   <div className="rounded-lg border p-3">
                     <div className="text-2xl font-bold">{paket.totalSKS || 0}</div>
@@ -349,6 +393,7 @@ export default function PaketKRSListPage() {
                   </div>
                 </div>
 
+                {/* Actions */}
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -369,7 +414,7 @@ export default function PaketKRSListPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-red-600"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
                     onClick={() => handleDelete(paket.id, paket.namaPaket)}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -380,6 +425,40 @@ export default function PaketKRSListPage() {
           ))}
         </div>
       )}
+
+      {/* ✅ DELETE CONFIRMATION DIALOG */}
+      <AlertDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) =>
+          setDeleteDialog({ ...deleteDialog, open })
+        }
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus Paket KRS?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Apakah Anda yakin ingin menghapus paket{' '}
+              <span className="font-semibold text-foreground">
+                {deleteDialog.name}
+              </span>
+              ? Tindakan ini tidak dapat dibatalkan dan akan menghapus semua mata
+              kuliah dalam paket ini.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? 'Menghapus...' : 'Ya, Hapus'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

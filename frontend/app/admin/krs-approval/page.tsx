@@ -49,7 +49,7 @@ export default function KRSApprovalListPage() {
   const [statusFilter, setStatusFilter] = useState<KRSStatus | 'ALL'>('SUBMITTED');
   const [semesterFilter, setSemesterFilter] = useState<string>('ACTIVE');
 
-  // ✅ PAGINATION STATE
+
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalData, setTotalData] = useState(0);
@@ -76,7 +76,7 @@ export default function KRSApprovalListPage() {
     fetchSemester();
   }, []);
 
-  // ✅ RESET PAGE when filters change
+
   useEffect(() => {
     setPage(1);
   }, [statusFilter, semesterFilter]);
@@ -100,7 +100,7 @@ export default function KRSApprovalListPage() {
         // Determine status
         const status = statusFilter === 'ALL' ? undefined : statusFilter;
 
-        // ✅ FIXED: Send pagination parameters
+
         const response = await krsAPI.getAll({
           page,
           limit,
@@ -111,7 +111,7 @@ export default function KRSApprovalListPage() {
         if (response.success && response.data) {
           setKrsList(response.data);
           
-          // ✅ Set pagination info
+
           if (response.pagination) {
             setTotalPages(response.pagination.totalPages || 1);
             setTotalData(response.pagination.total || 0);
@@ -153,14 +153,13 @@ export default function KRSApprovalListPage() {
 
   // HANDLERS
   const handleReview = (id: number) => {
-    router.push(`/dosen/krs-approval/${id}`);
+    router.push(`/admin/krs-approval/${id}`);
   };
 
   const handleRetry = () => {
     window.location.reload();
   };
 
-  // ✅ PAGINATION HANDLERS
   const handlePrevPage = () => {
     if (page > 1) setPage(page - 1);
   };

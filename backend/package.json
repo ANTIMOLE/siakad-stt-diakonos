@@ -54,6 +54,7 @@
     "multer": "^2.0.2",
     "pdfkit": "^0.17.2",
     "puppeteer": "^24.34.0",
-    "validator": "^13.15.26"
+    "validator": "^13.15.26",
+    "xlsx": "^0.18.5"
   }
 }

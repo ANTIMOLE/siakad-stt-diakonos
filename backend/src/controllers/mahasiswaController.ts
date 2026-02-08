@@ -1,13 +1,10 @@
-/**
- * Mahasiswa Controller
- * Handles CRUD operations for students
- */
 
 import { Response } from 'express';
 import prisma from '../config/database';
 import { AuthRequest } from '../types';
 import { asyncHandler, AppError } from '../middlewares/errorMiddleware';
 import { Prisma, Role } from '@prisma/client';
+import { exportMahasiswaToExcel } from '../utils/excelExport';
 
 /**
  * GET /api/mahasiswa
@@ -19,13 +16,13 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     limit = 10,
     search,
     jenisKelamin,
-
     prodiId,
     angkatan,
     status,
     dosenWaliId,
     sortBy = 'nim',
     sortOrder = 'asc',
+    export: isExport, // ✅ ADDED: Export flag
   } = req.query;
 
   // Build where clause
@@ -36,7 +33,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
       { nim: { contains: search as string, mode: 'insensitive' } },
       { namaLengkap: { contains: search as string, mode: 'insensitive' } },
       { alamat: { contains: search as string, mode: 'insensitive' } },
-      {tempatTanggalLahir: { contains: search as string, mode: 'insensitive' } },
+      { tempatTanggalLahir: { contains: search as string, mode: 'insensitive' } },
     ];
   }
 
@@ -48,7 +45,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     where.angkatan = parseInt(angkatan as string);
   }
 
-  if(jenisKelamin) {
+  if (jenisKelamin) {
     where.jenisKelamin = jenisKelamin as 'L' | 'P';
   }
 
@@ -58,6 +55,55 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
 
   if (dosenWaliId) {
     where.dosenWaliId = parseInt(dosenWaliId as string);
+  }
+
+  // ✅ EXPORT MODE: Get all data without pagination
+  if (isExport === 'true') {
+    const mahasiswa = await prisma.mahasiswa.findMany({
+      where,
+      orderBy: {
+        [sortBy as string]: sortOrder as 'asc' | 'desc',
+      },
+      include: {
+        prodi: {
+          select: {
+            id: true,
+            kode: true,
+            nama: true,
+            jenjang: true,
+          },
+        },
+        dosenWali: {
+          select: {
+            id: true,
+            nidn: true,
+            namaLengkap: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    // Get prodi name for filename
+    let prodiName: string | undefined;
+    if (prodiId) {
+      const prodi = await prisma.programStudi.findUnique({
+        where: { id: parseInt(prodiId as string) },
+      });
+      prodiName = prodi?.kode;
+    }
+
+    // Export to Excel
+    return exportMahasiswaToExcel(mahasiswa, res, {
+      prodi: prodiName,
+      angkatan: angkatan ? parseInt(angkatan as string) : undefined,
+      status: status as string,
+    });
   }
 
   // Pagination
@@ -166,10 +212,6 @@ export const getById = asyncHandler(
  * POST /api/mahasiswa
  * Create new mahasiswa
  */
-/**
- * POST /api/mahasiswa
- * Create new mahasiswa
- */
 export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
     nim,
@@ -207,11 +249,9 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
       angkatan,
       status: 'AKTIF',
       prodi: {
-        connect: { id: prodiId },  
+        connect: { id: prodiId },
       },
-      dosenWali: dosenWaliId 
-        ? { connect: { id: dosenWaliId } }  
-        : undefined,
+      dosenWali: dosenWaliId ? { connect: { id: dosenWaliId } } : undefined,
       user: {
         create: {
           password: hashedPassword,

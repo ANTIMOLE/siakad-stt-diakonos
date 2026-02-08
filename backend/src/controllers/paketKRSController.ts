@@ -333,18 +333,17 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
   });
 });
 
-/**
- * PUT /api/paket-krs/:id
- * Update paket KRS
- */
+
+
 export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const {
-    namaPaket,
-    prodiId,
-    angkatan,
-    semesterPaket,
+  const { 
+    namaPaket, 
+    prodiId, 
+    angkatan, 
+    semesterPaket, 
     semesterId,
+    kelasMKIds 
   } = req.body;
 
   // Check if paket exists
@@ -353,7 +352,7 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
   });
 
   if (!existingPaket) {
-    throw new AppError('Paket KRS tidak ditemukan', 404);
+    throw new AppError("Paket KRS tidak ditemukan", 404);
   }
 
   // Validate semesterId if provided
@@ -361,49 +360,98 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     const semester = await prisma.semester.findUnique({
       where: { id: semesterId },
     });
-
     if (!semester) {
-      throw new AppError('Semester tidak ditemukan', 404);
+      throw new AppError("Semester tidak ditemukan", 404);
     }
   }
 
-  // Update paket
-  const paket = await prisma.paketKRS.update({
-    where: { id: parseInt(id) },
-    data: {
-      namaPaket,
-      angkatan,
-      semesterPaket,
-      prodi: {
-        connect: { id: prodiId },
+ 
+  let totalSKS = existingPaket.totalSKS;
+  
+  if (kelasMKIds && Array.isArray(kelasMKIds)) {
+    // Validate all kelasMK exist and calculate totalSKS
+    const kelasList = await prisma.kelasMataKuliah.findMany({
+      where: {
+        id: { in: kelasMKIds },
+        semesterId: semesterId || existingPaket.semesterId,
       },
-      ...(semesterId && {
-        semester: {
-          connect: { id: semesterId },
+      include: {
+        mataKuliah: {
+          select: { sks: true },
         },
-      }),
-    },
-    include: {
-      prodi: true,
-      semester: true,
-      detail: {
-        include: {
-          kelasMK: {
-            include: {
-              mataKuliah: true,
+      },
+    });
+
+    if (kelasList.length !== kelasMKIds.length) {
+      throw new AppError(
+        "Beberapa kelas tidak ditemukan atau bukan dari semester yang dipilih",
+        400
+      );
+    }
+
+    totalSKS = kelasList.reduce((sum, k) => sum + (k.mataKuliah.sks || 0), 0);
+
+    if (totalSKS > 24) {
+      throw new AppError("Total SKS melebihi batas maksimal (24 SKS)", 400);
+    }
+  }
+
+  
+  const paket = await prisma.$transaction(async (tx) => {
+    // 1. Delete all existing details jika kelasMKIds dikirim
+    if (kelasMKIds && Array.isArray(kelasMKIds)) {
+      await tx.paketKRSDetail.deleteMany({
+        where: { paketKRSId: parseInt(id) },
+      });
+
+      // 2. Create new details
+      await tx.paketKRSDetail.createMany({
+        data: kelasMKIds.map((kelasMKId: number) => ({
+          paketKRSId: parseInt(id),
+          kelasMKId,
+        })),
+      });
+    }
+
+    // 3. Update paket
+    return await tx.paketKRS.update({
+      where: { id: parseInt(id) },
+      data: {
+        namaPaket,
+        angkatan,
+        semesterPaket,
+        totalSKS, // ✅ Update totalSKS
+        ...(prodiId && {
+          prodi: { connect: { id: prodiId } },
+        }),
+        ...(semesterId && {
+          semester: { connect: { id: semesterId } },
+        }),
+      },
+      include: {
+        prodi: true,
+        semester: true,
+        detail: {
+          include: {
+            kelasMK: {
+              include: {
+                mataKuliah: true,
+                dosen: true,
+              },
             },
           },
         },
       },
-    },
+    });
   });
 
   res.status(200).json({
     success: true,
-    message: 'Paket KRS berhasil diupdate',
+    message: "Paket KRS berhasil diupdate",
     data: paket,
   });
 });
+
 
 /**
  * DELETE /api/paket-krs/:id

@@ -89,9 +89,9 @@ const apiLimiter = rateLimit({
 });
 
 const loginLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  max: 10,
-  message: { success: false, message: 'Terlalu banyak percobaan login. Coba lagi dalam 15 menit.' },
+  windowMs: 3 * 60 * 1000,
+  max: 15,
+  message: { success: false, message: 'Terlalu banyak percobaan login. Coba lagi dalam 3 menit.' },
   standardHeaders: true,
   legacyHeaders: false,
 });

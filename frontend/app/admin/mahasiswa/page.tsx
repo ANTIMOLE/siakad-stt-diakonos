@@ -2,6 +2,7 @@
 /**
  * Admin - List Mahasiswa Page
  * ✅ UPDATED: Sesuai schema baru (tempatTanggalLahir, jenisKelamin, alamat)
+ * ✅ FIXED: Excel export functionality
  */
 
 'use client';
@@ -69,7 +70,7 @@ export default function MahasiswaPage() {
 
   const [filters, setFilters] = useState<MahasiswaFilters>({
     search: '',
-    jenisKelamin: undefined, // ✅ ADDED
+    jenisKelamin: undefined,
     prodiId: undefined,
     angkatan: undefined,
     status: undefined,
@@ -112,7 +113,7 @@ export default function MahasiswaPage() {
     fetchMahasiswa();
   }, [
     filters.search,
-    filters.jenisKelamin, // ✅ ADDED
+    filters.jenisKelamin,
     filters.prodiId,
     filters.angkatan,
     filters.status,
@@ -197,9 +198,35 @@ export default function MahasiswaPage() {
     }
   }, []);
 
-  const handleExport = useCallback(() => {
-    toast.info('Fitur export akan segera hadir');
-  }, []);
+  // ✅ FIXED: Proper Excel export
+  const handleExport = async () => {
+    try {
+      const response = await mahasiswaAPI.exportToExcel({
+        search: filters.search,
+        prodiId: filters.prodiId,
+        angkatan: filters.angkatan,
+        status: filters.status,
+        jenisKelamin: filters.jenisKelamin,
+      });
+
+      // Create blob and download
+      const url = window.URL.createObjectURL(new Blob([response]));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const timestamp = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `Mahasiswa_${timestamp}.xlsx`);
+      
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      toast.success('Data mahasiswa berhasil di-export');
+    } catch (err: any) {
+      console.error('Export error:', err);
+      toast.error('Gagal export data mahasiswa');
+    }
+  };
 
   const handleRetry = useCallback(() => {
     setFilters(prev => ({ ...prev, page: 1 }));
@@ -268,7 +295,7 @@ export default function MahasiswaPage() {
               />
             </div>
 
-            {/* Filter Jenis Kelamin - ✅ ADDED */}
+            {/* Filter Jenis Kelamin */}
             <Select
               value={filters.jenisKelamin || 'all'}
               onValueChange={(value) =>

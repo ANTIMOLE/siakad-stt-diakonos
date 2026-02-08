@@ -129,9 +129,22 @@ export const mahasiswaAPI = {
       angkatan?: number;
       status?: string;
       dosenWaliId?: number;
+      export?: boolean;
     } 
   ): Promise<PaginatedApiResponse<Mahasiswa>> => 
     api.get('/mahasiswa', { params }),
+
+    exportToExcel: (params?: {
+    search?: string;
+    prodiId?: number;
+    angkatan?: number;
+    status?: string;
+    jenisKelamin?: 'L' | 'P';
+  }): Promise<Blob> =>
+    api.get('/mahasiswa', { 
+      params: { ...params, export: 'true' },
+      responseType: 'blob' 
+    }),
 
   getById: (id: number): Promise<ApiResponse<Mahasiswa>> => 
     api.get(`/mahasiswa/${id}`),
@@ -165,9 +178,20 @@ export const dosenAPI = {
       status?: string;
       sortBy?: string;
       sortOrder?: 'asc' | 'desc';
+       export?: boolean;
     } 
   ): Promise<PaginatedApiResponse<Dosen>> => 
     api.get('/dosen', { params }), 
+
+    exportToExcel: (params?: {
+    search?: string;
+    prodiId?: number;
+    status?: string;
+  }): Promise<Blob> =>
+    api.get('/dosen', { 
+      params: { ...params, export: 'true' },
+      responseType: 'blob' 
+    }),
 
   getById: (id: number): Promise<ApiResponse<Dosen>> => 
     api.get(`/dosen/${id}`),
@@ -192,8 +216,22 @@ export const mataKuliahAPI = {
     search?: string;
     prodi?: number;
     semester?: number;
+    semesterIdeal?: number;
+    isActive?: boolean;
+    export?: boolean;
   }): Promise<PaginatedApiResponse<MataKuliah>> => 
     api.get('/mata-kuliah', { params }),
+
+
+    exportToExcel: (params?: {
+    search?: string;
+    semesterIdeal?: number;
+    isActive?: boolean;
+  }): Promise<Blob> =>
+    api.get('/mata-kuliah', { 
+      params: { ...params, export: 'true' },
+      responseType: 'blob' 
+    }),
 
   getById: (id: number): Promise<ApiResponse<MataKuliah>> => 
     api.get(`/mata-kuliah/${id}`),

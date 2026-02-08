@@ -7,15 +7,17 @@
  * Convert nilai angka to huruf
  * Based on standard conversion table
  */
+
+//
 export const nilaiAngkaToHuruf = (angka: number): string => {
   if (angka >= 91 && angka <= 100) return 'A';
   if (angka >= 81 && angka < 91) return 'AB';
-  if (angka >= 71 && angka < 81) return 'B';
-  if (angka >= 61 && angka < 71) return 'BC';
-  if (angka >= 56 && angka < 61) return 'C';
-  if (angka >= 41 && angka < 56) return 'CD';
-  if (angka >= 31 && angka < 41) return 'D';
-  if (angka >= 0 && angka < 31) return 'E';
+  if (angka >= 74 && angka < 81) return 'B';
+  if (angka >= 68 && angka < 74) return 'BC';
+  if (angka >= 60 && angka < 68) return 'C';
+  if (angka >= 51 && angka < 60) return 'CD';
+  if (angka >= 41 && angka < 51) return 'D';
+  if (angka >= 0 && angka < 41) return 'E';
   
   throw new Error('Nilai angka tidak valid (harus 0-100)');
 };

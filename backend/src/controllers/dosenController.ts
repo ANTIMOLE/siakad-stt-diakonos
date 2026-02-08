@@ -1,13 +1,10 @@
-/**
- * Dosen Controller
- * ✅ FIXED: Use proper Prisma nested relation syntax for prodi
- */
 
 import { Response } from 'express';
 import prisma from '../config/database';
 import { AuthRequest } from '../types';
 import { asyncHandler, AppError } from '../middlewares/errorMiddleware';
 import { Prisma } from '@prisma/client';
+import { exportDosenToExcel } from '../utils/excelExport';
 
 export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
@@ -18,6 +15,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     status,
     sortBy = 'nidn',
     sortOrder = 'asc',
+    export: isExport, // ✅ ADDED: Export flag
   } = req.query;
 
   const where: Prisma.DosenWhereInput = {};
@@ -36,6 +34,53 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
 
   if (status) {
     where.status = status as any;
+  }
+
+  // ✅ EXPORT MODE: Get all data without pagination
+  if (isExport === 'true') {
+    const dosen = await prisma.dosen.findMany({
+      where,
+      orderBy: {
+        [sortBy as string]: sortOrder as 'asc' | 'desc',
+      },
+      include: {
+        prodi: {
+          select: {
+            id: true,
+            kode: true,
+            nama: true,
+            jenjang: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            isActive: true,
+          },
+        },
+        _count: {
+          select: {
+            mahasiswaBimbingan: true,
+            kelasMataKuliah: true,
+          },
+        },
+      },
+    });
+
+    // Get prodi name for filename
+    let prodiName: string | undefined;
+    if (prodiId) {
+      const prodi = await prisma.programStudi.findUnique({
+        where: { id: parseInt(prodiId as string) },
+      });
+      prodiName = prodi?.kode;
+    }
+
+    // Export to Excel
+    return exportDosenToExcel(dosen, res, {
+      prodi: prodiName,
+      status: status as string,
+    });
   }
 
   const pageNum = parseInt(page as string);
@@ -167,7 +212,6 @@ export const getById = asyncHandler(
 
 /**
  * POST /api/dosen
- * ✅ FIXED: Use proper nested relation syntax
  */
 export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
@@ -206,7 +250,6 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
   const bcrypt = require('bcrypt');
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  // ✅ FIXED: Use nested connect syntax for prodi relation
   const dosen = await prisma.dosen.create({
     data: {
       nidn,
@@ -219,7 +262,6 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
       lamaMengajar: lamaMengajar || '',
       tempatLahir: tempatLahir || null,
       tanggalLahir: tanggalLahir ? new Date(tanggalLahir) : null,
-      // ✅ CORRECT: Use nested connect for relation
       ...(prodiId && {
         prodi: {
           connect: {
@@ -256,7 +298,6 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
 
 /**
  * PUT /api/dosen/:id
- * ✅ FIXED: Use proper nested relation syntax for update
  */
 export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
@@ -274,7 +315,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     tanggalLahir,
   } = req.body;
 
-  // Check if dosen exists
   const existingDosen = await prisma.dosen.findUnique({
     where: { id: parseInt(id) },
   });
@@ -283,7 +323,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     throw new AppError('Dosen tidak ditemukan', 404);
   }
 
-  // Check if new NIDN already used by other dosen
   if (nidn && nidn !== existingDosen.nidn) {
     const nidnExists = await prisma.dosen.findUnique({
       where: { nidn },
@@ -294,7 +333,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     }
   }
 
-  // Check if new NUPTK already used by other dosen
   if (nuptk && nuptk !== existingDosen.nuptk) {
     const nuptkExists = await prisma.dosen.findUnique({
       where: { nuptk },
@@ -305,7 +343,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     }
   }
 
-  // ✅ FIXED: Build update data with proper prodi handling
   const updateData: any = {
     ...(nidn && { nidn }),
     ...(nuptk && { nuptk }),
@@ -316,18 +353,15 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     ...(alumni !== undefined && { alumni }),
     ...(lamaMengajar !== undefined && { lamaMengajar }),
     ...(tempatLahir !== undefined && { tempatLahir }),
-    ...(tanggalLahir !== undefined && { 
-      tanggalLahir: tanggalLahir ? new Date(tanggalLahir) : null 
+    ...(tanggalLahir !== undefined && {
+      tanggalLahir: tanggalLahir ? new Date(tanggalLahir) : null,
     }),
   };
 
-  // ✅ CORRECT: Handle prodi relation properly
   if (prodiId !== undefined) {
     if (prodiId === null || prodiId === '') {
-      // Disconnect prodi
       updateData.prodi = { disconnect: true };
     } else {
-      // Connect to new prodi
       updateData.prodi = {
         connect: {
           id: parseInt(prodiId),
@@ -336,7 +370,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     }
   }
 
-  // Update dosen
   const dosen = await prisma.dosen.update({
     where: { id: parseInt(id) },
     data: updateData,
@@ -360,13 +393,11 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
 
 /**
  * DELETE /api/dosen/:id
- * Delete dosen (soft delete by setting user.isActive = false)
  */
 export const deleteById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
-    // Check if dosen exists
     const dosen = await prisma.dosen.findUnique({
       where: { id: parseInt(id) },
       include: { user: true },
@@ -376,7 +407,6 @@ export const deleteById = asyncHandler(
       throw new AppError('Dosen tidak ditemukan', 404);
     }
 
-    // Check if dosen has active bimbingan
     const activeBimbingan = await prisma.mahasiswa.count({
       where: {
         dosenWaliId: parseInt(id),
@@ -393,7 +423,6 @@ export const deleteById = asyncHandler(
       );
     }
 
-    // Soft delete: deactivate user
     await prisma.user.update({
       where: { id: dosen.userId },
       data: { isActive: false },

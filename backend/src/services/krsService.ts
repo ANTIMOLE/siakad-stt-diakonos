@@ -14,9 +14,9 @@ export const createFromPaket = async (
   semesterId: number,
   paketKRSId: number
 ) => {
-  // ✅ FIXED: Get paket KRS with correct ID
+
   const paketKRS = await prisma.paketKRS.findUnique({
-    where: { id: paketKRSId }, // ✅ FIXED: Was mahasiswaId before!
+    where: { id: paketKRSId }, 
     include: {
       detail: {
         include: {

@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Admin - List Mata Kuliah Page
  * ✅ Full Backend Integration with CRUD Operations
+ * ✅ FIXED: Excel export functionality
  */
 
 'use client';
@@ -164,8 +166,33 @@ useEffect(() => {
     }
   };
 
-  const handleExport = () => {
-    toast.info('Fitur export akan segera hadir');
+  // ✅ FIXED: Proper Excel export
+  const handleExport = async () => {
+    try {
+      toast.loading('Mengekspor data...');
+      
+      const blob = await mataKuliahAPI.exportToExcel({
+        search: filters.search,
+        semesterIdeal: filters.semesterIdeal,
+        isActive: filters.isActive,
+      });
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `MataKuliah_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.dismiss();
+      toast.success('Data berhasil diekspor');
+    } catch (err: any) {
+      toast.dismiss();
+      toast.error(err.response?.data?.message || 'Gagal mengekspor data');
+    }
   };
 
   const handleRetry = () => {

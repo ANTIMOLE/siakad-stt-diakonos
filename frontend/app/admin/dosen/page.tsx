@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Admin - List Dosen Page
  * ✅ Full Backend Integration with CRUD Operations
+ * ✅ FIXED: Excel export functionality
  */
 
 'use client';
@@ -135,8 +137,32 @@ export default function DosenListPage() {
     }
   };
 
-  const handleExport = () => {
-    toast.info('Fitur export akan segera hadir');
+  // ✅ FIXED: Proper Excel export
+  const handleExport = async () => {
+    try {
+      const response = await dosenAPI.exportToExcel({
+        search: filters.search,
+        prodiId: filters.prodiId,
+        status: filters.status as 'AKTIF' | 'NON_AKTIF' | undefined,
+      });
+
+      // Create blob and download
+      const url = window.URL.createObjectURL(new Blob([response]));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const timestamp = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `Dosen_${timestamp}.xlsx`);
+      
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      toast.success('Data dosen berhasil di-export');
+    } catch (err: any) {
+      console.error('Export error:', err);
+      toast.error('Gagal export data dosen');
+    }
   };
 
   const handleRetry = () => {

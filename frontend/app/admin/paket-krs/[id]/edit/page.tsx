@@ -355,8 +355,8 @@ export default function EditPaketKRSPage() {
                         <SelectValue placeholder="Pilih prodi" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="1">PAK</SelectItem>
-                        <SelectItem value="2">Teologi</SelectItem>
+                        <SelectItem value="1">TEO</SelectItem>
+                        <SelectItem value="2">PAK</SelectItem>
                       </SelectContent>
                     </Select>
                     {errors.prodiId && (

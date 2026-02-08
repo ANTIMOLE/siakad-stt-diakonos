@@ -1,14 +1,11 @@
-/**
- * Mata Kuliah Controller
- * Handles CRUD operations for courses
- * ✅ DUAL STATISTICS: Active semester + All time
- */
+
 
 import { Response } from 'express';
 import prisma from '../config/database';
 import { AuthRequest } from '../types';
 import { asyncHandler, AppError } from '../middlewares/errorMiddleware';
 import { Prisma } from '@prisma/client';
+import { exportMataKuliahToExcel } from '../utils/excelExport';
 
 /**
  * GET /api/mata-kuliah
@@ -24,6 +21,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     isActive = 'true',
     sortBy = 'kodeMK',
     sortOrder = 'asc',
+    export: isExport, // ✅ ADDED: Export flag
   } = req.query;
 
   // Build where clause
@@ -46,6 +44,29 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
 
   if (isActive !== undefined) {
     where.isActive = isActive === 'true';
+  }
+
+  // ✅ EXPORT MODE: Get all data without pagination
+  if (isExport === 'true') {
+    const mataKuliah = await prisma.mataKuliah.findMany({
+      where,
+      orderBy: {
+        [sortBy as string]: sortOrder as 'asc' | 'desc',
+      },
+      include: {
+        _count: {
+          select: {
+            kelasMataKuliah: true,
+          },
+        },
+      },
+    });
+
+    // Export to Excel
+    return exportMataKuliahToExcel(mataKuliah, res, {
+      semesterIdeal: semesterIdeal ? parseInt(semesterIdeal as string) : undefined,
+      isActive: isActive !== undefined ? isActive === 'true' : undefined,
+    });
   }
 
   // Pagination
@@ -89,7 +110,6 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
 /**
  * GET /api/mata-kuliah/:id
  * Get mata kuliah by ID with detailed statistics
- * ✅ DUAL STATISTICS: Shows both active semester and all-time stats
  */
 export const getById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -98,7 +118,6 @@ export const getById = asyncHandler(
     const mataKuliah = await prisma.mataKuliah.findUnique({
       where: { id: parseInt(id) },
       include: {
-        // ✅ Get ALL classes with full details
         kelasMataKuliah: {
           include: {
             dosen: {
@@ -124,7 +143,7 @@ export const getById = asyncHandler(
             },
             _count: {
               select: {
-                krsDetail: true, // ✅ Count enrolled students per class
+                krsDetail: true,
               },
             },
           },
@@ -145,13 +164,10 @@ export const getById = asyncHandler(
       throw new AppError('Mata kuliah tidak ditemukan', 404);
     }
 
-    // ✅ SEPARATE CALCULATIONS: Active semester vs All time
-
-    // 1. Active semester statistics
     const activeClasses = mataKuliah.kelasMataKuliah.filter(
       (kelas) => kelas.semester.isActive
     );
-    
+
     const activeStudents = activeClasses.reduce(
       (sum, kelas) => sum + kelas._count.krsDetail,
       0
@@ -159,31 +175,26 @@ export const getById = asyncHandler(
 
     const activeSemester = activeClasses[0]?.semester || null;
 
-    // 2. All-time statistics
     const allClasses = mataKuliah.kelasMataKuliah;
-    
+
     const totalStudents = allClasses.reduce(
       (sum, kelas) => sum + kelas._count.krsDetail,
       0
     );
 
-    // ✅ Build response with DUAL statistics
     const response = {
       ...mataKuliah,
       statistics: {
-        // ✅ Active Semester Stats
         active: {
           classes: activeClasses.length,
           students: activeStudents,
           semester: activeSemester,
         },
-        // ✅ All-Time Stats
         total: {
           classes: mataKuliah._count.kelasMataKuliah,
           students: totalStudents,
         },
       },
-      // ✅ Show only active classes in detail list
       kelasMataKuliah: activeClasses,
     };
 
@@ -200,16 +211,9 @@ export const getById = asyncHandler(
  * Create new mata kuliah
  */
 export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const {
-    kodeMK,
-    namaMK,
-    sks,
-    semesterIdeal,
-    isLintasProdi,
-    deskripsi,
-  } = req.body;
+  const { kodeMK, namaMK, sks, semesterIdeal, isLintasProdi, deskripsi } =
+    req.body;
 
-  // Check if kode MK already exists
   const existingMK = await prisma.mataKuliah.findUnique({
     where: { kodeMK },
   });
@@ -218,7 +222,6 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
     throw new AppError('Kode mata kuliah sudah digunakan', 400);
   }
 
-  // Create mata kuliah
   const mataKuliah = await prisma.mataKuliah.create({
     data: {
       kodeMK,
@@ -254,7 +257,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     isActive,
   } = req.body;
 
-  // Check if mata kuliah exists
   const existingMK = await prisma.mataKuliah.findUnique({
     where: { id: parseInt(id) },
   });
@@ -263,7 +265,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     throw new AppError('Mata kuliah tidak ditemukan', 404);
   }
 
-  // Check if new kode MK already used
   if (kodeMK && kodeMK !== existingMK.kodeMK) {
     const kodeMKExists = await prisma.mataKuliah.findUnique({
       where: { kodeMK },
@@ -274,7 +275,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     }
   }
 
-  // Update mata kuliah
   const mataKuliah = await prisma.mataKuliah.update({
     where: { id: parseInt(id) },
     data: {
@@ -303,7 +303,6 @@ export const deleteById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
-    // Check if mata kuliah exists
     const mataKuliah = await prisma.mataKuliah.findUnique({
       where: { id: parseInt(id) },
     });
@@ -312,7 +311,6 @@ export const deleteById = asyncHandler(
       throw new AppError('Mata kuliah tidak ditemukan', 404);
     }
 
-    // Check if mata kuliah has active kelas
     const activeKelas = await prisma.kelasMataKuliah.count({
       where: {
         mkId: parseInt(id),
@@ -329,7 +327,6 @@ export const deleteById = asyncHandler(
       );
     }
 
-    // Soft delete
     await prisma.mataKuliah.update({
       where: { id: parseInt(id) },
       data: { isActive: false },

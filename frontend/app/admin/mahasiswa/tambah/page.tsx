@@ -1,8 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/**
- * Tambah Mahasiswa Page
- * ✅ UPDATED: Dynamic year selector (current year + 10 years back)
- */
 
 'use client';
 
@@ -72,7 +68,6 @@ export default function TambahMahasiswaPage() {
     resolver: zodResolver(mahasiswaSchema),
   });
 
-  // ✅ DYNAMIC YEAR GENERATION
   const angkatanOptions = useMemo(() => {
     const currentYear = new Date().getFullYear();
     const years = [];
@@ -208,7 +203,7 @@ export default function TambahMahasiswaPage() {
                   <Label htmlFor="namaLengkap">Nama Lengkap *</Label>
                   <Input
                     id="namaLengkap"
-                    placeholder="Angello Khara Sitanggang"
+                    placeholder="Joko Budianto"
                     {...register('namaLengkap')}
                   />
                   {errors.namaLengkap && (

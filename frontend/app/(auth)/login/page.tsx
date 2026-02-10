@@ -1,9 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/**
- * Login Page
- * ✅ UPDATED: Support for NIM/NIDN (10 digits), NUPTK (16 digits), Username
- */
-
 'use client';
 
 import { useState } from 'react';
@@ -11,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import Image from 'next/image';
 import { Loader2, User, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 // Components
@@ -32,11 +27,6 @@ const loginSchema = z.object({
     .string()
     .min(1, 'Identifier wajib diisi')
     .refine((val) => {
-      // ✅ Allow multiple formats:
-      // - 10 digits: NIM (Mahasiswa) or NIDN (Dosen)
-      // - 16 digits: NUPTK (Dosen)
-      // - Starts with letter: Username (Admin/Keuangan/Dosen)
-      // - 1-9 digits: User ID (development)
       const is10Digits = /^\d{10}$/.test(val);        // NIM or NIDN
       const is16Digits = /^\d{16}$/.test(val);        // NUPTK
       const isUsername = /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(val);
@@ -107,6 +97,7 @@ export default function LoginPage() {
 
       router.push(roleRoutes[user.role] || '/');
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error('Login error:', err);
 
@@ -123,11 +114,27 @@ export default function LoginPage() {
   // ============================================
   return (
     <Card className="shadow-xl">
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold">Login</CardTitle>
-        <CardDescription>
-          Masukkan Identifier dan password untuk mengakses sistem
-        </CardDescription>
+      <CardHeader className="space-y-4">
+        {/* ✅ LOGO */}
+        <div className="flex justify-center">
+          <div className="relative h-20 w-20">
+            <Image
+              src="/LOGO.png"
+              alt="STT Diakonos Logo"
+              fill
+              className="object-contain"
+              priority
+            />
+          </div>
+        </div>
+        
+        {/* Title */}
+        <div className="text-center space-y-1">
+          <CardTitle className="text-2xl font-bold">Login</CardTitle>
+          <CardDescription>
+            Masukkan Identifier dan password untuk mengakses sistem
+          </CardDescription>
+        </div>
       </CardHeader>
 
       <CardContent>

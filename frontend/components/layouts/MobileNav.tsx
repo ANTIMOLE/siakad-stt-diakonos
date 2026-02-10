@@ -9,6 +9,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { ADMIN_MENU, DOSEN_MENU, MAHASISWA_MENU , KEUANGAN_MENU } from '@/lib/constants';
@@ -70,31 +71,31 @@ export default function MobileNav({ user, isOpen, onClose }: MobileNavProps) {
   // ============================================
   // USER INITIALS
   // ============================================
-const getUserInitials = () => {
-  let nama = '';
-  
-  if (user?.dosen?.namaLengkap) nama = user.dosen.namaLengkap;
-  else if (user?.mahasiswa?.namaLengkap) nama = user.mahasiswa.namaLengkap;
-  else if (user?.admin?.nama) nama = user.admin.nama;
-  
-  if (nama) {
-    // ✅ Clean punctuation + Filter gelar
-    const names = nama
-      .replace(/[,;]/g, '') // Remove koma, semicolon
-      .split(' ')
-      .filter(word => 
-        !word.includes('.') &&  // No dots (gelar)
-        word.length >= 3 &&     // Min 3 chars
-        /^[A-Za-z]+$/.test(word) // Only letters (no numbers/symbols)
-      );
+  const getUserInitials = () => {
+    let nama = '';
     
-    if (names.length >= 2) {
-      return (names[0].charAt(0) + names[1].charAt(0)).toUpperCase();
+    if (user?.dosen?.namaLengkap) nama = user.dosen.namaLengkap;
+    else if (user?.mahasiswa?.namaLengkap) nama = user.mahasiswa.namaLengkap;
+    else if (user?.admin?.nama) nama = user.admin.nama;
+    
+    if (nama) {
+      // ✅ Clean punctuation + Filter gelar
+      const names = nama
+        .replace(/[,;]/g, '') // Remove koma, semicolon
+        .split(' ')
+        .filter(word => 
+          !word.includes('.') &&  // No dots (gelar)
+          word.length >= 3 &&     // Min 3 chars
+          /^[A-Za-z]+$/.test(word) // Only letters (no numbers/symbols)
+        );
+      
+      if (names.length >= 2) {
+        return (names[0].charAt(0) + names[1].charAt(0)).toUpperCase();
+      }
+      return names[0]?.charAt(0).toUpperCase() || 'U';
     }
-    return names[0]?.charAt(0).toUpperCase() || 'U';
-  }
-  return 'U';
-};
+    return 'U';
+  };
 
   // ============================================
   // USER IDENTIFIER (NIK/NIM/NIDN)
@@ -112,8 +113,15 @@ const getUserInitials = () => {
         {/* Header */}
         <SheetHeader className="border-b p-4 bg-white">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
-              <GraduationCap className="h-6 w-6" />
+            {/* ✅ LOGO IMAGE */}
+            <div className='relative h-10 w-10 shrink-0'>
+              <Image
+                src="/LOGO.png"
+                alt="STT Diakonos Logo"
+                fill
+                className='object-contain'
+                priority
+              />
             </div>
             <div className="flex-1">
               <SheetTitle className="text-base font-bold leading-tight">

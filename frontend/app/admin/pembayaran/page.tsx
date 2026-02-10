@@ -87,7 +87,6 @@ export default function PembayaranPage() {
     KOMITMEN_BULANAN: 'bg-yellow-100 text-yellow-700 border-yellow-200',
   };
 
-  // ✅ FIX: karena NEXT_PUBLIC_API_BASE_URL sudah include /api di akhir
   const getBuktiUrl = (pembayaranId: number) => {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
     return `${baseUrl}/pembayaran/bukti/${pembayaranId}`;

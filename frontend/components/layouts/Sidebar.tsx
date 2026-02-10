@@ -8,6 +8,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { ADMIN_MENU, DOSEN_MENU, MAHASISWA_MENU ,KEUANGAN_MENU } from '@/lib/constants';
@@ -67,51 +68,57 @@ export default function Sidebar({ user }: SidebarProps) {
 
   const menuItems = getMenuItems();
 
-// ============================================
-// USER INITIALS
-// ============================================
-const getUserInitials = () => {
-  let nama = '';
-  
-  if (user?.dosen?.namaLengkap) nama = user.dosen.namaLengkap;
-  else if (user?.mahasiswa?.namaLengkap) nama = user.mahasiswa.namaLengkap;
-  else if (user?.admin?.nama) nama = user.admin.nama;
-  
-  if (nama) {
-    // ✅ Clean punctuation + Filter gelar
-    const names = nama
-      .replace(/[,;]/g, '') // Remove koma, semicolon
-      .split(' ')
-      .filter(word => 
-        !word.includes('.') &&  // No dots (gelar)
-        word.length >= 3 &&     // Min 3 chars
-        /^[A-Za-z]+$/.test(word) // Only letters (no numbers/symbols)
-      );
+  // ============================================
+  // USER INITIALS
+  // ============================================
+  const getUserInitials = () => {
+    let nama = '';
     
-    if (names.length >= 2) {
-      return (names[0].charAt(0) + names[1].charAt(0)).toUpperCase();
+    if (user?.dosen?.namaLengkap) nama = user.dosen.namaLengkap;
+    else if (user?.mahasiswa?.namaLengkap) nama = user.mahasiswa.namaLengkap;
+    else if (user?.admin?.nama) nama = user.admin.nama;
+    
+    if (nama) {
+      const names = nama
+        .replace(/[,;]/g, '') // Remove koma, semicolon
+        .split(' ')
+        .filter(word => 
+          !word.includes('.') &&  // No dots (gelar)
+          word.length >= 3 &&     // Min 3 chars
+          /^[A-Za-z]+$/.test(word) // Only letters (no numbers/symbols)
+        );
+      
+      if (names.length >= 2) {
+        return (names[0].charAt(0) + names[1].charAt(0)).toUpperCase();
+      }
+      return names[0]?.charAt(0).toUpperCase() || 'U';
     }
-    return names[0]?.charAt(0).toUpperCase() || 'U';
-  }
-  return 'U';
-};
+    return 'U';
+  };
 
-// ============================================
-// USER IDENTIFIER (NIK/NIM/NIDN)
-// ============================================
-const getUserIdentifier = () => {
-  if (user?.mahasiswa?.nim) return `NIM: ${user.mahasiswa.nim}`;
-  if (user?.dosen?.nidn) return `NIDN: ${user.dosen.nidn}`;
-  if (user?.admin?.nik) return `NIK: ${user.admin.nik}`;
-  return user?.role || '-';
-};
+  // ============================================
+  // USER IDENTIFIER (NIK/NIM/NIDN)
+  // ============================================
+  const getUserIdentifier = () => {
+    if (user?.mahasiswa?.nim) return `NIM: ${user.mahasiswa.nim}`;
+    if (user?.dosen?.nidn) return `NIDN: ${user.dosen.nidn}`;
+    if (user?.admin?.nik) return `NIK: ${user.admin.nik}`;
+    return user?.role || '-';
+  };
 
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-white">
       {/* Logo & Title */}
       <div className="flex h-16 items-center gap-3 border-b px-6">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <GraduationCap className="h-6 w-6" />
+        {/* ✅ LOGO IMAGE */}
+        <div className='relative h-10 w-10 shrink-0'>
+          <Image
+            src="/LOGO.png"
+            alt="STT Diakonos Logo"
+            fill
+            className='object-contain'
+            priority
+          />
         </div>
         <div className="flex-1">
           <h1 className="text-sm font-bold leading-tight">SIAKAD</h1>
@@ -153,17 +160,17 @@ const getUserIdentifier = () => {
               {getUserInitials()}
             </span>
           </div>
-            <div className="flex-1 overflow-hidden">
-              <p className="truncate text-sm font-medium text-gray-900">
-                {user?.dosen?.namaLengkap || 
-                user?.mahasiswa?.namaLengkap || 
-                user?.admin?.nama || 
-                'User'}
-              </p>
-              <p className="text-xs text-muted-foreground font-mono">
-                {getUserIdentifier()}
-              </p>
-            </div>
+          <div className="flex-1 overflow-hidden">
+            <p className="truncate text-sm font-medium text-gray-900">
+              {user?.dosen?.namaLengkap || 
+              user?.mahasiswa?.namaLengkap || 
+              user?.admin?.nama || 
+              'User'}
+            </p>
+            <p className="text-xs text-muted-foreground font-mono">
+              {getUserIdentifier()}
+            </p>
+          </div>
         </div>
       </div>
     </div>

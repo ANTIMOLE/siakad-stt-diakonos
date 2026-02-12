@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -44,6 +44,10 @@ type DosenFormData = z.infer<typeof dosenSchema>;
 export default function TambahDosenPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // ✅ PASSWORD VISIBILITY STATE
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const {
     register,
@@ -79,14 +83,11 @@ export default function TambahDosenPage() {
 
       const response = await dosenAPI.create(payload);
 
-      // ✅ response SUDAH auto-unwrapped
       if (response.success) {
         toast.success('Dosen berhasil ditambahkan');
         router.push('/admin/dosen');
       } else {
-        // ✅ Handle validation errors dari backend
         if (response.errors) {
-          // Display field-specific errors
           Object.entries(response.errors).forEach(([field, message]) => {
             toast.error(`${field}: ${message}`);
           });
@@ -97,11 +98,9 @@ export default function TambahDosenPage() {
     } catch (err: any) {
       console.error('Create dosen error:', err);
       
-      // ✅ Error handling dengan auto-unwrap
       let errorMessage = 'Terjadi kesalahan saat menambahkan dosen';
       
       if (err.response?.data) {
-        // Backend validation errors
         if (err.response.data.errors) {
           Object.entries(err.response.data.errors).forEach(([field, message]) => {
             toast.error(`${field}: ${message}`);
@@ -270,27 +269,57 @@ export default function TambahDosenPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
+                  {/* Password with Toggle */}
                   <div className="grid gap-2">
                     <Label htmlFor="password">Password *</Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      placeholder="Minimal 6 karakter"
-                      {...register('password')}
-                    />
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Minimal 6 karakter"
+                        className="pr-10"
+                        {...register('password')}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
                     {errors.password && (
                       <p className="text-sm text-red-600">{errors.password.message}</p>
                     )}
                   </div>
 
+                  {/* Confirm Password with Toggle */}
                   <div className="grid gap-2">
                     <Label htmlFor="confirmPassword">Konfirmasi Password *</Label>
-                    <Input
-                      id="confirmPassword"
-                      type="password"
-                      placeholder="Ulangi password"
-                      {...register('confirmPassword')}
-                    />
+                    <div className="relative">
+                      <Input
+                        id="confirmPassword"
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        placeholder="Ulangi password"
+                        className="pr-10"
+                        {...register('confirmPassword')}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
                     {errors.confirmPassword && (
                       <p className="text-sm text-red-600">{errors.confirmPassword.message}</p>
                     )}

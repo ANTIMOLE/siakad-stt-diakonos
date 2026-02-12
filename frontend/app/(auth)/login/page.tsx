@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import Image from 'next/image';
 import { Loader2, User, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import ReCAPTCHA from 'react-google-recaptcha';
 
 // Components
 import { Button } from '@/components/ui/button';
@@ -27,8 +28,8 @@ const loginSchema = z.object({
     .string()
     .min(1, 'Identifier wajib diisi')
     .refine((val) => {
-      const is10Digits = /^\d{10}$/.test(val);        // NIM or NIDN
-      const is16Digits = /^\d{16}$/.test(val);        // NUPTK
+      const is10Digits = /^\d{10}$/.test(val);
+      const is16Digits = /^\d{16}$/.test(val);
       const isUsername = /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(val);
       const isUserID = /^\d{1,9}$/.test(val);
       
@@ -42,6 +43,9 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
+
+const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI';
+
 // ============================================
 // LOGIN PAGE COMPONENT
 // ============================================
@@ -50,6 +54,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
 
   const {
     register,
@@ -67,7 +72,19 @@ export default function LoginPage() {
       setIsLoading(true);
       setError(null);
 
-      const response = await authAPI.login(data.identifier, data.password);
+    
+      const recaptchaToken = recaptchaRef.current?.getValue();
+      
+      if (!recaptchaToken) {
+        throw new Error('Silakan selesaikan verifikasi reCAPTCHA');
+      }
+
+      
+      const response = await authAPI.login(
+        data.identifier, 
+        data.password,
+        recaptchaToken
+      );
 
       if (!response.success || !response.data) {
         throw new Error(response.message || 'Login gagal');
@@ -75,10 +92,8 @@ export default function LoginPage() {
 
       const { user } = response.data;
 
-      // ✅ ONLY STORE USER DATA (token is in HttpOnly cookie)
       localStorage.setItem('user', JSON.stringify(user));
 
-      // Get user name
       const getUserName = () => {
         if (user.mahasiswa) return user.mahasiswa.namaLengkap;
         if (user.dosen) return user.dosen.namaLengkap;
@@ -87,7 +102,6 @@ export default function LoginPage() {
 
       toast.success(`Selamat datang, ${getUserName()}!`);
 
-      // Redirect based on role
       const roleRoutes: Record<string, string> = {
         ADMIN: '/admin/dashboard',
         DOSEN: '/dosen/dashboard',
@@ -104,6 +118,9 @@ export default function LoginPage() {
       const errorMessage = err.response?.data?.message || err.message || 'Terjadi kesalahan saat login';
       setError(errorMessage);
       toast.error(errorMessage);
+      
+      // ✅ RESET RECAPTCHA ON ERROR
+      recaptchaRef.current?.reset();
     } finally {
       setIsLoading(false);
     }
@@ -115,7 +132,6 @@ export default function LoginPage() {
   return (
     <Card className="shadow-xl">
       <CardHeader className="space-y-4">
-        {/* ✅ LOGO */}
         <div className="flex justify-center">
           <div className="relative h-20 w-20">
             <Image
@@ -128,7 +144,6 @@ export default function LoginPage() {
           </div>
         </div>
         
-        {/* Title */}
         <div className="text-center space-y-1">
           <CardTitle className="text-2xl font-bold">Login</CardTitle>
           <CardDescription>
@@ -139,7 +154,6 @@ export default function LoginPage() {
 
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {/* Error Alert */}
           {error && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
@@ -147,7 +161,6 @@ export default function LoginPage() {
             </Alert>
           )}
 
-          {/* Identifier Field */}
           <div className="space-y-2">
             <Label htmlFor="identifier">Identifier</Label>
             <div className="relative">
@@ -166,7 +179,6 @@ export default function LoginPage() {
             )}
           </div>
 
-          {/* Password Field */}
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <div className="relative">
@@ -197,7 +209,15 @@ export default function LoginPage() {
             )}
           </div>
 
-          {/* Submit Button */}
+          {/* ✅ RECAPTCHA */}
+          <div className="flex justify-center">
+            <ReCAPTCHA
+              ref={recaptchaRef}
+              sitekey={RECAPTCHA_SITE_KEY}
+              onChange={() => setError(null)}
+            />
+          </div>
+
           <Button
             type="submit"
             className="w-full"
@@ -215,15 +235,17 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        {/* Demo Accounts Info */}
         <div className="mt-6 rounded-lg bg-muted p-4 text-xs">
-          <p className="mb-2 font-semibold text-muted-foreground">Demo Accounts:</p>
+          <p className="mb-2 font-semibold text-muted-foreground">
+            Contoh Format Login
+          </p>
           <div className="space-y-1 text-muted-foreground">
-            <p>• Admin: admin / password123</p>
-            <p>• Keuangan: keuangan / password123</p>
-            <p>• Dosen (NIDN): 0101018901 / password123</p>
-            <p>• Dosen (NUPTK): 1234567890123456 / password123</p>
-            <p>• Mahasiswa (NIM): 2024010001 / password123</p>
+            <p>• Admin → username: <i>admin</i></p>
+            <p>• Keuangan → username: <i>keuangan</i></p>
+            <p>• Dosen (NIDN) → username: <i>0101018901</i></p>
+            <p>• Dosen (NUPTK) → username: <i>1234567890123456</i></p>
+            <p>• Mahasiswa (NIM) → username: <i>2024010001</i></p>
+            <p className="mt-2 italic">Password contoh: <b>password123</b></p>
           </div>
         </div>
       </CardContent>

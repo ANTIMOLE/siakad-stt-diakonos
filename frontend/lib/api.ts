@@ -1,9 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/**
- * API Client
- * ✅ UPDATED: Cookie-based authentication with credentials: 'include'
- */
-
 import axios from "axios"
 import { AxiosError, InternalAxiosRequestConfig } from "axios"
 import { 
@@ -39,7 +34,7 @@ export const api = axios.create({
     headers:{
         'Content-Type': 'application/json'
     },
-    withCredentials: true, // ✅ CRITICAL: Send cookies with every request
+    withCredentials: true,
 })
 
 // ============================================
@@ -47,8 +42,6 @@ export const api = axios.create({
 // ============================================
 api.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
-        // ✅ NO MANUAL TOKEN - Cookie is sent automatically
-        // Token is in HttpOnly cookie, browser handles it
         return config;
     },
     (error : AxiosError) => {
@@ -69,7 +62,6 @@ api.interceptors.response.use(
             
             if (status === 401) {
                 console.error('Unauthorized');
-                // Clear local storage (only user data, not token)
                 if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
                     localStorage.removeItem('user');
                     window.location.href = '/login';
@@ -95,23 +87,18 @@ api.interceptors.response.use(
 // AUTH API FUNCTIONS
 // ============================================
 export const authAPI = {
-    // ✅ Login - Token set in HttpOnly cookie by server
-    login: (identifier: string, password: string): Promise<ApiResponse<{ user: any }>> => 
-        api.post('/auth/login', { identifier, password }),
+    login: (identifier: string, password: string, recaptchaToken?: string): Promise<ApiResponse<{ user: any }>> => 
+        api.post('/auth/login', { identifier, password, recaptchaToken }),
     
-    // ✅ Logout - Clear cookie on server
     logout: (): Promise<ApiResponse<any>> =>
         api.post('/auth/logout'),
 
-    // ✅ Get current user
     getCurrentUser: (): Promise<ApiResponse<any>> =>
         api.get('/auth/me'),
     
-    // ✅ Change password
     changePassword: (oldPassword: string, newPassword: string, confirmPassword: string): Promise<ApiResponse<any>> =>
         api.post('/auth/change-password', { oldPassword, newPassword, confirmPassword }),
 
-    // ✅ Refresh token
     refreshToken: (): Promise<ApiResponse<any>> =>
         api.post('/auth/refresh'),
 };
@@ -222,7 +209,6 @@ export const mataKuliahAPI = {
   }): Promise<PaginatedApiResponse<MataKuliah>> => 
     api.get('/mata-kuliah', { params }),
 
-
     exportToExcel: (params?: {
     search?: string;
     semesterIdeal?: number;
@@ -262,7 +248,6 @@ export const semesterAPI = {
   update: (id: number, data: any): Promise<ApiResponse<Semester>> => 
     api.put(`/semester/${id}`, data),
   
-  // ✅ ADD THIS - Delete semester
   delete: (id: number): Promise<ApiResponse<any>> => 
     api.delete(`/semester/${id}`),
   
@@ -270,25 +255,32 @@ export const semesterAPI = {
     api.post(`/semester/${id}/activate`)
 };
 
-// ============================================
-// KELAS MATA KULIAH API FUNCTIONS
-// ============================================
+
 export const kelasMKAPI = {
   getAll: (params?: {
-    semester_id?: number;  // Keep this
+    semester_id?: number;
     prodi?: number;
     dosenId?: number;
     hari?: string;
     limit?: number;
   }): Promise<ApiResponse<KelasMK[]>> => {
-    // ✅ Don't use pagination for dropdown loads
     const finalParams = { ...params };
     if (params?.limit === undefined && !params?.semester_id) {
-      // If loading all for dropdowns, don't paginate
       return api.get('/kelas-mk', { params: { ...finalParams, limit: 1000 } });
     }
     return api.get('/kelas-mk', { params: finalParams });
   },
+
+  exportToExcel: (params?: {
+    semester_id?: number;
+    prodi?: number;
+    dosenId?: number;
+    hari?: string;
+  }): Promise<Blob> =>
+    api.get('/kelas-mk', { 
+      params: { ...params, export: 'true' },
+      responseType: 'blob' 
+    }),
   
   getById: (id: number): Promise<ApiResponse<KelasMK>> => 
     api.get(`/kelas-mk/${id}`),
@@ -303,9 +295,7 @@ export const kelasMKAPI = {
     api.delete(`/kelas-mk/${id}`),
 };
 
-// ============================================
-// PAKET KRS API FUNCTIONS
-// ============================================
+
 export const paketKRSAPI = {
   getAll: (params?: {
     angkatan?: number;
@@ -314,6 +304,18 @@ export const paketKRSAPI = {
   }): Promise<ApiResponse<any[]>> => 
     api.get('/paket-krs', { params }),
   
+
+  exportToExcel: (params?: {
+    angkatan?: number;
+    prodiId?: number;
+    semesterId?: number;
+    semesterPaket?: number;
+  }): Promise<Blob> =>
+    api.get('/paket-krs', { 
+      params: { ...params, export: 'true' },
+      responseType: 'blob' 
+    }),
+
   getById: (id: number): Promise<ApiResponse<any>> => 
     api.get(`/paket-krs/${id}`),
   
@@ -333,21 +335,28 @@ export const paketKRSAPI = {
     api.delete(`/paket-krs/${paketId}/mk/${kelasMKId}`),
 };
 
-// ============================================
-// KRS API FUNCTIONS
-// ============================================
 export const krsAPI = {
   getAll: (params?: {
-    page?: number;           // ✅ ADDED: Pagination support
-    limit?: number;          // ✅ ADDED: Limit per page
-    search?: string;         // ✅ ADDED: Search query (optional)
-    semesterId?: number;     // ✅ EXISTING: Filter by semester
-    status?: string;         // ✅ EXISTING: Filter by status
-    mahasiswaId?: number;    // ✅ EXISTING: Filter by mahasiswa
-  }): Promise<PaginatedApiResponse<KRS>> =>  // ✅ FIXED: Return type changed from ApiResponse to PaginatedApiResponse
+    page?: number;
+    limit?: number;
+    search?: string;
+    semesterId?: number;
+    status?: string;
+    mahasiswaId?: number;
+  }): Promise<PaginatedApiResponse<KRS>> =>
     api.get('/krs', { params }),
   
-  // ... rest of krsAPI functions stay the same
+
+  exportToExcel: (params?: {
+    semesterId?: number;
+    status?: string;
+    search?: string;
+  }): Promise<Blob> =>
+    api.get('/krs', { 
+      params: { ...params, export: 'true' },
+      responseType: 'blob' 
+    }),
+
   getById: (id: number): Promise<ApiResponse<KRS>> => 
     api.get(`/krs/${id}`),
   
@@ -398,8 +407,8 @@ export const nilaiAPI = {
 // ============================================
 export const khsAPI = {
   getAll: (params?: {
-    mahasiswaId?: number;        // ✅ Matches backend req.query.mahasiswaId
-    semesterId?: number;         // ✅ FIXED: Was semester_id
+    mahasiswaId?: number;
+    semesterId?: number;
   }): Promise<ApiResponse<KHS[]>> => 
     api.get('/khs', { params }),
   
@@ -512,7 +521,7 @@ export const pembayaranAPI = {
 export const presensiAPI = {
   getAll: (params: {
     kelasMKId: number;
-    semesterId?: number; // ✅ Added
+    semesterId?: number;
   }): Promise<ApiResponse<Presensi[]>> => 
     api.get('/presensi', { params }),
   
@@ -548,7 +557,6 @@ export const presensiAPI = {
   getStatsKelas: (kelasMKId: number): Promise<ApiResponse<PresensiStatsKelas>> => 
     api.get(`/presensi/kelas/${kelasMKId}/stats`),
   
-  // ✅ UPDATED: Added semesterId parameter
   getDosenClasses: (params?: {
     semesterId?: number;
   }): Promise<ApiResponse<KelasMK[]>> => 
@@ -558,7 +566,6 @@ export const presensiAPI = {
   semesterId?: number;
 }): Promise<ApiResponse<KelasMK[]>> => 
   api.get('/presensi/mahasiswa/my-classes', { params }),
-
 
    refreshMahasiswaList: (presensiId: number): Promise<ApiResponse<{
     added: number;
@@ -594,14 +601,7 @@ export const ruanganAPI = {
     api.delete(`/ruangan/${id}`),
 };
 
-/**
- * ✅ FIXED: Add proper return types to kelasMKFileAPI
- * 
- * REPLACE the kelasMKFileAPI section in frontend/lib/api.ts with this:
- */
-
 export const kelasMKFileAPI = {
-  // Dosen
   uploadFile: (formData: FormData): Promise<ApiResponse<any>> => 
     api.post('/kelas-mk-files/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -616,15 +616,11 @@ export const kelasMKFileAPI = {
   getFilesByKelasForDosen: (kelasMKId: number, params?: { tipeFile?: string , mingguKe?: string }): Promise<ApiResponse<any[]>> => 
     api.get(`/kelas-mk-files/kelas/${kelasMKId}/dosen`, { params }),
   
-  // Mahasiswa
   getFilesByKelasForMahasiswa: (kelasMKId: number, params?: { tipeFile?: string, mingguKe?: string }): Promise<ApiResponse<any[]>> => 
     api.get(`/kelas-mk-files/kelas/${kelasMKId}/mahasiswa`, { params }),
   
-  // Serve file
   getFileUrl: (id: number): string => 
     `${BASE_URL}/kelas-mk-files/serve/${id}`,
 };
-
-
 
 export default api;

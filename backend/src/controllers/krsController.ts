@@ -1,5 +1,5 @@
 /**
- * KRS Controller
+ * KRS Controller - COMPLETE WITH EXCEL EXPORT
  * Handles KRS workflow and management
  */
 
@@ -10,9 +10,8 @@ import { asyncHandler, AppError } from '../middlewares/errorMiddleware';
 import { Prisma } from '@prisma/client';
 import * as krsService from '../services/krsService';
 import { validateKRSRequirements } from '../utils/validasi';
-
 import { generatePDF, getKRSHTMLTemplate } from '../utils/pdfGenerator';
-
+import { exportKRSToExcel } from '../utils/excelExport';
 
 export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
@@ -24,12 +23,13 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     status,
     sortBy = 'createdAt',
     sortOrder = 'desc',
+    export: isExport, 
   } = req.query;
 
   // Build where clause
   const where: Prisma.KRSWhereInput = {};
 
-  // ✅ FILTER for DOSEN - only mahasiswa bimbingan
+
   let dosenWaliId: number | undefined;
   if (req.user?.role === 'DOSEN') {
     const dosen = await prisma.dosen.findUnique({
@@ -41,7 +41,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     dosenWaliId = dosen.id;
   }
 
-  // ✅ FIXED: Check for non-empty search string
+
   const hasSearch = search && typeof search === 'string' && search.trim().length > 0;
 
   if (hasSearch) {
@@ -53,7 +53,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
       ],
     };
   } else if (dosenWaliId) {
-    // ✅ IMPORTANT: Always filter by dosenWaliId for DOSEN role
+
     where.mahasiswa = { dosenWaliId };
   }
 
@@ -76,6 +76,71 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
 
   const prismaField = fieldMapping[sortBy as string] || (sortBy as string);
 
+
+  if (isExport === 'true') {
+    const krsList = await prisma.kRS.findMany({
+      where,
+      orderBy: {
+        [prismaField]: sortOrder as 'asc' | 'desc',
+      },
+      include: {
+        mahasiswa: {
+          select: {
+            id: true,
+            nim: true,
+            namaLengkap: true,
+            angkatan: true,
+            prodi: {
+              select: {
+                id: true,
+                kode: true,
+                nama: true,
+              },
+            },
+          },
+        },
+        semester: {
+          select: {
+            id: true,
+            tahunAkademik: true,
+            periode: true,
+          },
+        },
+        approvedBy: {
+          select: {
+            id: true,
+            username: true,
+            role: true,
+            dosen: {
+              select: {
+                namaLengkap: true,
+              },
+            },
+            mahasiswa: {
+              select: {
+                namaLengkap: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Generate filter labels
+    let semesterLabel: string | undefined;
+    if (semesterId) {
+      const s = await prisma.semester.findUnique({
+        where: { id: Number(semesterId) },
+        select: { tahunAkademik: true, periode: true },
+      });
+      semesterLabel = s ? `${s.tahunAkademik}-${s.periode}` : undefined;
+    }
+
+    return exportKRSToExcel(krsList, res, {
+      semester: semesterLabel,
+      status: status as string,
+    });
+  }
   // Pagination
   const pageNum = parseInt(page as string);
   const limitNum = parseInt(limit as string);
@@ -90,7 +155,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     skip,
     take: limitNum,
     orderBy: {
-      [prismaField]: sortOrder as 'asc' | 'desc',  
+      [prismaField]: sortOrder as 'asc' | 'desc',
     },
     include: {
       mahasiswa: {
@@ -99,7 +164,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
           nim: true,
           namaLengkap: true,
           angkatan: true,
-          prodi: { 
+          prodi: {
             select: {
               id: true,
               kode: true,
@@ -146,7 +211,6 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     },
   });
 });
-
 
 /**
  * GET /api/krs/:id
@@ -350,7 +414,7 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     throw new AppError('KRS tidak ditemukan', 404);
   }
 
-  // ✅ Allow both DRAFT and REJECTED
+
   if (existingKRS.status !== 'DRAFT' && existingKRS.status !== 'REJECTED') {
     throw new AppError(
       'KRS hanya dapat diubah saat status DRAFT atau REJECTED',
@@ -358,9 +422,9 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     );
   }
 
-  // ✅ Admin bypasses period validation
+
   const isAdmin = req.user?.role === 'ADMIN';
-  
+
   // Only validate period for non-admin users
   if (!isAdmin) {
     const validation = await validateKRSRequirements(
@@ -376,8 +440,8 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
       );
     }
   } else {
-    // ✅ For admin, only validate technical requirements
-    
+
+
     // 1. Check schedule conflicts
     const conflictCheck = await krsService.detectJadwalConflict(kelasMKIds);
     if (conflictCheck.hasConflict) {
@@ -407,7 +471,7 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
           kelasMKId,
         })),
       },
-      // ✅ Reset to DRAFT when editing REJECTED
+
       ...(existingKRS.status === 'REJECTED' && {
         status: 'DRAFT',
         catatanAdmin: null,
@@ -498,7 +562,7 @@ export const submit = asyncHandler(
       throw new AppError('KRS tidak ditemukan', 404);
     }
 
-    // ✅ Allow both DRAFT and REJECTED
+
     if (krs.status !== 'DRAFT' && krs.status !== 'REJECTED') {
       throw new AppError('KRS hanya dapat disubmit saat status DRAFT atau REJECTED', 400);
     }
@@ -517,7 +581,6 @@ export const submit = asyncHandler(
       data: {
         status: 'SUBMITTED',
         tanggalSubmit: new Date(),
-        // ✅ Clear rejection data when resubmitting
         ...(krs.status === 'REJECTED' && {
           catatanAdmin: null,
           tanggalApproval: null,
@@ -576,7 +639,7 @@ export const approve = asyncHandler(
       throw new AppError('KRS tidak ditemukan', 404);
     }
 
-    // ✅ Check jika DOSEN, harus dosen wali
+
     if (req.user.role === 'DOSEN') {
       const dosen = await prisma.dosen.findUnique({
         where: { userId: req.user.id },
@@ -647,7 +710,7 @@ export const reject = asyncHandler(
       throw new AppError('KRS tidak ditemukan', 404);
     }
 
-    // ✅ Check jika DOSEN, harus dosen wali
+
     if (req.user.role === 'DOSEN') {
       const dosen = await prisma.dosen.findUnique({
         where: { userId: req.user.id },
@@ -744,12 +807,12 @@ export const downloadPDF = asyncHandler(
 
     // Generate HTML
     const html = getKRSHTMLTemplate(krs);
-    
+
     const nim = krs.mahasiswa?.nim || 'UNKNOWN';
     const tahun = krs.semester?.tahunAkademik?.replace('/', '-') || 'UNKNOWN';
     const periode = krs.semester?.periode || '';
     const filename = `KRS_${nim}_${tahun}_${periode}.pdf`;
-    
+
     // Generate and send PDF
     await generatePDF(html, filename, res);
   }

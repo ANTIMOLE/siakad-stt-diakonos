@@ -198,7 +198,7 @@ export default function MahasiswaPage() {
     }
   }, []);
 
-  // ✅ FIXED: Proper Excel export
+
   const handleExport = async () => {
     try {
       const response = await mahasiswaAPI.exportToExcel({

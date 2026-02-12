@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { GraduationCap, BookOpen, Users, ArrowRight } from 'lucide-react';
+import { GraduationCap, BookOpen, Users, ArrowRight, DollarSign } from 'lucide-react';
 import { PrimaryButton } from '@/components/ui/primary-button';
 
 export default function HomePage() {
@@ -107,9 +107,9 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Features */}
+      {/* Features - ✅ 4 CARDS */}
       <section className="container mx-auto px-4 py-16">
-        <div className="grid gap-6 md:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader>
               <Users className="mb-2 h-10 w-10 text-primary" />
@@ -136,6 +136,16 @@ export default function HomePage() {
               <CardTitle>Untuk Admin</CardTitle>
               <CardDescription>
                 Kelola data akademik dan approval KRS
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <DollarSign className="mb-2 h-10 w-10 text-primary" />
+              <CardTitle>Untuk Keuangan</CardTitle>
+              <CardDescription>
+                Verifikasi bukti pembayaran dan approval transaksi
               </CardDescription>
             </CardHeader>
           </Card>

@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Eye, Edit, Trash2 } from 'lucide-react';
+import { Plus, Download, Eye, Edit, Trash2 } from 'lucide-react';
 
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
@@ -74,7 +74,6 @@ export default function PaketKRSListPage() {
     semesterPaket: 'ALL',
   });
 
-  // ✅ DELETE DIALOG STATE
   const [deleteDialog, setDeleteDialog] = useState<{
     open: boolean;
     id: number | null;
@@ -143,7 +142,6 @@ export default function PaketKRSListPage() {
     fetchPaketKRS();
   }, [fetchPaketKRS]);
 
-  // ✅ HANDLERS
   const handleFilterChange = (key: string, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
@@ -156,7 +154,6 @@ export default function PaketKRSListPage() {
     router.push(`/admin/paket-krs/${id}/edit`);
   };
 
-  // ✅ Open delete confirmation dialog
   const handleDelete = (id: number, namaPaket: string) => {
     setDeleteDialog({
       open: true,
@@ -165,7 +162,6 @@ export default function PaketKRSListPage() {
     });
   };
 
-  // ✅ Confirm delete action
   const confirmDelete = async () => {
     if (!deleteDialog.id) return;
 
@@ -175,7 +171,7 @@ export default function PaketKRSListPage() {
 
       if (response.success) {
         toast.success('Paket KRS berhasil dihapus');
-        fetchPaketKRS(); // Refresh list
+        fetchPaketKRS();
       } else {
         toast.error(response.message || 'Gagal menghapus paket KRS');
       }
@@ -194,6 +190,34 @@ export default function PaketKRSListPage() {
 
   const handleCreate = () => {
     router.push('/admin/paket-krs/tambah');
+  };
+
+  // ✅ EXPORT HANDLER
+  const handleExport = async () => {
+    try {
+      const response = await paketKRSAPI.exportToExcel({
+        angkatan: filters.angkatan !== 'ALL' ? parseInt(filters.angkatan) : undefined,
+        prodiId: filters.prodiId !== 'ALL' ? parseInt(filters.prodiId) : undefined,
+        semesterId: filters.semesterId !== 'ALL' ? parseInt(filters.semesterId) : undefined,
+        semesterPaket: filters.semesterPaket !== 'ALL' ? parseInt(filters.semesterPaket) : undefined,
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response]));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const timestamp = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `PaketKRS_${timestamp}.xlsx`);
+      
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      toast.success('Data Paket KRS berhasil di-export');
+    } catch (err: any) {
+      console.error('Export error:', err);
+      toast.error('Gagal export data Paket KRS');
+    }
   };
 
   const handleRetry = () => {
@@ -232,10 +256,16 @@ export default function PaketKRSListPage() {
           { label: 'Paket KRS' },
         ]}
         actions={
-          <Button onClick={handleCreate} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Buat Paket Baru
-          </Button>
+          <>
+            <Button variant="outline" onClick={handleExport} className="gap-2">
+              <Download className="h-4 w-4" />
+              Export
+            </Button>
+            <Button onClick={handleCreate} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Buat Paket Baru
+            </Button>
+          </>
         }
       />
 
@@ -426,7 +456,7 @@ export default function PaketKRSListPage() {
         </div>
       )}
 
-      {/* ✅ DELETE CONFIRMATION DIALOG */}
+      {/* DELETE CONFIRMATION DIALOG */}
       <AlertDialog
         open={deleteDialog.open}
         onOpenChange={(open) =>

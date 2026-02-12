@@ -15,7 +15,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     status,
     sortBy = 'nidn',
     sortOrder = 'asc',
-    export: isExport, // ✅ ADDED: Export flag
+    export: isExport,
   } = req.query;
 
   const where: Prisma.DosenWhereInput = {};
@@ -36,7 +36,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     where.status = status as any;
   }
 
-  // ✅ EXPORT MODE: Get all data without pagination
+
   if (isExport === 'true') {
     const dosen = await prisma.dosen.findMany({
       where,

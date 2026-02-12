@@ -3,19 +3,21 @@ import prisma from '../config/database';
 import { AuthRequest } from '../types';
 import { asyncHandler, AppError } from '../middlewares/errorMiddleware';
 import { Prisma } from '@prisma/client';
+import { exportKelasMKToExcel } from '../utils/excelExport';
 
 export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
     page = 1,
     limit = 10,
     search,
-    semester_id, // ✅ Accept both formats
+    semester_id, 
     semesterId,
     dosenId,
     mkId,
     hari,
     sortBy = 'hari',
     sortOrder = 'asc',
+    export : isExport,
   } = req.query;
 
   // Build where clause
@@ -29,7 +31,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     ];
   }
 
-  // ✅ Accept both parameter names
+
   const semesterIdValue = semester_id || semesterId;
   if (semesterIdValue) {
     where.semesterId = parseInt(semesterIdValue as string);
@@ -45,6 +47,65 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
 
   if (hari) {
     where.hari = hari as string;
+  }
+
+  if(isExport === 'true'){
+    const KelasMK = await prisma.kelasMataKuliah.findMany({
+      where,
+      orderBy:{
+        [sortBy as string]: sortOrder as 'asc' | 'desc',
+      },
+      include:{
+      mataKuliah: {
+        select: {
+          kodeMK: true,
+          namaMK: true,
+          sks: true,
+        },
+      },
+      semester: {
+        select: {
+          tahunAkademik: true,
+          periode: true,
+          isActive: true,
+        },
+      },
+      dosen: {
+        select: {
+          nidn: true,
+          namaLengkap: true,
+        },
+      },
+      ruangan: {
+        select: {
+          nama: true,
+          kapasitas: true,
+        },
+      },
+      _count: {
+        select: {
+          krsDetail: true,
+          nilai: true,
+        },
+      },
+    },
+    })
+
+    
+
+    let semesterLabel: string | undefined;
+    if (semesterId) {
+      const s = await prisma.semester.findUnique({
+        where: { id: Number(semesterId) },
+        select: { tahunAkademik: true, periode: true },
+      });
+      semesterLabel = s ? `${s.tahunAkademik}-${s.periode}` : undefined;
+    }
+
+    return exportKelasMKToExcel(KelasMK, res, {
+      semester: semesterLabel,
+      hari: hari as string,
+    });
   }
 
   // Pagination
@@ -99,7 +160,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     },
   });
 
-  // ✅ FIX: Add isNilaiFinalized check for each kelas
+
   const kelasWithFinalizedStatus = await Promise.all(
     kelasMK.map(async (kelas) => {
       // Count total nilai for this kelas

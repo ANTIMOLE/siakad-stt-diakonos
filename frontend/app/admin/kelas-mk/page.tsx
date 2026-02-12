@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Eye, Edit, Trash2, Calendar, Clock, Users, MapPin } from 'lucide-react';
+import { Plus, Download, Eye, Edit, Trash2, Calendar, Clock, Users, MapPin } from 'lucide-react';
 
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
@@ -22,9 +22,7 @@ import { KelasMK, Semester } from '@/types/model';
 export default function KelasMKListPage() {
   const router = useRouter();
 
-  // ============================================
   // STATE MANAGEMENT
-  // ============================================
   const [kelasList, setKelasList] = useState<KelasMK[]>([]);
   const [semesterList, setSemesterList] = useState<Semester[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,9 +35,7 @@ export default function KelasMKListPage() {
     hari: 'ALL',
   });
 
-  // ============================================
   // FETCH SEMESTER LIST
-  // ============================================
   useEffect(() => {
     const fetchSemesters = async () => {
       try {
@@ -65,56 +61,53 @@ export default function KelasMKListPage() {
     fetchSemesters();
   }, []);
 
-  // ============================================
   // FETCH KELAS MK DATA
-  // ============================================
-const fetchKelasMK = useCallback(async () => {
-  try {
-    setIsLoading(true);
-    setError(null);
+  const fetchKelasMK = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
 
-    const params: any = {};
-    
-    // ✅ Always include semester filter (use "ALL" for no filter)
-    if (filters.semester_id !== 'ALL') {
-      params.semester_id = parseInt(filters.semester_id);
-    }
-    
-    if (filters.hari !== 'ALL') {
-      params.hari = filters.hari;
-    }
-
-    const response = await kelasMKAPI.getAll(params);
-
-    if (response.success) {
-      let data = response.data || [];
-
-      // Client-side search filter
-      if (filters.search) {
-        const searchLower = filters.search.toLowerCase();
-        data = data.filter(
-          (kelas) =>
-            kelas.mataKuliah?.namaMK.toLowerCase().includes(searchLower) ||
-            kelas.mataKuliah?.kodeMK.toLowerCase().includes(searchLower) ||
-            kelas.dosen?.namaLengkap.toLowerCase().includes(searchLower)
-        );
+      const params: any = {};
+      
+      if (filters.semester_id !== 'ALL') {
+        params.semester_id = parseInt(filters.semester_id);
+      }
+      
+      if (filters.hari !== 'ALL') {
+        params.hari = filters.hari;
       }
 
-      setKelasList(data);
-    } else {
-      setError(response.message || 'Gagal memuat data kelas');
+      const response = await kelasMKAPI.getAll(params);
+
+      if (response.success) {
+        let data = response.data || [];
+
+        // Client-side search filter
+        if (filters.search) {
+          const searchLower = filters.search.toLowerCase();
+          data = data.filter(
+            (kelas) =>
+              kelas.mataKuliah?.namaMK.toLowerCase().includes(searchLower) ||
+              kelas.mataKuliah?.kodeMK.toLowerCase().includes(searchLower) ||
+              kelas.dosen?.namaLengkap.toLowerCase().includes(searchLower)
+          );
+        }
+
+        setKelasList(data);
+      } else {
+        setError(response.message || 'Gagal memuat data kelas');
+      }
+    } catch (err: any) {
+      console.error('Fetch kelas MK error:', err);
+      setError(
+        err.response?.data?.message ||
+        err.message ||
+        'Terjadi kesalahan saat memuat data kelas'
+      );
+    } finally {
+      setIsLoading(false);
     }
-  } catch (err: any) {
-    console.error('Fetch kelas MK error:', err);
-    setError(
-      err.response?.data?.message ||
-      err.message ||
-      'Terjadi kesalahan saat memuat data kelas'
-    );
-  } finally {
-    setIsLoading(false);
-  }
-}, [filters]);
+  }, [filters]);
 
   useEffect(() => {
     if (!isSemesterLoading) {
@@ -122,9 +115,7 @@ const fetchKelasMK = useCallback(async () => {
     }
   }, [fetchKelasMK, isSemesterLoading]);
 
-  // ============================================
   // HANDLERS
-  // ============================================
   const handleFilterChange = (key: string, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
@@ -165,13 +156,37 @@ const fetchKelasMK = useCallback(async () => {
     router.push('/admin/kelas-mk/tambah');
   };
 
+  // ✅ EXPORT HANDLER
+  const handleExport = async () => {
+    try {
+      const response = await kelasMKAPI.exportToExcel({
+        semester_id: filters.semester_id !== 'ALL' ? parseInt(filters.semester_id) : undefined,
+        hari: filters.hari !== 'ALL' ? filters.hari : undefined,
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response]));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const timestamp = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `KelasMK_${timestamp}.xlsx`);
+      
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      toast.success('Data Kelas MK berhasil di-export');
+    } catch (err: any) {
+      console.error('Export error:', err);
+      toast.error('Gagal export data Kelas MK');
+    }
+  };
+
   const handleRetry = () => {
     fetchKelasMK();
   };
 
-  // ============================================
   // LOADING STATE
-  // ============================================
   if (isLoading && kelasList.length === 0) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -180,9 +195,7 @@ const fetchKelasMK = useCallback(async () => {
     );
   }
 
-  // ============================================
   // ERROR STATE
-  // ============================================
   if (error && kelasList.length === 0) {
     return (
       <ErrorState
@@ -201,9 +214,7 @@ const fetchKelasMK = useCallback(async () => {
     ? `${activeSemester.tahunAkademik} ${activeSemester.periode}`
     : 'Semua Semester';
 
-  // ============================================
   // RENDER
-  // ============================================
   return (
     <div className="space-y-6">
       <PageHeader
@@ -214,10 +225,16 @@ const fetchKelasMK = useCallback(async () => {
           { label: 'Kelas MK' },
         ]}
         actions={
-          <Button onClick={handleCreate} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Tambah Kelas
-          </Button>
+          <>
+            <Button variant="outline" onClick={handleExport} className="gap-2">
+              <Download className="h-4 w-4" />
+              Export
+            </Button>
+            <Button onClick={handleCreate} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Tambah Kelas
+            </Button>
+          </>
         }
       />
 

@@ -37,7 +37,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { FileText, Plus, Eye, Edit, Trash2, AlertCircle, Send, ChevronLeft, ChevronRight } from 'lucide-react';
+import { FileText, Plus, Download, Eye, Edit, Trash2, AlertCircle, Send, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -59,11 +59,11 @@ export default function AdminKRSListPage() {
   const [statusFilter, setStatusFilter] = useState<KRSStatus | 'ALL'>('ALL');
   const [semesterFilter, setSemesterFilter] = useState<string>('ACTIVE');
 
-  // ✅ PAGINATION STATE
+  // PAGINATION STATE
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalData, setTotalData] = useState(0);
-  const limit = 50; // ✅ Show 50 per page
+  const limit = 50;
 
   // Delete dialog
   const [deleteDialog, setDeleteDialog] = useState<{
@@ -114,7 +114,6 @@ export default function AdminKRSListPage() {
 
       const status = statusFilter === 'ALL' ? undefined : statusFilter;
 
-      // ✅ FIXED: Send page and limit parameters
       const response = await krsAPI.getAll({
         page,
         limit,
@@ -125,7 +124,6 @@ export default function AdminKRSListPage() {
       if (response.success && response.data) {
         setKrsList(response.data);
         
-        // ✅ FIXED: Set pagination info
         if (response.pagination) {
           setTotalPages(response.pagination.totalPages || 1);
           setTotalData(response.pagination.total || 0);
@@ -145,7 +143,7 @@ export default function AdminKRSListPage() {
     }
   };
 
-  // ✅ FIXED: Reset page when filters change
+  // Reset page when filters change
   useEffect(() => {
     setPage(1);
   }, [statusFilter, semesterFilter]);
@@ -251,7 +249,42 @@ export default function AdminKRSListPage() {
     fetchKRS();
   };
 
-  // ✅ PAGINATION HANDLERS
+  // ✅ EXPORT HANDLER
+  const handleExport = async () => {
+    try {
+      let semesterId: number | undefined;
+      if (semesterFilter === 'ACTIVE') {
+        const activeSemester = semesterList.find((s) => s.isActive);
+        semesterId = activeSemester?.id;
+      } else if (semesterFilter !== 'ALL') {
+        semesterId = parseInt(semesterFilter);
+      }
+
+      const response = await krsAPI.exportToExcel({
+        semesterId: semesterId,
+        status: statusFilter !== 'ALL' ? statusFilter : undefined,
+        search: search || undefined,
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response]));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const timestamp = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `KRS_${timestamp}.xlsx`);
+      
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      toast.success('Data KRS berhasil di-export');
+    } catch (err: any) {
+      console.error('Export error:', err);
+      toast.error('Gagal export data KRS');
+    }
+  };
+
+  // PAGINATION HANDLERS
   const handlePrevPage = () => {
     if (page > 1) setPage(page - 1);
   };
@@ -288,10 +321,16 @@ export default function AdminKRSListPage() {
           { label: 'KRS' },
         ]}
         actions={
-          <Button onClick={handleAssignNew}>
-            <Plus className="mr-2 h-4 w-4" />
-            Assign KRS Baru
-          </Button>
+          <>
+            <Button variant="outline" onClick={handleExport} className="gap-2">
+              <Download className="h-4 w-4" />
+              Export
+            </Button>
+            <Button onClick={handleAssignNew}>
+              <Plus className="mr-2 h-4 w-4" />
+              Assign KRS Baru
+            </Button>
+          </>
         }
       />
 
@@ -515,7 +554,7 @@ export default function AdminKRSListPage() {
                 </Table>
               </div>
 
-              {/* ✅ PAGINATION CONTROLS */}
+              {/* PAGINATION CONTROLS */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between border-t px-6 py-4">
                   <div className="text-sm text-muted-foreground">

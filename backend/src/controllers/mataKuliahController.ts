@@ -21,7 +21,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     isActive = 'true',
     sortBy = 'kodeMK',
     sortOrder = 'asc',
-    export: isExport, // ✅ ADDED: Export flag
+    export: isExport,
   } = req.query;
 
   // Build where clause
@@ -46,7 +46,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     where.isActive = isActive === 'true';
   }
 
-  // ✅ EXPORT MODE: Get all data without pagination
+
   if (isExport === 'true') {
     const mataKuliah = await prisma.mataKuliah.findMany({
       where,

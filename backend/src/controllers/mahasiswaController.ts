@@ -22,7 +22,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     dosenWaliId,
     sortBy = 'nim',
     sortOrder = 'asc',
-    export: isExport, // ✅ ADDED: Export flag
+    export: isExport,
   } = req.query;
 
   // Build where clause
@@ -57,7 +57,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     where.dosenWaliId = parseInt(dosenWaliId as string);
   }
 
-  // ✅ EXPORT MODE: Get all data without pagination
+
   if (isExport === 'true') {
     const mahasiswa = await prisma.mahasiswa.findMany({
       where,

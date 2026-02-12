@@ -1,9 +1,3 @@
-/**
- * Dosen Routes (FIXED)
- * Routes for lecturer management
- * ✅ FIXED: Hapus validasi untuk field yang di-comment di schema
- */
-
 import { Router } from 'express';
 import * as dosenController from '../controllers/dosenController';
 import { authenticate } from '../middlewares/authMiddleware';
@@ -52,11 +46,6 @@ router.get(
   dosenController.getById
 );
 
-/**
- * POST /api/dosen
- * Create new dosen
- * ✅ FIXED: Hapus validasi field yang di-comment di schema
- */
 router.post(
   '/',
   authenticate,
@@ -75,7 +64,6 @@ router.post(
       .optional()
       .isInt({ min: 1 })
       .withMessage('Program Studi tidak valid'),
-    // ❌ HAPUS: noHp, emailDosen (yang di-comment di schema)
     body('posisi').optional().isString(),
     body('jafung').optional().isString(),
     body('alumni').optional().isString(),
@@ -87,11 +75,6 @@ router.post(
   dosenController.create
 );
 
-/**
- * PUT /api/dosen/:id
- * Update dosen
- * ✅ FIXED: Hapus validasi field yang di-comment di schema
- */
 router.put(
   '/:id',
   authenticate,
@@ -120,7 +103,6 @@ router.put(
       .optional()
       .isInt({ min: 1 })
       .withMessage('Program Studi tidak valid'),
-    // ❌ HAPUS: noHp, emailDosen (yang di-comment di schema)
     body('posisi').optional().isString(),
     body('jafung').optional().isString(),
     body('alumni').optional().isString(),
@@ -135,10 +117,6 @@ router.put(
   dosenController.update
 );
 
-/**
- * DELETE /api/dosen/:id
- * Delete dosen (soft delete)
- */
 router.delete(
   '/:id',
   authenticate,

@@ -1,18 +1,13 @@
-/**
- * Paket KRS Controller
- * Handles CRUD operations for KRS templates
- * ✅ Fixed: Create with nested details
- */
-
 import { Response } from 'express';
 import prisma from '../config/database';
 import { AuthRequest } from '../types';
 import { asyncHandler, AppError } from '../middlewares/errorMiddleware';
 import { Prisma } from '@prisma/client';
+import { exportPaketKRSToExcel } from '../utils/excelExport';
 
 /**
  * GET /api/paket-krs
- * Get all paket KRS with filters
+ * Get all paket KRS with filters + EXCEL EXPORT
  */
 export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
@@ -25,9 +20,9 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     semesterPaket,
     sortBy = 'namaPaket',
     sortOrder = 'asc',
+    export: isExport,
   } = req.query;
 
-  
   const where: Prisma.PaketKRSWhereInput = {};
 
   if (search) {
@@ -48,6 +43,59 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
 
   if (semesterPaket) {
     where.semesterPaket = parseInt(semesterPaket as string);
+  }
+
+
+  if (isExport === 'true') {
+    const paketList = await prisma.paketKRS.findMany({
+      where,
+      orderBy: {
+        [sortBy as string]: sortOrder as 'asc' | 'desc',
+      },
+      include: {
+        prodi: {
+          select: {
+            nama: true,
+          },
+        },
+        semester: {
+          select: {
+            tahunAkademik: true,
+            periode: true,
+          },
+        },
+        _count: {
+          select: {
+            detail: true,
+          },
+        },
+      },
+    });
+
+    // Get prodi name for filename
+    let prodiName: string | undefined;
+    if (prodiId) {
+      const prodi = await prisma.programStudi.findUnique({
+        where: { id: parseInt(prodiId as string) },
+      });
+      prodiName = prodi?.kode;
+    }
+
+    // Get semester label for filename
+    let semesterLabel: string | undefined;
+    if (semesterId) {
+      const sem = await prisma.semester.findUnique({
+        where: { id: parseInt(semesterId as string) },
+        select: { tahunAkademik: true, periode: true },
+      });
+      semesterLabel = sem ? `${sem.tahunAkademik}-${sem.periode}` : undefined;
+    }
+
+    return exportPaketKRSToExcel(paketList, res, {
+      angkatan: angkatan ? parseInt(angkatan as string) : undefined,
+      prodi: prodiName,
+      semester: semesterLabel,
+    });
   }
 
   // Pagination
@@ -191,7 +239,6 @@ export const getById = asyncHandler(
 /**
  * POST /api/paket-krs
  * Create new paket KRS with mata kuliah details
- * ✅ FIXED: Now accepts kelasMKIds and creates details
  */
 export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!req.user) {
@@ -204,17 +251,8 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
     angkatan,
     semesterPaket,
     semesterId,
-    kelasMKIds = [], // ✅ ACCEPT ARRAY OF KELAS IDS
+    kelasMKIds = [],
   } = req.body;
-
-  console.log('📥 Create paket payload:', {
-    namaPaket,
-    prodiId,
-    angkatan,
-    semesterPaket,
-    semesterId,
-    kelasMKIds,
-  });
 
   // Validate semesterId
   if (!semesterId) {
@@ -236,7 +274,7 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
     const kelasList = await prisma.kelasMataKuliah.findMany({
       where: {
         id: { in: kelasMKIds },
-        semesterId: semesterId, // ✅ Must be from same semester
+        semesterId: semesterId,
       },
       include: {
         mataKuliah: {
@@ -260,8 +298,6 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
     if (totalSKS > 24) {
       throw new AppError('Total SKS melebihi batas maksimal (24 SKS)', 400);
     }
-
-    console.log(`✅ Validated ${kelasList.length} kelas, total ${totalSKS} SKS`);
   }
 
   // ✅ Create paket with details in transaction
@@ -281,7 +317,6 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
         createdBy: {
           connect: { id: req.user!.id },
         },
-        // ✅ CREATE NESTED DETAILS
         detail: {
           create: kelasMKIds.map((kelasMKId: number) => ({
             kelasMKId,
@@ -321,8 +356,6 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
       },
     });
 
-    console.log(`✅ Paket created with ${newPaket.detail.length} mata kuliah`);
-
     return newPaket;
   });
 
@@ -333,17 +366,15 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
   });
 });
 
-
-
 export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const { 
-    namaPaket, 
-    prodiId, 
-    angkatan, 
-    semesterPaket, 
+  const {
+    namaPaket,
+    prodiId,
+    angkatan,
+    semesterPaket,
     semesterId,
-    kelasMKIds 
+    kelasMKIds,
   } = req.body;
 
   // Check if paket exists
@@ -352,7 +383,7 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
   });
 
   if (!existingPaket) {
-    throw new AppError("Paket KRS tidak ditemukan", 404);
+    throw new AppError('Paket KRS tidak ditemukan', 404);
   }
 
   // Validate semesterId if provided
@@ -361,13 +392,12 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
       where: { id: semesterId },
     });
     if (!semester) {
-      throw new AppError("Semester tidak ditemukan", 404);
+      throw new AppError('Semester tidak ditemukan', 404);
     }
   }
 
- 
   let totalSKS = existingPaket.totalSKS;
-  
+
   if (kelasMKIds && Array.isArray(kelasMKIds)) {
     // Validate all kelasMK exist and calculate totalSKS
     const kelasList = await prisma.kelasMataKuliah.findMany({
@@ -384,7 +414,7 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
 
     if (kelasList.length !== kelasMKIds.length) {
       throw new AppError(
-        "Beberapa kelas tidak ditemukan atau bukan dari semester yang dipilih",
+        'Beberapa kelas tidak ditemukan atau bukan dari semester yang dipilih',
         400
       );
     }
@@ -392,11 +422,10 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     totalSKS = kelasList.reduce((sum, k) => sum + (k.mataKuliah.sks || 0), 0);
 
     if (totalSKS > 24) {
-      throw new AppError("Total SKS melebihi batas maksimal (24 SKS)", 400);
+      throw new AppError('Total SKS melebihi batas maksimal (24 SKS)', 400);
     }
   }
 
-  
   const paket = await prisma.$transaction(async (tx) => {
     // 1. Delete all existing details jika kelasMKIds dikirim
     if (kelasMKIds && Array.isArray(kelasMKIds)) {
@@ -420,7 +449,7 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
         namaPaket,
         angkatan,
         semesterPaket,
-        totalSKS, // ✅ Update totalSKS
+        totalSKS,
         ...(prodiId && {
           prodi: { connect: { id: prodiId } },
         }),
@@ -447,11 +476,10 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
 
   res.status(200).json({
     success: true,
-    message: "Paket KRS berhasil diupdate",
+    message: 'Paket KRS berhasil diupdate',
     data: paket,
   });
 });
-
 
 /**
  * DELETE /api/paket-krs/:id
@@ -502,8 +530,6 @@ export const addMataKuliah = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const { kelasMKId } = req.body;
-
-    console.log('📥 Add MK to paket:', { paketId: id, kelasMKId });
 
     if (!kelasMKId) {
       throw new AppError('kelasMKId harus diisi', 400);

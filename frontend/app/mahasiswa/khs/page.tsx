@@ -32,6 +32,7 @@ import { toast } from 'sonner';
 import { khsAPI, semesterAPI } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth'; // Adjust path sesuai lokasi hook
 import { KHS, Semester, Nilai } from '@/types/model';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface KHSWithDetails extends KHS {
   nilai?: Nilai[];
@@ -261,20 +262,40 @@ export default function KHSPage() {
     <div className="space-y-6">
       {/* Page Header */}
       <PageHeader
-        title="Kartu Hasil Studi (KHS)"
-        description="Lihat hasil studi Anda per semester"
-        actions={
-          selectedKHS && (
-            <Button 
-              onClick={handleDownloadPDF}
-              disabled={isDownloading}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              {isDownloading ? 'Downloading...' : 'Download PDF'}
-            </Button>
-          )
-        }
-      />
+  title="Kartu Hasil Studi (KHS)"
+  description="Lihat hasil studi Anda per semester"
+  actions={
+    selectedKHS && (
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {/* Wrapper span memastikan tooltip muncul meski button disabled */}
+            <div className="inline-block">
+              <Button 
+                onClick={handleDownloadPDF} 
+                disabled={isDownloading}
+                variant="outline" // Opsional: ganti sesuai tema
+              >
+                <Download className="mr-2 h-4 w-4" />
+                {isDownloading ? 'Downloading...' : 'Download PDF'}
+              </Button>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-62.5 bg-slate-900 text-white p-3 shadow-lg">
+            <div className="flex flex-col gap-1">
+              <p className="font-semibold flex items-center gap-1 text-amber-400">
+                <Info className="h-3 w-3" /> Tips Unduh
+              </p>
+              <p className="text-xs leading-relaxed">
+                Disarankan mengunduh KHS saat <strong>seluruh nilai mata kuliah dalam semester ini </strong> sudah disubmit agar hasil lebih lengkap dan akurat.
+              </p>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+/>
 
       {/* Belum ada KHS */}
       {khsList.length === 0 && (

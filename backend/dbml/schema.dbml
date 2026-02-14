@@ -260,19 +260,6 @@ Table khs {
   }
 }
 
-Table audit_log {
-  id Int [pk, increment]
-  userId Int
-  action String [not null]
-  tableName String [not null]
-  recordId Int
-  oldData Json
-  newData Json
-  ipAddress String
-  userAgent String
-  createdAt DateTime [default: `now()`, not null]
-}
-
 Table pembayaran {
   id Int [pk, increment]
   mahasiswaId Int [not null]
@@ -339,6 +326,19 @@ Table kelas_mk_file {
   updatedAt DateTime [not null]
   kelasMK kelas_mata_kuliah [not null]
   uploadedBy dosen [not null]
+}
+
+Table audit_log {
+  id Int [pk, increment]
+  userId Int
+  action String [not null]
+  tableName String [not null]
+  recordId Int
+  oldData Json
+  newData Json
+  ipAddress String
+  userAgent String
+  createdAt DateTime [default: `now()`, not null]
 }
 
 Enum Role {

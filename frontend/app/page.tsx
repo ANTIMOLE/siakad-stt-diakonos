@@ -1,11 +1,9 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 'use client';
 
 import {useEffect, useState} from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card,  CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { GraduationCap, BookOpen, Users, ArrowRight, DollarSign } from 'lucide-react';
 import { PrimaryButton } from '@/components/ui/primary-button';
 
@@ -14,47 +12,54 @@ export default function HomePage() {
   const [isChecking, setIsChecking] = useState(true);
   
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const user = localStorage.getItem('user');
+    // ✅ Wrap dalam async function
+    const checkAuth = async () => {
+      const token = localStorage.getItem('token');
+      const user = localStorage.getItem('user');
 
-    if (token && user){
-      try{
-        const userData = JSON.parse(user);
-        const role = userData.role;
-        
-        const roleRoutes = {
-          ADMIN: '/admin/dashboard',
-          DOSEN: '/dosen/dashboard',
-          MAHASISWA: '/mahasiswa/dashboard',
-          KEUANGAN: '/keuangan/dashboard',
+      if (token && user){
+        try{
+          const userData = JSON.parse(user);
+          const role = userData.role;
+          
+          const roleRoutes = {
+            ADMIN: '/admin/dashboard',
+            DOSEN: '/dosen/dashboard',
+            MAHASISWA: '/mahasiswa/dashboard',
+            KEUANGAN: '/keuangan/dashboard',
+          }
+          
+          const route = roleRoutes[role as keyof typeof roleRoutes] || '/login';
+          router.push(route);
+          return; // ✅ Exit early, ga perlu setIsChecking
+        } catch (error) {
+          console.error('Auth check error:', error);
         }
-        
-        const route = roleRoutes[role as keyof typeof roleRoutes] || '/login';
-        router.push(route);
-      } catch (error) {
-        setIsChecking(false);
       }
-    } else{
+      
+      // ✅ Set false di akhir, setelah semua logic
       setIsChecking(false);
-    }
+    };
+
+    checkAuth();
   }, [router]);
 
   if(isChecking){
     return(
       <div className='flex min-h-screen items-center justify-center'>
         <div className='text-center'>
-          <div className='mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent'>
-            <p className='text-sm text-muted-foreground'>
-              Memuat....
-            </p>
-          </div>
+          {/* ✅ SPINNER ONLY */}
+          <div className='mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent' />
+          <p className='text-sm text-muted-foreground'>
+            Memuat...
+          </p>
         </div>
       </div>
     )
   }
 
   return(
-    <div className='min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'>
+    <div className='min-h-screen bg-linear-to-br from-blue-50 via-indigo-50 to-purple-50'>
       {/* Header Section */}
       <header className='border-b bg-white/80 backdrop-blur-sm'>
         <div className='container mx-auto flex h-16 items-center justify-between px-4'>

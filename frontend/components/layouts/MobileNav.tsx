@@ -23,7 +23,10 @@ import {
   Calendar,
   FileText,
   Award,
-  School
+  School,
+  File,
+  DoorOpen,
+  CalendarPlus
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 
@@ -38,7 +41,10 @@ const iconMap: Record<string, any> = {
   Calendar,
   FileText,
   Award,
-  School
+  School,
+  File,
+  DoorOpen,
+  CalendarPlus
 };
 
 interface MobileNavProps {

@@ -1,8 +1,3 @@
-/**
- * Admin Dashboard Page
- * ✅ Full Backend Integration - Real Stats from API
- */
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -31,13 +26,14 @@ export default function AdminDashboardPage() {
         setError(null);
 
         const response = await dashboardAPI.getAdminStats();
-        // ✅ response SUDAH ApiResponse (auto-unwrap dari interceptor)
 
-       if (response.success && response.data) {  // ✅ Check data exists
+
+       if (response.success && response.data) {  
           setStats(response.data);
         } else {
           setError(response.message || 'Gagal memuat data dashboard');
         }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         console.error('Fetch dashboard stats error:', err);
         setError(
@@ -53,9 +49,6 @@ export default function AdminDashboardPage() {
     fetchStats();
   }, []);
 
-  // ============================================
-  // LOADING STATE
-  // ============================================
   if (isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -64,9 +57,6 @@ export default function AdminDashboardPage() {
     );
   }
 
-  // ============================================
-  // ERROR STATE
-  // ============================================
   if (error) {
     return (
       <ErrorState
@@ -77,9 +67,6 @@ export default function AdminDashboardPage() {
     );
   }
 
-  // ============================================
-  // RENDER
-  // ============================================
   return (
     <div className="space-y-6">
       {/* Page Header */}

@@ -1,9 +1,4 @@
-/**
- * Presensi Routes
- * ✅ UPDATED: Added mahasiswa my-classes endpoint
- */
-
-import { Router } from 'express';
+import { NextFunction, Router } from 'express';
 import * as presensiController from '../controllers/presensiController';
 import { authenticate } from '../middlewares/authMiddleware';
 import {
@@ -11,6 +6,7 @@ import {
   requireAdminOrDosen,
 } from '../middlewares/roleMiddleware';
 import { idParamValidation } from '../middlewares/validationMiddleware';
+import { ValidationChain } from 'express-validator';
 
 const router = Router();
 
@@ -119,6 +115,19 @@ router.delete(
   presensiController.deletePresensi
 );
 
+router.get(
+  '/:id/export',
+  authenticate,
+  requireAdminOrDosen,
+  presensiController.exportPresensiPertemuanPDF
+);
+
+router.get(
+  '/:id/export-berita-acara',
+  authenticate,
+  requireAdminOrDosen,
+  presensiController.exportBeritaAcaraPDF
+);
 
 
 export default router;

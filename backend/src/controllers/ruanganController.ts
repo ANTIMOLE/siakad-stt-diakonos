@@ -27,7 +27,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   const where: Prisma.RuanganWhereInput = {};
 
   if (search) {
-    where.nama = { contains: search as string, mode: 'insensitive' };
+    where.nama = { contains: search as string};
   }
 
   if (isActive !== undefined) {

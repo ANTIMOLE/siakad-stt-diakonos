@@ -1,16 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/**
- * Admin - List Mata Kuliah Page
- * ✅ Full Backend Integration with CRUD Operations
- * ✅ FIXED: Excel export functionality
- */
-
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Edit, Eye, Trash2, MoreHorizontal, Download } from 'lucide-react';
-import Link from 'next/link';
 
 import PageHeader from '@/components/shared/PageHeader';
 import SearchBar from '@/components/shared/SearchBar';
@@ -21,6 +14,16 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,7 +42,7 @@ import {
 import { toast } from 'sonner';
 
 import { mataKuliahAPI } from '@/lib/api';
-import { MataKuliah, PaginatedApiResponse } from '@/types/model';
+import { MataKuliah } from '@/types/model';
 import { PAGINATION } from '@/lib/constants';
 
 interface MataKuliahFilters {
@@ -55,9 +58,6 @@ interface MataKuliahFilters {
 export default function MataKuliahListPage() {
   const router = useRouter();
 
-  // ============================================
-  // STATE MANAGEMENT
-  // ============================================
   const [mataKuliah, setMataKuliah] = useState<MataKuliah[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,50 +74,55 @@ export default function MataKuliahListPage() {
     sortOrder: 'asc',
   });
 
-  // ============================================
-  // FETCH MATA KULIAH DATA
-  // ============================================
-const fetchMataKuliah = useCallback(async () => {
-  try {
-    setIsLoading(true);
-    setError(null);
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    mkId: number | null;
+    mkNama: string;
+  }>({
+    open: false,
+    mkId: null,
+    mkNama: '',
+  });
+  const [isDeleting, setIsDeleting] = useState(false);
 
-    const response = await mataKuliahAPI.getAll(filters);
+  const fetchMataKuliah = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
 
-    if (response.success) {
-      setMataKuliah(response.data || []);
-      setTotalPages(response.pagination.totalPages);
-      setTotalItems(response.pagination.total);
-    } else {
-      setError(response.message || 'Gagal memuat data mata kuliah');
+      const response = await mataKuliahAPI.getAll(filters);
+
+      if (response.success) {
+        setMataKuliah(response.data || []);
+        setTotalPages(response.pagination.totalPages);
+        setTotalItems(response.pagination.total);
+      } else {
+        setError(response.message || 'Gagal memuat data mata kuliah');
+      }
+    } catch (err: any) {
+      console.error('Fetch mata kuliah error:', err);
+      setError(
+        err.response?.data?.message ||
+        err.message ||
+        'Terjadi kesalahan saat memuat data mata kuliah'
+      );
+    } finally {
+      setIsLoading(false);
     }
-  } catch (err: any) {
-    console.error('Fetch mata kuliah error:', err);
-    setError(
-      err.response?.data?.message ||
-      err.message ||
-      'Terjadi kesalahan saat memuat data mata kuliah'
-    );
-  } finally {
-    setIsLoading(false);
-  }
-}, [
-  filters.search,
-  filters.semesterIdeal,
-  filters.isActive,
-  filters.page,
-  filters.limit,
-  filters.sortBy,
-  filters.sortOrder,
-]); // ✅ Individual properties, bukan whole object
+  }, [
+    filters.search,
+    filters.semesterIdeal,
+    filters.isActive,
+    filters.page,
+    filters.limit,
+    filters.sortBy,
+    filters.sortOrder,
+  ]);
 
-useEffect(() => {
-  fetchMataKuliah();
-}, [fetchMataKuliah]);
+  useEffect(() => {
+    fetchMataKuliah();
+  }, [fetchMataKuliah]);
 
-  // ============================================
-  // HANDLERS
-  // ============================================
   const handleSearch = useCallback((query: string) => {
     setFilters((prev) => ({ ...prev, search: query, page: 1 }));
   }, []);
@@ -142,31 +147,41 @@ useEffect(() => {
     router.push(`/admin/mata-kuliah/${id}/edit`);
   };
 
-  const handleDelete = async (id: number, nama: string) => {
-    if (!confirm(`Apakah Anda yakin ingin menghapus mata kuliah ${nama}?`)) {
-      return;
-    }
+  const handleDeleteClick = (mk: MataKuliah) => {
+    setDeleteDialog({
+      open: true,
+      mkId: mk.id,
+      mkNama: mk.namaMK,
+    });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteDialog.mkId) return;
 
     try {
-      const response = await mataKuliahAPI.delete(id);
+      setIsDeleting(true);
+
+      const response = await mataKuliahAPI.delete(deleteDialog.mkId);
 
       if (response.success) {
         toast.success('Mata kuliah berhasil dihapus');
-        fetchMataKuliah(); // Refresh data
+        fetchMataKuliah();
+        setDeleteDialog({ open: false, mkId: null, mkNama: '' });
       } else {
         toast.error(response.message || 'Gagal menghapus mata kuliah');
       }
     } catch (err: any) {
       console.error('Delete error:', err);
       toast.error(
-        err.response?.message ||
+        err.response?.data?.message ||
         err.message ||
         'Terjadi kesalahan saat menghapus mata kuliah'
       );
+    } finally {
+      setIsDeleting(false);
     }
   };
 
-  // ✅ FIXED: Proper Excel export
   const handleExport = async () => {
     try {
       toast.loading('Mengekspor data...');
@@ -177,7 +192,6 @@ useEffect(() => {
         isActive: filters.isActive,
       });
       
-      // Create download link
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -199,9 +213,6 @@ useEffect(() => {
     fetchMataKuliah();
   };
 
-  // ============================================
-  // LOADING STATE
-  // ============================================
   if (isLoading && mataKuliah.length === 0) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -210,9 +221,6 @@ useEffect(() => {
     );
   }
 
-  // ============================================
-  // ERROR STATE
-  // ============================================
   if (error && mataKuliah.length === 0) {
     return (
       <ErrorState
@@ -223,12 +231,8 @@ useEffect(() => {
     );
   }
 
-  // ============================================
-  // RENDER
-  // ============================================
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <PageHeader
         title="Mata Kuliah"
         description="Kelola mata kuliah dan kurikulum STT Diakonos"
@@ -250,11 +254,9 @@ useEffect(() => {
         }
       />
 
-      {/* Filters */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center">
-            {/* Search */}
             <div className="flex-1">
               <SearchBar
                 placeholder="Cari kode atau nama mata kuliah..."
@@ -262,7 +264,6 @@ useEffect(() => {
               />
             </div>
 
-            {/* Filter Semester */}
             <Select
               value={filters.semesterIdeal?.toString() || 'all'}
               onValueChange={(value) =>
@@ -285,7 +286,6 @@ useEffect(() => {
               </SelectContent>
             </Select>
 
-            {/* Filter Status */}
             <Select
               value={filters.isActive === undefined ? 'all' : filters.isActive.toString()}
               onValueChange={(value) =>
@@ -302,7 +302,6 @@ useEffect(() => {
               </SelectContent>
             </Select>
 
-            {/* Items per page */}
             <Select
               value={filters.limit?.toString() || '10'}
               onValueChange={(value) =>
@@ -322,7 +321,6 @@ useEffect(() => {
         </CardContent>
       </Card>
 
-      {/* Data Table */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -348,7 +346,6 @@ useEffect(() => {
             />
           ) : (
             <>
-              {/* Table */}
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -409,7 +406,7 @@ useEffect(() => {
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
-                                onClick={() => handleDelete(mk.id, mk.namaMK)}
+                                onClick={() => handleDeleteClick(mk)}
                                 className="text-red-600"
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
@@ -424,7 +421,6 @@ useEffect(() => {
                 </Table>
               </div>
 
-              {/* Pagination */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between border-t px-6 py-4">
                   <div className="text-sm text-muted-foreground">
@@ -454,6 +450,37 @@ useEffect(() => {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) =>
+          setDeleteDialog({ ...deleteDialog, open })
+        }
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus Mata Kuliah?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Apakah Anda yakin ingin menghapus mata kuliah{' '}
+              <span className="font-semibold">{deleteDialog.mkNama}</span>?
+              <br />
+              <span className="text-red-600">
+                Mata kuliah yang memiliki kelas aktif tidak dapat dihapus.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? 'Menghapus...' : 'Ya, Hapus'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

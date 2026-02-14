@@ -1,17 +1,10 @@
-/**
- * Nilai Controller
- * Handles grading operations
- */
 import { Response } from 'express';
 import prisma from '../config/database';
 import { AuthRequest } from '../types';
 import { asyncHandler, AppError } from '../middlewares/errorMiddleware';
 import * as nilaiService from '../services/nilaiService';
-/**
- * GET /api/nilai/kelas/:kelasId
- * Get all nilai for a specific kelas
- * ✅ FIXED: Filter KRS by semester to avoid duplicate students from old KRS
- */
+import { generatePDF, getNilaiKelasHTMLTemplate } from '../utils/pdfGenerator';
+
 export const getByKelas = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { kelasId } = req.params;
@@ -185,3 +178,26 @@ export const unlock = asyncHandler(
     });
   }
 );
+
+export const exportNilaiKelasPDF = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { kelasId } = req.params;
+  
+  const kelasMK = await prisma.kelasMataKuliah.findUnique({
+    where: { id: Number(kelasId) },
+    include: { mataKuliah: true, dosen: true, ruangan: true, semester: true }
+  });
+
+  const nilaiList = await prisma.nilai.findMany({
+    where: { kelasMKId: Number(kelasId) },
+    include: { mahasiswa: true, inputBy: { include: { dosen: true } } }
+  });
+
+  const html = getNilaiKelasHTMLTemplate({
+    kelasMK,
+    nilaiList,
+    semester: kelasMK?.semester,
+    generatedAt: new Date().toLocaleString('id-ID')
+  });
+
+  await generatePDF(html, `Nilai-Kelas-${kelasMK?.mataKuliah?.kodeMK}.pdf`, res);
+});

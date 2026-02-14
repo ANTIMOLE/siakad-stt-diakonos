@@ -26,12 +26,14 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Calendar, Clock, MapPin, Info, BookOpen } from 'lucide-react';
+import { Calendar, Clock, MapPin, Info, BookOpen, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { mahasiswaAPI, semesterAPI } from '@/lib/api';
+import { kelasMKAPI, mahasiswaAPI, semesterAPI } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { KRS, KelasMK, Semester } from '@/types/model';
+import { fi } from 'date-fns/locale';
+import { Button } from '@/components/ui/button';
 
 const HARI_ORDER: Record<string, number> = {
   Senin: 1,
@@ -68,7 +70,7 @@ export default function JadwalPage() {
   const [currentDay, setCurrentDay] = useState<string>('');
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [selectedSemesterId, setSelectedSemesterId] = useState<string>(''); // ✅ NEW
-
+  const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
   // ============================================
   // FETCH DATA
   // ============================================
@@ -184,6 +186,75 @@ export default function JadwalPage() {
     window.location.reload();
   };
 
+  // const handleExportExcel = async () => {
+  //   if (!selectedSemester || !selectedSemester.id || !user?.mahasiswa?.id) {
+  //     toast.error('Pilih semester terlebih dahulu');
+  //     return;
+  //   }
+
+  //   setIsExportingExcel(true);
+  //   try{
+  //     const blob = await kelasMKAPI.exportToExcel({
+  //       semester_id: selectedSemester.id,
+  //       mahasiswaId: user.mahasiswa.id,
+  //     });
+
+  //     const url = window.URL.createObjectURL(blob);
+  //     const a = document.createElement('a');
+
+  //     const semester = semesters.find(s => s.id === selectedSemester.id);
+  //     const timestamp = new Date().toISOString().split('T')[0];
+  //     const filename = `jadwal_kuliah-${user.mahasiswa?.nim || 'mahasiswa'}-${semester ? semester.tahunAkademik + '-' + semester.periode.toLowerCase() : 'semester'}-${timestamp}.xlsx`;
+      
+  //     a.download = filename;
+  //     document.body.appendChild(a);
+  //     a.click();
+  //     document.body.removeChild(a);
+  //     window.URL.revokeObjectURL(url);
+
+  //     toast.success('Jadwal Berhasil di export ke Excel');
+  //   }catch(error){
+  //     console.error('Error exporting to Excel:', error);
+  //     toast.error('Gagal export ke Excel');
+  //   } finally {
+  //     setIsExportingExcel(false);
+  //   }
+  // }
+
+  const handleDownloadPDF = async () => {
+  if (!selectedSemester || !user?.mahasiswa?.id) {
+    toast.error('Data tidak lengkap');
+    return;
+  }
+
+  setIsDownloadingPDF(true);
+  try {
+    const blob = await kelasMKAPI.exportJadwalMahasiswaPDF({
+      mahasiswaId: user.mahasiswa.id,
+      semesterId: selectedSemester.id,
+    });
+
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    
+    const filename = `Jadwal-${user.mahasiswa.nim}-${selectedSemester.periode}-${selectedSemester.tahunAkademik}.pdf`;
+    a.download = filename;
+    
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+
+    toast.success('Jadwal berhasil didownload');
+  } catch (error) {
+    console.error('Error downloading PDF:', error);
+    toast.error('Gagal download jadwal');
+  } finally {
+    setIsDownloadingPDF(false);
+  }
+};
+
   // ============================================
   // LOADING STATE
   // ============================================
@@ -217,9 +288,31 @@ export default function JadwalPage() {
       <PageHeader
         title="Jadwal Kuliah"
         description="Jadwal kuliah Anda per semester"
+       actions={
+          <>
+
+            {/* <Button
+              variant="outline"
+              onClick={handleExportExcel}
+              disabled={isExportingExcel || !selectedSemester}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              {isExportingExcel ? 'Exporting...' : 'Export'}
+            </Button> */}
+
+            <Button
+              onClick={handleDownloadPDF}
+              disabled={isDownloadingPDF || !selectedSemester}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              {isDownloadingPDF ? 'Downloading...' : 'Download PDF'}
+            </Button>
+          </>
+        }
       />
 
-      {/* ✅ NEW: Semester Selector */}
       <Card>
         <CardContent className="pt-6">
           <div className="max-w-sm">

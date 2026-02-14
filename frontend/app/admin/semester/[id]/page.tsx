@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -491,7 +492,7 @@ export default function DetailSemesterPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Aktifkan Semester?</AlertDialogTitle>
             <AlertDialogDescription>
-              Apakah Anda yakin ingin mengaktifkan semester "{semester.tahunAkademik} {semester.periode}"?
+              Apakah Anda yakin ingin mengaktifkan semester &quot;{semester.tahunAkademik} {semester.periode}&quot;?
               <span className="block mt-2 text-yellow-600 font-medium">
                 Semester yang aktif sebelumnya akan dinonaktifkan.
               </span>

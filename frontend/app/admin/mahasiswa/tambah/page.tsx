@@ -31,7 +31,8 @@ import { Dosen } from '@/types/model';
 // VALIDATION SCHEMA
 // ============================================
 const mahasiswaSchema = z.object({
-  nim: z.string().length(10, 'NIM harus 10 digit'),
+  nim: z.string()
+    .regex(/^\d{2}\.\d{2}\.\d{3}$/, 'Format NIM: XX.YY.ZZZ (contoh: 11.21.374)'),
   namaLengkap: z.string().min(3, 'Nama minimal 3 karakter'),
   tempatTanggalLahir: z.string().min(3, 'Tempat/Tanggal Lahir minimal 3 karakter').optional(),
   jenisKelamin: z.enum(['L', 'P']).optional(),
@@ -83,6 +84,26 @@ export default function TambahMahasiswaPage() {
     
     return years;
   }, []);
+
+  // ============================================
+  // NIM AUTO-FORMAT HANDLER
+  // ============================================
+  const handleNIMChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+    
+    if (value.length > 7) {
+      value = value.slice(0, 7); // Max 7 digits
+    }
+    
+    // Format: XX.YY.ZZZ
+    if (value.length > 4) {
+      value = `${value.slice(0, 2)}.${value.slice(2, 4)}.${value.slice(4)}`;
+    } else if (value.length > 2) {
+      value = `${value.slice(0, 2)}.${value.slice(2)}`;
+    }
+    
+    setValue('nim', value, { shouldValidate: true });
+  };
 
   // ============================================
   // FETCH DOSEN LIST
@@ -188,18 +209,22 @@ export default function TambahMahasiswaPage() {
                 <CardTitle>Data Mahasiswa</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* NIM */}
+                {/* NIM with Auto-Format */}
                 <div className="grid gap-2">
                   <Label htmlFor="nim">NIM *</Label>
                   <Input
                     id="nim"
-                    placeholder="2207118333"
-                    maxLength={10}
-                    {...register('nim')}
+                    placeholder="11.21.374"
+                    maxLength={9}
+                    value={watch('nim') || ''}
+                    onChange={handleNIMChange}
                   />
                   {errors.nim && (
                     <p className="text-sm text-red-600">{errors.nim.message}</p>
                   )}
+                  <p className="text-xs text-muted-foreground">
+                    Format: XX.YY.ZZZ (contoh: 11.21.374, 24.01.001)
+                  </p>
                 </div>
 
                 {/* Nama Lengkap */}
@@ -207,7 +232,7 @@ export default function TambahMahasiswaPage() {
                   <Label htmlFor="namaLengkap">Nama Lengkap *</Label>
                   <Input
                     id="namaLengkap"
-                    placeholder="Angello Khara Sitanggang"
+                    placeholder="John Doe"
                     {...register('namaLengkap')}
                   />
                   {errors.namaLengkap && (
@@ -356,8 +381,8 @@ export default function TambahMahasiswaPage() {
                       <SelectValue placeholder="Pilih prodi" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">PAK</SelectItem>
-                      <SelectItem value="2">Teologi</SelectItem>
+                      <SelectItem value="1">Teologi</SelectItem>
+                      <SelectItem value="2">PAK</SelectItem>
                     </SelectContent>
                   </Select>
                   {errors.prodiId && (

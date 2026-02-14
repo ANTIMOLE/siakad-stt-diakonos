@@ -30,10 +30,10 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
 
   if (search) {
     where.OR = [
-      { nim: { contains: search as string, mode: 'insensitive' } },
-      { namaLengkap: { contains: search as string, mode: 'insensitive' } },
-      { alamat: { contains: search as string, mode: 'insensitive' } },
-      { tempatTanggalLahir: { contains: search as string, mode: 'insensitive' } },
+      { nim: { contains: search as string} },
+      { namaLengkap: { contains: search as string} },
+      { alamat: { contains: search as string} },
+      { tempatTanggalLahir: { contains: search as string} },
     ];
   }
 

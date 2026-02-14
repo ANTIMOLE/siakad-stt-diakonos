@@ -1,7 +1,3 @@
-/**
- * KRS Controller - COMPLETE WITH EXCEL EXPORT
- * Handles KRS workflow and management
- */
 
 import { Response } from 'express';
 import prisma from '../config/database';
@@ -10,7 +6,7 @@ import { asyncHandler, AppError } from '../middlewares/errorMiddleware';
 import { Prisma } from '@prisma/client';
 import * as krsService from '../services/krsService';
 import { validateKRSRequirements } from '../utils/validasi';
-import { generatePDF, getKRSHTMLTemplate } from '../utils/pdfGenerator';
+import { generatePDF, getKRSBimbinganHTMLTemplate, getKRSHTMLTemplate } from '../utils/pdfGenerator';
 import { exportKRSToExcel } from '../utils/excelExport';
 
 export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -48,8 +44,8 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     where.mahasiswa = {
       ...(dosenWaliId ? { dosenWaliId } : {}),
       OR: [
-        { nim: { contains: search as string, mode: 'insensitive' } },
-        { namaLengkap: { contains: search as string, mode: 'insensitive' } },
+        { nim: { contains: search as string, } },
+        { namaLengkap: { contains: search as string, } },
       ],
     };
   } else if (dosenWaliId) {
@@ -817,3 +813,4 @@ export const downloadPDF = asyncHandler(
     await generatePDF(html, filename, res);
   }
 );
+

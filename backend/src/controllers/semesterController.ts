@@ -1,7 +1,3 @@
-/**
- * Semester Controller
- * Handles CRUD operations for academic semesters
- */
 
 import { Response } from 'express';
 import prisma from '../config/database';
@@ -68,10 +64,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   });
 });
 
-/**
- * GET /api/semester/:id
- * Get semester by ID
- */
+
 export const getById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
@@ -79,6 +72,50 @@ export const getById = asyncHandler(
     const semester = await prisma.semester.findUnique({
       where: { id: parseInt(id) },
       include: {
+
+        kelasMataKuliah: {
+          include: {
+            mataKuliah: {
+              select: {
+                kodeMK: true,
+                namaMK: true,
+                sks: true,
+              },
+            },
+            dosen: {
+              select: {
+                nidn: true,
+                namaLengkap: true,
+              },
+            },
+            ruangan: {
+              select: {
+                nama: true,
+              },
+            },
+            _count: {
+              select: {
+                krsDetail: true,
+              },
+            },
+          },
+          orderBy: [
+            { hari: 'asc' },
+            { jamMulai: 'asc' },
+          ],
+        },
+
+        krs: {
+          include: {
+            mahasiswa: {
+              select: {
+                nim: true,
+                namaLengkap: true,
+              },
+            },
+          },
+        },
+        // Keep counts for summary
         _count: {
           select: {
             kelasMataKuliah: true,
@@ -222,7 +259,7 @@ export const deleteById = asyncHandler(
       throw new AppError('Semester tidak ditemukan', 404);
     }
 
-    // ✅ IMPROVED: Check all related data and count them
+    // Check all related data and count them
     const [kelasCount, krsCount, khsCount] = await Promise.all([
       prisma.kelasMataKuliah.count({
         where: { semesterId: parseInt(id) },
@@ -235,7 +272,7 @@ export const deleteById = asyncHandler(
       }),
     ]);
 
-    // ✅ Build detailed error message
+    // Build detailed error message
     if (kelasCount > 0 || krsCount > 0 || khsCount > 0) {
       const errors = [];
       
@@ -266,10 +303,8 @@ export const deleteById = asyncHandler(
     });
   }
 );
-/**
- * POST /api/semester/:id/activate
- * Activate semester (set isActive = true, deactivate others)
- */
+
+
 export const activate = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
@@ -288,31 +323,31 @@ export const activate = asyncHandler(
     console.log('Requested semester ID:', semesterId);
     console.log('Requested semester:', semester.tahunAkademik, semester.periode);
 
-    // ✅ BULLETPROOF: Use raw SQL transaction
+
     await prisma.$transaction(async (tx) => {
-      // 1. Deactivate ALL semesters (no exceptions)
+
       const deactivateResult = await tx.$executeRaw`
-        UPDATE "semester" 
-        SET "isActive" = false, "updatedAt" = NOW() 
-        WHERE "isActive" = true
+        UPDATE \`semester\` 
+        SET \`isActive\` = false, \`updatedAt\` = NOW() 
+        WHERE \`isActive\` = true
       `;
       console.log('Deactivated all active semesters:', deactivateResult);
 
-      // 2. Activate target semester
+
       const activateResult = await tx.$executeRaw`
-        UPDATE "semester" 
-        SET "isActive" = true, "updatedAt" = NOW() 
-        WHERE "id" = ${semesterId}
+        UPDATE \`semester\` 
+        SET \`isActive\` = true, \`updatedAt\` = NOW() 
+        WHERE \`id\` = ${semesterId}
       `;
       console.log('Activated target semester:', activateResult);
     });
 
-    // Fetch updated semester
+
     const updatedSemester = await prisma.semester.findUnique({
       where: { id: semesterId },
     });
 
-    // Verify: count active semesters
+
     const activeCount = await prisma.semester.count({
       where: { isActive: true },
     });

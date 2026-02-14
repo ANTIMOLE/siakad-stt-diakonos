@@ -24,7 +24,9 @@ import {
   DollarSign,
   Award,
   School,
-  File
+  File,
+  DoorOpen,
+  CalendarPlus
 } from 'lucide-react';
 
 // Icon mapping
@@ -40,7 +42,9 @@ const iconMap: Record<string, any> = {
   DollarSign,
   Award,
   School,
-  File
+  File,
+  DoorOpen,
+  CalendarPlus
 };
 
 interface SidebarProps {

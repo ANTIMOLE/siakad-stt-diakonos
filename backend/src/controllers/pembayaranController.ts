@@ -123,16 +123,14 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
       {
         mahasiswa: {
           nim: {
-            contains: search as string,
-            mode: 'insensitive',
+            contains: search as string
           },
         },
       },
       {
         mahasiswa: {
           namaLengkap: {
-            contains: search as string,
-            mode: 'insensitive',
+            contains: search as string
           },
         },
       },
@@ -470,16 +468,14 @@ export const downloadPDFReport = asyncHandler(
         {
           mahasiswa: {
             nim: {
-              contains: search as string,
-              mode: 'insensitive',
+              contains: search as string
             },
           },
         },
         {
           mahasiswa: {
             namaLengkap: {
-              contains: search as string,
-              mode: 'insensitive',
+              contains: search as string
             },
           },
         },

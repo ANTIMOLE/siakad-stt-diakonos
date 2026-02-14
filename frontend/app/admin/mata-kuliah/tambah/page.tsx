@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState } from 'react';
@@ -18,13 +19,10 @@ import { toast } from 'sonner';
 
 import { mataKuliahAPI } from '@/lib/api';
 
-// ============================================
-// VALIDATION SCHEMA - Sesuai Prisma Schema
-// ============================================
 const mkSchema = z.object({
   kodeMK: z.string().min(3, 'Kode MK minimal 3 karakter').toUpperCase(),
   namaMK: z.string().min(3, 'Nama MK minimal 3 karakter'),
-  sks: z.number().min(2).max(3, 'SKS harus 2 atau 3'),
+  sks: z.number().min(1, 'SKS minimal 1').max(6, 'SKS maksimal 6'),
   semesterIdeal: z.number().min(1).max(8, 'Semester ideal 1-8'),
   deskripsi: z.string().optional(),
   isLintasProdi: z.boolean(),
@@ -49,9 +47,6 @@ export default function TambahMataKuliahPage() {
     },
   });
 
-  // ============================================
-  // SUBMIT HANDLER
-  // ============================================
   const onSubmit = async (data: MKFormData) => {
     try {
       setIsSubmitting(true);
@@ -63,7 +58,7 @@ export default function TambahMataKuliahPage() {
         semesterIdeal: data.semesterIdeal,
         deskripsi: data.deskripsi || undefined,
         isLintasProdi: data.isLintasProdi,
-        isActive: true, // Default active
+        isActive: true,
       };
 
       const response = await mataKuliahAPI.create(payload);
@@ -72,7 +67,6 @@ export default function TambahMataKuliahPage() {
         toast.success('Mata kuliah berhasil ditambahkan');
         router.push('/admin/mata-kuliah');
       } else {
-        // Handle validation errors
         if (response.errors) {
           Object.entries(response.errors).forEach(([field, message]) => {
             toast.error(`${field}: ${message}`);
@@ -104,9 +98,6 @@ export default function TambahMataKuliahPage() {
     }
   };
 
-  // ============================================
-  // RENDER
-  // ============================================
   return (
     <div className="space-y-6">
       <PageHeader
@@ -121,14 +112,12 @@ export default function TambahMataKuliahPage() {
 
       <form onSubmit={handleSubmit(onSubmit)}>
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* Main Form */}
           <div className="lg:col-span-2">
             <Card>
               <CardHeader>
                 <CardTitle>Data Mata Kuliah</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Kode MK */}
                 <div className="grid gap-2">
                   <Label htmlFor="kodeMK">Kode Mata Kuliah *</Label>
                   <Input
@@ -145,7 +134,6 @@ export default function TambahMataKuliahPage() {
                   )}
                 </div>
 
-                {/* Nama MK */}
                 <div className="grid gap-2">
                   <Label htmlFor="namaMK">Nama Mata Kuliah *</Label>
                   <Input
@@ -158,21 +146,20 @@ export default function TambahMataKuliahPage() {
                   )}
                 </div>
 
-                {/* SKS & Semester */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="sks">Jumlah SKS *</Label>
-                    <Select
-                      onValueChange={(value) => setValue('sks', parseInt(value))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Pilih SKS" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="2">2 SKS</SelectItem>
-                        <SelectItem value="3">3 SKS</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Input
+                      id="sks"
+                      type="number"
+                      min="1"
+                      max="6"
+                      placeholder="2"
+                      {...register('sks', { valueAsNumber: true })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      SKS: 1-6
+                    </p>
                     {errors.sks && (
                       <p className="text-sm text-red-600">{errors.sks.message}</p>
                     )}
@@ -204,7 +191,6 @@ export default function TambahMataKuliahPage() {
                   </div>
                 </div>
 
-                {/* Deskripsi */}
                 <div className="grid gap-2">
                   <Label htmlFor="deskripsi">Deskripsi (Opsional)</Label>
                   <textarea
@@ -216,7 +202,6 @@ export default function TambahMataKuliahPage() {
                   />
                 </div>
 
-                {/* Lintas Prodi */}
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="isLintasProdi"
@@ -240,9 +225,7 @@ export default function TambahMataKuliahPage() {
             </Card>
           </div>
 
-          {/* Sidebar */}
           <div className="space-y-6">
-            {/* Action Buttons */}
             <Card>
               <CardContent className="pt-6 space-y-3">
                 <Button
@@ -271,14 +254,13 @@ export default function TambahMataKuliahPage() {
               </CardContent>
             </Card>
 
-            {/* Info Card */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Informasi</CardTitle>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground space-y-2">
                 <p>• Kode MK akan otomatis diubah ke huruf kapital</p>
-                <p>• SKS yang tersedia: 2 atau 3</p>
+                <p>• SKS: 1-6</p>
                 <p>• Semester ideal: 1-8</p>
                 <p>• Mata kuliah akan otomatis aktif setelah dibuat</p>
               </CardContent>

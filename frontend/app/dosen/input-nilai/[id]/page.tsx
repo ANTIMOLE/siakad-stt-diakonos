@@ -30,7 +30,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Save, Lock, AlertCircle, ArrowLeft, Unlock } from 'lucide-react';
+import { Save, Lock, AlertCircle, ArrowLeft, Unlock, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { nilaiAPI, kelasMKAPI } from '@/lib/api';
@@ -75,6 +75,7 @@ export default function InputNilaiFormPage() {
 
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [showUnlockDialog, setShowUnlockDialog] = useState(false);
+  const [isDownloadPDF, setIsDownloadPDF] = useState(false);
 
   // ============================================
   // FETCH DATA
@@ -272,6 +273,38 @@ export default function InputNilaiFormPage() {
     window.location.reload();
   };
 
+  const handleExportPDF = async () => {
+    if (!kelas) {
+      toast.error('Data kelas tidak tersedia');
+      return;
+    }
+    setIsDownloadPDF(true);
+    try {
+      
+      const blob = await nilaiAPI.exportNilaiKelasPDF(kelasId);
+
+      // Create a URL for the blob and trigger download
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+
+      const fileName = `Nilai_${kelas.mataKuliah?.kodeMK || 'kelas'}_${kelas.hari}_${kelas.jamMulai}.pdf`;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+       toast.success('PDF berhasil diunduh');
+
+  }catch (error) {
+      console.error('Error downloading PDF:', error);
+      toast.error('Gagal download PDF');
+    } finally {
+      setIsDownloadPDF(false);
+    }
+}
+
   // ============================================
   // LOADING STATE
   // ============================================
@@ -309,6 +342,21 @@ export default function InputNilaiFormPage() {
           { label: 'Input Nilai', href: '/dosen/input-nilai' },
           { label: kelas.mataKuliah?.kodeMK || 'Kelas' },
         ]}
+
+        actions={
+          <>
+
+
+            <Button
+              onClick={handleExportPDF}
+              disabled={isDownloadPDF || !kelas}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              {isDownloadPDF ? 'Downloading...' : 'Download PDF'}
+            </Button>
+          </>
+        }
       />
 
       {/* Kelas Info */}

@@ -79,4 +79,12 @@ router.post(
   nilaiController.unlock
 );
 
+router.get(
+  '/kelas/:kelasId/export',
+  authenticate,
+  requireAdminOrDosen,
+  idParamValidation('kelasId'),
+  nilaiController.exportNilaiKelasPDF
+);
+
 export default router;

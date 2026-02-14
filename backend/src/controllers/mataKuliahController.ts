@@ -29,8 +29,8 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
 
   if (search) {
     where.OR = [
-      { kodeMK: { contains: search as string, mode: 'insensitive' } },
-      { namaMK: { contains: search as string, mode: 'insensitive' } },
+      { kodeMK: { contains: search as string} },
+      { namaMK: { contains: search as string} },
     ];
   }
 

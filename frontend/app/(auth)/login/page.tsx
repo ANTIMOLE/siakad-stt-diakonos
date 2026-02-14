@@ -28,13 +28,17 @@ const loginSchema = z.object({
     .string()
     .min(1, 'Identifier wajib diisi')
     .refine((val) => {
-      const is10Digits = /^\d{10}$/.test(val);
-      const is16Digits = /^\d{16}$/.test(val);
+      // NIM format: XX.YY.ZZZ
+      const isNIM = /^\d{2}\.\d{2}\.\d{3}$/.test(val);
+      // NIDN: 10 digits
+      const isNIDN = /^\d{10}$/.test(val);
+      // NUPTK: 16 digits
+      const isNUPTK = /^\d{16}$/.test(val);
+      // Username: starts with letter
       const isUsername = /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(val);
-      const isUserID = /^\d{1,9}$/.test(val);
       
-      return is10Digits || is16Digits || isUsername || isUserID;
-    }, 'Format identifier tidak valid. Gunakan NIM/NIDN (10 digit), NUPTK (16 digit), Username, atau User ID'),
+      return isNIM || isNIDN || isNUPTK || isUsername;
+    }, 'Format tidak valid. Gunakan NIM (XX.YY.ZZZ), NIDN (10 digit), NUPTK (16 digit), atau Username'),
   password: z
     .string()
     .min(1, 'Password wajib diisi')
@@ -42,7 +46,6 @@ const loginSchema = z.object({
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
-
 
 const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI';
 
@@ -54,15 +57,59 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [identifierValue, setIdentifierValue] = useState('');
   const recaptchaRef = useRef<ReCAPTCHA>(null);
 
   const {
     register,
     handleSubmit,
     formState: { errors },
+    setValue,
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
+    mode: 'onSubmit', // ✅ ONLY VALIDATE ON SUBMIT, NOT ON CHANGE
   });
+
+  // ============================================
+  // SMART AUTO-FORMAT HANDLER
+  // ============================================
+  const handleIdentifierChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    
+    // Check if value contains any letters
+    const hasLetters = /[a-zA-Z]/.test(value);
+    
+    // If has letters, it's a username - don't format
+    if (hasLetters) {
+      setIdentifierValue(value);
+      setValue('identifier', value, { shouldValidate: false }); // ✅ Don't trigger validation
+      return;
+    }
+    
+    // Only digits - check what type it could be
+    const digitsOnly = value.replace(/[.\s-]/g, ''); // Remove dots, spaces, hyphens
+    
+    // ✅ NIM: Auto-format ONLY if <= 7 digits
+    if (digitsOnly.length <= 7) {
+      let formatted = digitsOnly;
+      
+      // Format: XX.YY.ZZZ
+      if (digitsOnly.length > 4) {
+        formatted = `${digitsOnly.slice(0, 2)}.${digitsOnly.slice(2, 4)}.${digitsOnly.slice(4)}`;
+      } else if (digitsOnly.length > 2) {
+        formatted = `${digitsOnly.slice(0, 2)}.${digitsOnly.slice(2)}`;
+      }
+      
+      setIdentifierValue(formatted);
+      setValue('identifier', formatted, { shouldValidate: false }); // ✅ Don't trigger validation
+    }
+    // ✅ NIDN (10 digits) or NUPTK (16 digits)
+    // Just keep the digits, no formatting
+    else if (digitsOnly.length <= 16) {
+      setIdentifierValue(digitsOnly);
+      setValue('identifier', digitsOnly, { shouldValidate: false }); // ✅ Don't trigger validation
+    }
+  };
 
   // ============================================
   // SUBMIT HANDLER
@@ -72,14 +119,12 @@ export default function LoginPage() {
       setIsLoading(true);
       setError(null);
 
-    
       const recaptchaToken = recaptchaRef.current?.getValue();
       
       if (!recaptchaToken) {
         throw new Error('Silakan selesaikan verifikasi reCAPTCHA');
       }
 
-      
       const response = await authAPI.login(
         data.identifier, 
         data.password,
@@ -161,6 +206,7 @@ export default function LoginPage() {
             </Alert>
           )}
 
+          {/* Identifier Input with Smart Auto-Format */}
           <div className="space-y-2">
             <Label htmlFor="identifier">Identifier</Label>
             <div className="relative">
@@ -171,14 +217,21 @@ export default function LoginPage() {
                 placeholder="NIM / NIDN / NUPTK / Username"
                 className="pl-10"
                 disabled={isLoading}
-                {...register('identifier')}
+                value={identifierValue}
+                onChange={handleIdentifierChange}
               />
             </div>
             {errors.identifier && (
               <p className="text-sm text-destructive">{errors.identifier.message}</p>
             )}
+            <p className="text-xs text-muted-foreground">
+              Mahasiswa: ketik NIM (contoh: 2401001 → 24.01.001)
+              <br />
+              Dosen: NIDN (10 digit) / NUPTK (16 digit) / Username
+            </p>
           </div>
 
+          {/* Password Input */}
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <div className="relative">
@@ -240,12 +293,19 @@ export default function LoginPage() {
             Contoh Format Login
           </p>
           <div className="space-y-1 text-muted-foreground">
-            <p>• Admin → username: <i>admin</i></p>
-            <p>• Keuangan → username: <i>keuangan</i></p>
-            <p>• Dosen (NIDN) → username: <i>0101018901</i></p>
-            <p>• Dosen (NUPTK) → username: <i>1234567890123456</i></p>
-            <p>• Mahasiswa (NIM) → username: <i>2024010001</i></p>
-            <p className="mt-2 italic">Password contoh: <b>password123</b></p>
+            <p className="font-medium mt-2">Admin / Keuangan:</p>
+            <p className="ml-2">• Username: <span className="font-mono font-semibold">admin</span> atau <span className="font-mono font-semibold">keuangan</span></p>
+            
+            <p className="font-medium mt-2">Dosen:</p>
+            <p className="ml-2">• Username: <span className="font-mono font-semibold">dosen1</span>, <span className="font-mono font-semibold">dosen2</span></p>
+            <p className="ml-2">• NIDN: <span className="font-mono font-semibold">0101018901</span> (10 digit, tanpa titik)</p>
+            <p className="ml-2">• NUPTK: <span className="font-mono font-semibold">1234567890123456</span> (16 digit)</p>
+            
+            <p className="font-medium mt-2">Mahasiswa:</p>
+            <p className="ml-2">• NIM: Ketik <span className="font-mono font-semibold">2401001</span> → otomatis jadi <span className="font-mono font-semibold">24.01.001</span></p>
+            <p className="ml-2">• NIM: Ketik <span className="font-mono font-semibold">2301001</span> → otomatis jadi <span className="font-mono font-semibold">23.01.001</span></p>
+            
+            <p className="mt-3 italic border-t pt-2">Password default: <span className="font-bold">password123</span></p>
           </div>
         </div>
       </CardContent>

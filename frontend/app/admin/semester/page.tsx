@@ -31,12 +31,10 @@ import { Semester } from '@/types/model';
 export default function SemesterManagePage() {
   const router = useRouter();
 
-  // STATE
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Delete dialog
   const [deleteDialog, setDeleteDialog] = useState<{
     open: boolean;
     semesterId: number | null;
@@ -48,7 +46,17 @@ export default function SemesterManagePage() {
   });
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // FETCH SEMESTER DATA
+  const [activateDialog, setActivateDialog] = useState<{
+    open: boolean;
+    semesterId: number | null;
+    semesterName: string;
+  }>({
+    open: false,
+    semesterId: null,
+    semesterName: '',
+  });
+  const [isActivating, setIsActivating] = useState(false);
+
   const fetchSemesters = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -80,47 +88,47 @@ export default function SemesterManagePage() {
     fetchSemesters();
   }, [fetchSemesters]);
 
-  // HANDLERS
-// ============================================
-// REPLACE handleActivate in semester list page
-// ============================================
-
-const handleActivate = async (id: number, tahunAkademik: string) => {
-  if (!confirm(`Aktifkan semester ${tahunAkademik}? Semester lain akan otomatis dinonaktifkan.`)) {
-    return;
-  }
-
-  try {
-    console.log('Activating semester:', id); // ✅ Debug log
-
-    const response = await semesterAPI.activate(id);
-    
-    console.log('Activate response:', response); // ✅ Debug log
-
-    if (response.success) {
-      toast.success('Semester berhasil diaktifkan');
-      
-      // ✅ Wait a bit then refetch
-      await new Promise(resolve => setTimeout(resolve, 500));
-      await fetchSemesters(); // ✅ Make sure this runs
-      
-      console.log('Semesters refetched'); // ✅ Debug log
-    } else {
-      toast.error(response.message || 'Gagal mengaktifkan semester');
-    }
-  } catch (err: any) {
-    console.error('Activate error:', err); // ✅ Debug log
-    
-    const errorMessage = 
-      err.response?.data?.message ||
-      err.message ||
-      'Terjadi kesalahan saat mengaktifkan semester';
-    
-    toast.error(errorMessage, {
-      duration: 5000,
+  const handleActivateClick = (id: number, tahunAkademik: string, periode: string) => {
+    setActivateDialog({
+      open: true,
+      semesterId: id,
+      semesterName: `${tahunAkademik} ${periode}`,
     });
-  }
-};
+  };
+
+  const confirmActivate = async () => {
+    if (!activateDialog.semesterId) return;
+
+    try {
+      setIsActivating(true);
+
+      const response = await semesterAPI.activate(activateDialog.semesterId);
+      
+      if (response.success) {
+        toast.success('Semester berhasil diaktifkan');
+        
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await fetchSemesters();
+        
+        setActivateDialog({ open: false, semesterId: null, semesterName: '' });
+      } else {
+        toast.error(response.message || 'Gagal mengaktifkan semester');
+      }
+    } catch (err: any) {
+      console.error('Activate error:', err);
+      
+      const errorMessage = 
+        err.response?.data?.message ||
+        err.message ||
+        'Terjadi kesalahan saat mengaktifkan semester';
+      
+      toast.error(errorMessage, {
+        duration: 5000,
+      });
+    } finally {
+      setIsActivating(false);
+    }
+  };
 
   const handleDeleteClick = (semester: Semester) => {
     setDeleteDialog({
@@ -130,40 +138,38 @@ const handleActivate = async (id: number, tahunAkademik: string) => {
     });
   };
 
-const confirmDelete = async () => {
-  if (!deleteDialog.semesterId) return;
+  const confirmDelete = async () => {
+    if (!deleteDialog.semesterId) return;
 
-  try {
-    setIsDeleting(true);
+    try {
+      setIsDeleting(true);
 
-    const response = await semesterAPI.delete(deleteDialog.semesterId);
+      const response = await semesterAPI.delete(deleteDialog.semesterId);
 
-    if (response.success) {
-      toast.success('Semester berhasil dihapus');
-      fetchSemesters();
-      setDeleteDialog({ open: false, semesterId: null, semesterName: '' });
-    } else {
-      // ✅ Show detailed error message
-      toast.error(response.message || 'Gagal menghapus semester', {
-        duration: 5000, // Show longer for detailed messages
+      if (response.success) {
+        toast.success('Semester berhasil dihapus');
+        fetchSemesters();
+        setDeleteDialog({ open: false, semesterId: null, semesterName: '' });
+      } else {
+        toast.error(response.message || 'Gagal menghapus semester', {
+          duration: 5000,
+        });
+      }
+    } catch (err: any) {
+      console.error('Delete error:', err);
+      
+      const errorMessage = 
+        err.response?.data?.message ||
+        err.message ||
+        'Terjadi kesalahan saat menghapus semester';
+      
+      toast.error(errorMessage, {
+        duration: 6000,
       });
+    } finally {
+      setIsDeleting(false);
     }
-  } catch (err: any) {
-    console.error('Delete error:', err);
-    
-    // ✅ Extract detailed error message from backend
-    const errorMessage = 
-      err.response?.data?.message ||
-      err.message ||
-      'Terjadi kesalahan saat menghapus semester';
-    
-    toast.error(errorMessage, {
-      duration: 6000, // Longer duration for detailed error
-    });
-  } finally {
-    setIsDeleting(false);
-  }
-};
+  };
 
   const handleCreate = () => {
     router.push('/admin/semester/tambah');
@@ -181,7 +187,6 @@ const confirmDelete = async () => {
     fetchSemesters();
   };
 
-  // LOADING STATE
   if (isLoading && semesters.length === 0) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -190,7 +195,6 @@ const confirmDelete = async () => {
     );
   }
 
-  // ERROR STATE
   if (error && semesters.length === 0) {
     return (
       <ErrorState
@@ -201,7 +205,6 @@ const confirmDelete = async () => {
     );
   }
 
-  // RENDER
   return (
     <div className="space-y-6">
       <PageHeader
@@ -253,7 +256,6 @@ const confirmDelete = async () => {
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    {/* Detail Button */}
                     <Button
                       size="sm"
                       variant="ghost"
@@ -262,18 +264,16 @@ const confirmDelete = async () => {
                       <Eye className="h-4 w-4" />
                     </Button>
 
-                    {/* Activate Button - only if not active */}
                     {!semester.isActive && (
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => handleActivate(semester.id, semester.tahunAkademik)}
+                        onClick={() => handleActivateClick(semester.id, semester.tahunAkademik, semester.periode)}
                       >
                         Aktifkan
                       </Button>
                     )}
 
-                    {/* Edit Button */}
                     <Button
                       size="sm"
                       variant="ghost"
@@ -282,7 +282,6 @@ const confirmDelete = async () => {
                       <Edit className="h-4 w-4" />
                     </Button>
 
-                    {/* Delete Button - only if not active */}
                     {!semester.isActive && (
                       <Button
                         size="sm"
@@ -317,7 +316,6 @@ const confirmDelete = async () => {
         </div>
       )}
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog
         open={deleteDialog.open}
         onOpenChange={(open) =>
@@ -344,6 +342,36 @@ const confirmDelete = async () => {
               className="bg-red-600 hover:bg-red-700"
             >
               {isDeleting ? 'Menghapus...' : 'Ya, Hapus'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={activateDialog.open}
+        onOpenChange={(open) =>
+          setActivateDialog({ ...activateDialog, open })
+        }
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Aktifkan Semester?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Apakah Anda yakin ingin mengaktifkan semester{' '}
+              <span className="font-semibold">{activateDialog.semesterName}</span>?
+              <br />
+              <span className="text-primary font-medium">
+                Semester lain yang sedang aktif akan dinonaktifkan secara otomatis.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isActivating}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmActivate}
+              disabled={isActivating}
+            >
+              {isActivating ? 'Mengaktifkan...' : 'Ya, Aktifkan'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

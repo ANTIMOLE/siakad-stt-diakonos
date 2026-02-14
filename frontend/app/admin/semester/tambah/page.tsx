@@ -103,6 +103,7 @@ export default function BuatSemesterPage() {
           toast.error(response.message || 'Gagal membuat semester');
         }
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error('Create semester error:', err);
 

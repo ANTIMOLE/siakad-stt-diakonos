@@ -74,42 +74,46 @@ export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
   let user: any;
   let loginType: string;
 
-  // ===== 10 DIGITS: NIM (Mahasiswa) or NIDN (Dosen) =====
-  if (/^\d{10}$/.test(normalizedIdentifier)) {
-    const [mahasiswa, dosen] = await Promise.all([
-      prisma.mahasiswa.findUnique({
-        where: { nim: normalizedIdentifier },
-        include: { 
-          user: true, 
-          prodi: true,
-          dosenWali: {
-            select: {
-              id: true,
-              namaLengkap: true,
-            },
-          },
+  if (/^\d{2}\.\d{2}\.\d{3}$/.test(normalizedIdentifier)) {
+  const mahasiswa = await prisma.mahasiswa.findUnique({
+    where: { nim: normalizedIdentifier },
+    include: { 
+      user: true, 
+      prodi: true,
+      dosenWali: {
+        select: {
+          id: true,
+          namaLengkap: true,
         },
-      }),
-      prisma.dosen.findUnique({
-        where: { nidn: normalizedIdentifier },
-        include: { user: true, prodi: true },
-      }),
-    ]);
+      },
+    },
+  });
 
-    if (mahasiswa) {
-      user = mahasiswa.user;
-      user.mahasiswa = mahasiswa;
-      loginType = 'nim';
-    } else if (dosen) {
-      user = dosen.user;
-      user.dosen = dosen;
-      loginType = 'nidn';
-    } else {
-      throw new AppError('Identifier atau password salah', 401);
-    }
+  if (!mahasiswa) {
+    throw new AppError('Identifier atau password salah', 401);
+  }
 
-  // ===== 16 DIGITS: NUPTK (Dosen) =====
-  } else if (/^\d{16}$/.test(normalizedIdentifier)) {
+  user = mahasiswa.user;
+  user.mahasiswa = mahasiswa;
+  loginType = 'nim';
+
+// ===== 10 DIGITS: NIDN (Dosen) =====
+} else if (/^\d{10}$/.test(normalizedIdentifier)) {
+  const dosen = await prisma.dosen.findUnique({
+    where: { nidn: normalizedIdentifier },
+    include: { user: true, prodi: true },
+  });
+
+  if (!dosen) {
+    throw new AppError('Identifier atau password salah', 401);
+  }
+
+  user = dosen.user;
+  user.dosen = dosen;
+  loginType = 'nidn';
+
+// ===== 16 DIGITS: NUPTK (Dosen) =====
+} else if (/^\d{16}$/.test(normalizedIdentifier)) {
     const dosen = await prisma.dosen.findUnique({
       where: { nuptk: normalizedIdentifier },
       include: { user: true, prodi: true },

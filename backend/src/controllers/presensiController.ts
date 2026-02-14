@@ -9,6 +9,8 @@ import { AuthRequest } from '../middlewares/authMiddleware';
 import { AppError, asyncHandler } from '../middlewares/errorMiddleware';
 import prisma from '../config/database';
 import * as presensiService from '../services/presensiService';
+import { generatePDF, getBeritaAcaraHTMLTemplate, getPresensiPertemuanHTMLTemplate } from '../utils/pdfGenerator';
+import { $Enums } from '@prisma/client';
 
 /**
  * GET /api/presensi
@@ -703,3 +705,77 @@ export const refreshMahasiswaList = asyncHandler(
     });
   }
 );
+
+export const exportPresensiPertemuanPDF = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params; // presensi ID
+  
+  const presensi = await prisma.presensi.findUnique({
+    where: { id: Number(id) },
+    include: {
+      kelasMK: {
+        include: { mataKuliah: true, dosen: true, ruangan: true }
+      },
+      detail: {
+        include: { mahasiswa: true }
+      }
+    }
+  });
+
+  const html = getPresensiPertemuanHTMLTemplate({
+    presensi,
+    detail: presensi?.detail || [],
+    kelasMK: presensi?.kelasMK,
+    generatedAt: new Date().toLocaleString('id-ID')
+  });
+
+  await generatePDF(html, `Presensi-Pertemuan-${presensi?.pertemuan}.pdf`, res);
+});
+
+
+export const exportBeritaAcaraPDF = asyncHandler(async (req: AuthRequest, res: Response) => {
+  // ✅ FIXED: Destructure 'id' sesuai route /:id/export-berita-acara
+  const { id } = req.params;  // Bukan kelasMKId!
+
+  // ✅ TAMBAH: Validasi & parse
+  const parsedId = parseInt(id);
+  if (isNaN(parsedId)) {
+    throw new AppError('ID kelas tidak valid', 400);
+  }
+
+  // ✅ FIXED: Query Prisma dengan parsedId
+  const kelasMK = await prisma.kelasMataKuliah.findUnique({
+    where: { 
+      id: parsedId
+    },
+    include: { 
+      mataKuliah: true, 
+      dosen: true, 
+      ruangan: true, 
+      semester: true 
+    }
+  });
+
+  if (!kelasMK) {
+    throw new AppError('Kelas mata kuliah tidak ditemukan', 404);
+  }
+
+  // ✅ FIXED: Query presensiList dengan parsedId
+  const presensiList = await prisma.presensi.findMany({
+    where: { kelasMKId: parsedId },
+    include: { 
+      detail: true 
+      // ✅ OPTIONAL: Include modePembelajaran kalau field ada di schema
+      // modePembelajaran: true  // Uncomment kalau perlu
+    },
+    orderBy: { pertemuan: 'asc' }
+  });
+
+  const html = getBeritaAcaraHTMLTemplate({
+    presensiList,
+    kelasMK,
+    semester: kelasMK.semester,
+    generatedAt: new Date().toLocaleString('id-ID')
+  });
+
+  await generatePDF(html, `Berita-Acara-${kelasMK.mataKuliah?.kodeMK}.pdf`, res);
+});

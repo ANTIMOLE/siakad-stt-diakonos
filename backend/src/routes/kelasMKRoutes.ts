@@ -152,4 +152,17 @@ router.delete(
   kelasMKController.deleteById
 );
 
+router.get(
+  '/dosen/export',
+  authenticate,
+  requireAdminOrDosen,
+  kelasMKController.exportJadwalDosenPDF
+);
+
+router.get(
+  '/mahasiswa/export',
+  authenticate,
+  kelasMKController.exportJadwalMahasiswaPDF
+);
+
 export default router;

@@ -63,7 +63,7 @@ export const idParamValidation = (paramName: string = 'id') =>
     .isInt({ min: 1 })
     .withMessage(`${paramName} harus berupa angka positif`);
 
-// Pagination validation
+// ✅ FIXED: Pagination validation - Naikkan limit jadi 500
 export const paginationValidation = () => [
   query('page')
     .optional()
@@ -71,8 +71,8 @@ export const paginationValidation = () => [
     .withMessage('Page harus berupa angka positif'),
   query('limit')
     .optional()
-    .isInt({ min: 1, max: 100 })
-    .withMessage('Limit harus antara 1-100'),
+    .isInt({ min: 1, max: 500 })  // ✅ DIPERBAIKI: 100 → 500
+    .withMessage('Limit harus antara 1-500'),
 ];
 
 // String validation
@@ -170,17 +170,17 @@ export const phoneValidation = (field: string = 'noHp') =>
     .matches(/^(\+62|62|0)[0-9]{9,12}$/)
     .withMessage('Nomor HP tidak valid (format: 08xx atau +62xxx)');
 
-// NIM validation (8-10 digits)
+// ✅ NIM VALIDATION - Format: XX.YY.ZZZ
 export const nimValidation = () =>
   body('nim')
-    .isLength({ min: 8, max: 10 })
-    .withMessage('NIM harus 8-10 digit')
-    .isNumeric()
-    .withMessage('NIM harus berupa angka');
+    .trim()
+    .matches(/^\d{2}\.\d{2}\.\d{3}$/)
+    .withMessage('Format NIM: XX.YY.ZZZ (contoh: 24.01.001, 23.02.015)');
 
 // NIDN validation (10 digits)
 export const nidnValidation = () =>
   body('nidn')
+    .trim()
     .isLength({ min: 10, max: 10 })
     .withMessage('NIDN harus 10 digit')
     .isNumeric()
@@ -189,6 +189,7 @@ export const nidnValidation = () =>
 // NUPTK validation (16 digits)
 export const nuptkValidation = () =>
   body('nuptk')
+    .trim()
     .isLength({ min: 16, max: 16 })
     .withMessage('NUPTK harus 16 digit')
     .isNumeric()
@@ -198,12 +199,13 @@ export const nuptkValidation = () =>
 export const nikValidation = (field: string = 'nik') =>
   body(field)
     .optional()
+    .trim()
     .isLength({ min: 16, max: 16 })
     .withMessage('NIK harus 16 digit')
     .isNumeric()
     .withMessage('NIK harus berupa angka');
 
-// Identifier validation (NIM/NIDN untuk login)
+// ✅ IDENTIFIER VALIDATION - Support new NIM format
 export const identifierValidation = () =>
   body('identifier')
     .notEmpty()
@@ -212,14 +214,17 @@ export const identifierValidation = () =>
     .withMessage('Identifier harus berupa teks')
     .trim()
     .custom((value) => {
-      // Check if it matches any valid pattern
-      const isNIM = /^\d{10}$/.test(value);          // 10 digits (Mahasiswa)
-      const isNUPTK = /^\d{16}$/.test(value);        // 16 digits (Dosen)
-      const isUsername = /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(value); // Starts with letter
-      const isUserID = /^\d{1,9}$/.test(value);      // 1-9 digits (Admin/Keuangan ID)
+      // ✅ NIM format: XX.YY.ZZZ
+      const isNIM = /^\d{2}\.\d{2}\.\d{3}$/.test(value);
+      // NIDN: 10 digits
+      const isNIDN = /^\d{10}$/.test(value);
+      // NUPTK: 16 digits
+      const isNUPTK = /^\d{16}$/.test(value);
+      // Username: starts with letter
+      const isUsername = /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(value);
 
-      if (!isNIM && !isNUPTK && !isUsername && !isUserID) {
-        throw new Error('Format identifier tidak valid. Gunakan NIM (10 digit), NUPTK (16 digit), atau username');
+      if (!isNIM && !isNIDN && !isNUPTK && !isUsername) {
+        throw new Error('Format identifier tidak valid. Gunakan NIM (XX.YY.ZZZ), NIDN (10 digit), NUPTK (16 digit), atau Username');
       }
       
       return true;

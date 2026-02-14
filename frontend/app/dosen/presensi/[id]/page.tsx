@@ -2,7 +2,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Save, Users, Calendar, RefreshCw, Trash2, Info, MessageSquare, Edit } from 'lucide-react';
+import { ArrowLeft, Plus, Save, Users, Calendar, RefreshCw, Trash2, Info, MessageSquare, Edit, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
@@ -32,6 +32,8 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { presensiAPI } from '@/lib/api';
 import { Presensi, StatusPresensi } from '@/types/model';
+import { set } from 'zod';
+import { is } from 'date-fns/locale';
 
 const STATUS_OPTIONS: { value: StatusPresensi; label: string; color: string }[] = [
   { value: 'HADIR', label: 'Hadir', color: 'bg-green-500' },
@@ -72,6 +74,8 @@ export default function PresensiKelasPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editMateri, setEditMateri] = useState('');
   const [editCatatan, setEditCatatan] = useState('');
+  const [isDownloadPDF, setIsDownloadPDF] = useState(false);
+  const [isDownloadPDFBeritaAcara, setIsDownloadPDFBeritaAcara] = useState(false);
 
   const fetchPresensi = async () => {
     if (!kelasMKId || isNaN(kelasMKId)) {
@@ -290,6 +294,55 @@ export default function PresensiKelasPage() {
     }
   };
 
+  const handleDownloadPDF = async () => {
+
+    if (!selectedPresensi){
+      toast.error('Tidak ada presensi yang dipilih untuk diunduh');
+      return;
+    }
+    setIsDownloadPDF(true);
+    try {
+      const blob = await presensiAPI.exportPresensiPertemuanPDF(selectedPresensi.id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Presensi-Pertemuan-${selectedPresensi.pertemuan}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('PDF presensi berhasil diunduh');
+    }catch(error){
+      toast.error('Gagal mengunduh PDF presensi');
+    }finally{
+      setIsDownloadPDF(false);
+    }
+  };
+
+  const handleDownloadPDFBeritaAcara = async () => {
+    setIsDownloadPDFBeritaAcara(true);
+
+    try{
+      const blob = await presensiAPI.exportBeritaAcaraPDF(kelasMKId);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+
+      a.download = `Berita-Acara-Kelas-${kelasMKId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('PDF berita acara berhasil diunduh');
+    }catch(error){
+      toast.error('Gagal mengunduh PDF berita acara');
+    }finally{
+      setIsDownloadPDFBeritaAcara(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -321,11 +374,31 @@ export default function PresensiKelasPage() {
           { label: kelasInfo?.mataKuliah?.kodeMK || 'Kelas' },
         ]}
         actions={
+          
+
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => router.back()}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               Kembali
             </Button>
+                <Button
+              onClick={handleDownloadPDF}
+              disabled={isDownloadPDF}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              {isDownloadPDF ? 'Downloading...' : 'Download PDF Pertemuan'}
+            </Button>
+
+                <Button
+              onClick={handleDownloadPDFBeritaAcara}
+              disabled={isDownloadPDFBeritaAcara}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              {isDownloadPDFBeritaAcara ? 'Downloading...' : 'Download PDF Berita Acara'}
+            </Button>
+
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
               <DialogTrigger asChild>
                 <Button className="gap-2">

@@ -31,7 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { User, FileText, CheckCircle, XCircle, ArrowLeft, AlertCircle } from 'lucide-react';
+import { User, FileText, CheckCircle, XCircle, ArrowLeft, AlertCircle, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { krsAPI, mahasiswaAPI } from '@/lib/api';
@@ -63,6 +63,7 @@ export default function KRSApprovalDetailPage() {
   const [isRejecting, setIsRejecting] = useState(false);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showRejectDialog, setShowRejectDialog] = useState(false);
+  const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
 
   // FETCH DATA
   useEffect(() => {
@@ -180,6 +181,44 @@ export default function KRSApprovalDetailPage() {
     window.location.reload();
   };
 
+  const handleDownloadPDF = async () => {
+  if (!krs) return;
+
+  if(krs.status !== 'APPROVED') {
+    toast.error('Hanya KRS yang sudah disetujui yang dapat didownload');
+    return;
+  }
+
+  try {
+    setIsDownloadingPDF(true);
+
+    const blob = await krsAPI.downloadPDF(krs.id);
+
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    
+
+    const nim = krs.mahasiswa?.nim || 'KRS';
+    const tahun = krs.semester?.tahunAkademik?.replace('/', '-') || '';
+    const periode = krs.semester?.periode || '';
+    link.download = `KRS_${nim}_${tahun}_${periode}.pdf`;
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    toast.success('KRS berhasil didownload');
+  } catch (err: any) {
+    console.error('Download error:', err);
+    toast.error('Gagal mendownload KRS');
+  } finally {
+    setIsDownloadingPDF(false);
+  }
+};
+
+
   // LOADING STATE
   if (isLoading) {
     return (
@@ -218,13 +257,22 @@ export default function KRSApprovalDetailPage() {
           { label: 'Review' },
         ]}
         actions={
-          <Button
-            variant="outline"
-            onClick={() => router.push('/dosen/krs-approval')}
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Kembali
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              onClick={() => router.push('/dosen/krs-approval')}
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Kembali
+            </Button>
+
+            {krs.status === 'APPROVED' && (
+              <Button onClick={handleDownloadPDF} disabled={isDownloadingPDF}>
+                <Download className="mr-2 h-4 w-4" />
+                {isDownloadingPDF ? 'Downloading...' : 'Download PDF'}
+              </Button>
+            )}
+          </>
         }
       />
 

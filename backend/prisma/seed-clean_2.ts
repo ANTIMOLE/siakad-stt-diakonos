@@ -1,13 +1,3 @@
-/**
- * SIAKAD SEED FILE - ULTIMATE PERFECT VERSION
- * ✅ No schedule conflicts (global jadwal index)
- * ✅ Proper semester mapping (semester4.id not semester3.id)
- * ✅ FULL PAK SUPPORT (both TEO and PAK pakets)
- * ✅ Prodi-aware KRS assignment
- * ✅ Completed semesters only get historical data
- * ✅ Clean comments and structure
- */
-
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
@@ -52,25 +42,32 @@ async function cleanDatabase() {
   const tables = [
     'presensi_detail', 'presensi', 'pembayaran', 'khs', 'nilai',
     'krs_detail', 'krs', 'paket_krs_detail', 'paket_krs',
-    'kelas_mata_kuliah', 'mata_kuliah', 'semester', 'ruangan',
-    'mahasiswa', 'dosen', 'users', 'program_studi', 'audit_log',
+    'kelas_mk_file', 'kelas_mata_kuliah', 'mata_kuliah', 
+    'semester', 'ruangan', 'mahasiswa', 'dosen', 'users', 
+    'program_studi', 'audit_log',
   ];
 
-  await prisma.$executeRawUnsafe('SET session_replication_role = replica;');
+  try {
+    // ✅ MYSQL: Disable foreign key checks
+    await prisma.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 0;');
 
-  for (const table of tables) {
-    try {
-      await prisma.$executeRawUnsafe(
-        `TRUNCATE TABLE "${table}" RESTART IDENTITY CASCADE;`
-      );
-      console.log(`✓ Cleaned ${table}`);
-    } catch (error: any) {
-      console.log(`⚠ Error cleaning ${table}:`, error.message);
+    for (const table of tables) {
+      try {
+        // ✅ MYSQL: TRUNCATE syntax (no RESTART IDENTITY)
+        await prisma.$executeRawUnsafe(`TRUNCATE TABLE \`${table}\`;`);
+        console.log(`✓ Cleaned ${table}`);
+      } catch (error: any) {
+        console.log(`⚠ Error cleaning ${table}:`, error.message);
+      }
     }
-  }
 
-  await prisma.$executeRawUnsafe('SET session_replication_role = DEFAULT;');
-  console.log('\n✅ Database cleaned successfully!\n');
+    // ✅ MYSQL: Re-enable foreign key checks
+    await prisma.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 1;');
+    console.log('\n✅ Database cleaned successfully!\n');
+  } catch (error: any) {
+    console.error('❌ Error in cleanDatabase:', error.message);
+    throw error;
+  }
 }
 
 async function main() {
@@ -110,9 +107,9 @@ async function main() {
   const dosenData = [
     { nidn: '0101018901', nuptk: '1234567890123456', nama: 'Dr. Andreas Sitorus, M.Th', prodi: prodiTEO.id, username: 'dosen1' },
     { nidn: '0102028902', nuptk: '1234567890123457', nama: 'Dr. Maria Simanjuntak, M.Div', prodi: prodiTEO.id, username: 'dosen2' },
-    { nidn: '0103038903', nuptk: '1234567890123458', nama: 'Pdt. Yohanes Hutabarat, M.Th', prodi: prodiTEO.id, username: null },
-    { nidn: '0104048904', nuptk: '1234567890123459', nama: 'Dr. Ruth Siahaan, M.Pd.K', prodi: prodiPAK.id, username: null },
-    { nidn: '0105058905', nuptk: '1234567890123460', nama: 'Pdt. Daniel Manurung, M.Pd.K', prodi: prodiPAK.id, username: null },
+    { nidn: '0103038903', nuptk: '1234567890123458', nama: 'Pdt. Yohanes Hutabarat, M.Th', prodi: prodiTEO.id, username: 'dosen3' },
+    { nidn: '0104048904', nuptk: '1234567890123459', nama: 'Dr. Ruth Siahaan, M.Pd.K', prodi: prodiPAK.id, username: 'dosen4' },
+    { nidn: '0105058905', nuptk: '1234567890123460', nama: 'Pdt. Daniel Manurung, M.Pd.K', prodi: prodiPAK.id, username: 'dosen5' },
   ];
 
   const dosens = [];
@@ -259,7 +256,7 @@ async function main() {
       periodeKRSSelesai: new Date('2024-08-15'),
       periodePerbaikanKRSMulai: new Date('2024-08-16'),
       periodePerbaikanKRSSelesai: new Date('2024-08-25'),
-      isActive: false, // COMPLETED
+      isActive: false,
     },
   });
   console.log('   ✓ 2024/2025 GANJIL (COMPLETED)');
@@ -274,7 +271,7 @@ async function main() {
       periodeKRSSelesai: new Date('2025-01-31'),
       periodePerbaikanKRSMulai: new Date('2025-02-01'),
       periodePerbaikanKRSSelesai: new Date('2025-02-10'),
-      isActive: false, // COMPLETED
+      isActive: false,
     },
   });
   console.log('   ✓ 2024/2025 GENAP (COMPLETED)');
@@ -289,7 +286,7 @@ async function main() {
       periodeKRSSelesai: new Date('2025-08-15'),
       periodePerbaikanKRSMulai: new Date('2025-08-16'),
       periodePerbaikanKRSSelesai: new Date('2025-08-25'),
-      isActive: true, // ACTIVE NOW
+      isActive: true,
     },
   });
   console.log('   ✓ 2025/2026 GANJIL (ACTIVE ✅)');
@@ -304,7 +301,7 @@ async function main() {
       periodeKRSSelesai: new Date('2026-01-31'),
       periodePerbaikanKRSMulai: new Date('2026-02-01'),
       periodePerbaikanKRSSelesai: new Date('2026-02-10'),
-      isActive: false, // FUTURE
+      isActive: false,
     },
   });
   console.log('   ✓ 2025/2026 GENAP (FUTURE)\n');
@@ -328,7 +325,7 @@ async function main() {
     { mulai: '15:00', selesai: '17:00' },
   ];
 
-  let globalJadwalIdx = 0; // ✅ GLOBAL - NO RESET!
+  let globalJadwalIdx = 0;
   const allKelas: any[] = [];
 
   // Semester 1 (2024/2025 GANJIL) - COMPLETED
@@ -413,7 +410,7 @@ async function main() {
     const kelas = await prisma.kelasMataKuliah.create({
       data: {
         mkId: mk.id,
-        semesterId: semester4.id, // ✅ FIXED! Was semester3.id
+        semesterId: semester4.id,
         dosenId: dosen.id,
         ruanganId: ruangan.id,
         hari,
@@ -429,7 +426,7 @@ async function main() {
   console.log(`✅ ${allKelas.length} Kelas total (NO CONFLICTS)\n`);
 
   // ============================================
-  // 9. PAKET KRS (✅ FULL TEO + PAK SUPPORT!)
+  // 9. PAKET KRS (FULL TEO + PAK SUPPORT!)
   // ============================================
   console.log('📦 Seeding Paket KRS (BOTH TEO & PAK)...');
   
@@ -668,7 +665,7 @@ async function main() {
   console.log('✅ Paket KRS created (12 pakets total: 6 TEO + 6 PAK)\n');
 
   // ============================================
-  // 10. KRS (✅ PRODI-AWARE ASSIGNMENT!)
+  // 10. KRS (PRODI-AWARE ASSIGNMENT!)
   // ============================================
   console.log('📝 Seeding KRS (PRODI-AWARE, only COMPLETED semesters)...');
   
@@ -676,7 +673,6 @@ async function main() {
   for (let i = 0; i < 10; i++) {
     const mhs = mahasiswas[i];
 
-    // ✅ PRODI-AWARE: Choose correct paket based on student's prodi
     const paketSem1 = mhs.prodiId === prodiTEO.id ? paket2024Sem1TEO : paket2024Sem1PAK;
     const paketSem2 = mhs.prodiId === prodiTEO.id ? paket2024Sem2TEO : paket2024Sem2PAK;
 
@@ -723,7 +719,6 @@ async function main() {
   for (let i = 10; i < 15; i++) {
     const mhs = mahasiswas[i];
 
-    // ✅ PRODI-AWARE
     const paketSem3 = mhs.prodiId === prodiTEO.id ? paket2023Sem3TEO : paket2023Sem3PAK;
     const paketSem4 = mhs.prodiId === prodiTEO.id ? paket2023Sem4TEO : paket2023Sem4PAK;
 
@@ -769,7 +764,7 @@ async function main() {
   console.log('✅ KRS created (30 total: 20 Angkatan 2024 + 10 Angkatan 2023)\n');
 
   // ============================================
-  // 11-14. NILAI, KHS, PEMBAYARAN, PRESENSI
+  // 11. NILAI
   // ============================================
   console.log('💯 Seeding Nilai...');
   const allKRS = await prisma.kRS.findMany({
@@ -799,6 +794,9 @@ async function main() {
   }
   console.log('✅ Nilai created\n');
 
+  // ============================================
+  // 12. KHS
+  // ============================================
   console.log('📊 Seeding KHS...');
   for (const mhs of mahasiswas) {
     const mhsKRS = allKRS.filter(k => k.mahasiswaId === mhs.id);
@@ -842,6 +840,9 @@ async function main() {
   }
   console.log('✅ KHS created\n');
 
+  // ============================================
+  // 13. PEMBAYARAN
+  // ============================================
   console.log('💰 Seeding Pembayaran...');
   for (const mhs of mahasiswas) {
     const mhsKRS = allKRS.filter(k => k.mahasiswaId === mhs.id);
@@ -876,6 +877,9 @@ async function main() {
   }
   console.log('✅ Pembayaran created\n');
 
+  // ============================================
+  // 14. PRESENSI
+  // ============================================
   console.log('✅ Seeding Presensi...');
   const completedKelas = allKelas
     .filter(k => k.akademikSemester.id === semester1.id || k.akademikSemester.id === semester2.id)
@@ -917,7 +921,7 @@ async function main() {
   // FINAL SUMMARY
   // ============================================
   console.log('\n' + '='.repeat(70));
-  console.log('🎉 ULTIMATE PERFECT SEED COMPLETED!');
+  console.log('🎉 ULTIMATE PERFECT SEED COMPLETED! (MySQL Edition)');
   console.log('='.repeat(70));
   console.log('📊 SUMMARY:');
   console.log('-'.repeat(70));
@@ -947,23 +951,23 @@ async function main() {
   console.log('     • Angkatan 2023: 5 students × 2 semesters = 10 KRS');
   console.log('  ✅ PRODI-AWARE: Each student assigned to correct paket (TEO/PAK)');
   console.log('');
-  console.log('✅ ULTIMATE FIXES APPLIED:');
+  console.log('✅ MYSQL-SPECIFIC FIXES APPLIED:');
+  console.log('  ✅ Foreign key checks handling (MySQL syntax)');
+  console.log('  ✅ TRUNCATE without RESTART IDENTITY (MySQL compatible)');
+  console.log('  ✅ Backtick table names for MySQL');
   console.log('  ✅ No schedule conflicts (global jadwal index)');
-  console.log('  ✅ Semester 4 MK → semester4.id (NOT semester3.id)');
   console.log('  ✅ FULL PAK paket support (12 pakets: 6 TEO + 6 PAK)');
-  console.log('  ✅ Prodi-aware KRS assignment (students get correct paket)');
-  console.log('  ✅ Completed semesters get historical data');
-  console.log('  ✅ Active semester ready for KRS assignment');
+  console.log('  ✅ Prodi-aware KRS assignment');
   console.log('='.repeat(70));
   console.log('\n🔑 LOGIN CREDENTIALS:');
   console.log('  Admin:         admin / password123');
   console.log('  Keuangan:      keuangan / password123');
-  console.log('  Dosen TEO:     0101018901 / password123 (or dosen1 / password123)');
-  console.log('  Dosen PAK:     0104048904 / password123');
+  console.log('  Dosen TEO:     dosen1 / password123');
+  console.log('  Dosen PAK:     dosen4 / password123');
   console.log('  Mahasiswa TEO: 2024010001 / password123');
   console.log('  Mahasiswa PAK: 2024020001 / password123');
   console.log('='.repeat(70));
-  console.log('\n✨ ALL SYSTEMS GO! Database seeded perfectly! ✨\n');
+  console.log('\n✨ MySQL Database seeded perfectly! ✨\n');
 }
 
 main()

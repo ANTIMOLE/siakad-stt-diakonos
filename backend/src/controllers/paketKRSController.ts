@@ -5,10 +5,6 @@ import { asyncHandler, AppError } from '../middlewares/errorMiddleware';
 import { Prisma } from '@prisma/client';
 import { exportPaketKRSToExcel } from '../utils/excelExport';
 
-/**
- * GET /api/paket-krs
- * Get all paket KRS with filters + EXCEL EXPORT
- */
 export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
     page = 1,
@@ -26,7 +22,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   const where: Prisma.PaketKRSWhereInput = {};
 
   if (search) {
-    where.namaPaket = { contains: search as string, mode: 'insensitive' };
+    where.namaPaket = { contains: search as string };
   }
 
   if (prodiId) {
@@ -44,7 +40,6 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (semesterPaket) {
     where.semesterPaket = parseInt(semesterPaket as string);
   }
-
 
   if (isExport === 'true') {
     const paketList = await prisma.paketKRS.findMany({
@@ -72,7 +67,6 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
       },
     });
 
-    // Get prodi name for filename
     let prodiName: string | undefined;
     if (prodiId) {
       const prodi = await prisma.programStudi.findUnique({
@@ -81,7 +75,6 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
       prodiName = prodi?.kode;
     }
 
-    // Get semester label for filename
     let semesterLabel: string | undefined;
     if (semesterId) {
       const sem = await prisma.semester.findUnique({
@@ -98,15 +91,12 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     });
   }
 
-  // Pagination
   const pageNum = parseInt(page as string);
   const limitNum = parseInt(limit as string);
   const skip = (pageNum - 1) * limitNum;
 
-  // Get total count
   const total = await prisma.paketKRS.count({ where });
 
-  // Get data
   const paketList = await prisma.paketKRS.findMany({
     where,
     skip,
@@ -150,10 +140,6 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   });
 });
 
-/**
- * GET /api/paket-krs/:id
- * Get paket KRS by ID with detail
- */
 export const getById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
@@ -236,10 +222,6 @@ export const getById = asyncHandler(
   }
 );
 
-/**
- * POST /api/paket-krs
- * Create new paket KRS with mata kuliah details
- */
 export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!req.user) {
     throw new AppError('User tidak ditemukan', 401);
@@ -254,12 +236,10 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
     kelasMKIds = [],
   } = req.body;
 
-  // Validate semesterId
   if (!semesterId) {
     throw new AppError('Semester akademik harus dipilih', 400);
   }
 
-  // Check if semester exists
   const semester = await prisma.semester.findUnique({
     where: { id: semesterId },
   });
@@ -268,7 +248,6 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
     throw new AppError('Semester tidak ditemukan', 404);
   }
 
-  // ✅ Validate all kelasMK exist and calculate totalSKS
   let totalSKS = 0;
   if (kelasMKIds.length > 0) {
     const kelasList = await prisma.kelasMataKuliah.findMany({
@@ -300,7 +279,6 @@ export const create = asyncHandler(async (req: AuthRequest, res: Response) => {
     }
   }
 
-  // ✅ Create paket with details in transaction
   const paket = await prisma.$transaction(async (tx) => {
     const newPaket = await tx.paketKRS.create({
       data: {
@@ -377,7 +355,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     kelasMKIds,
   } = req.body;
 
-  // Check if paket exists
   const existingPaket = await prisma.paketKRS.findUnique({
     where: { id: parseInt(id) },
   });
@@ -386,7 +363,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     throw new AppError('Paket KRS tidak ditemukan', 404);
   }
 
-  // Validate semesterId if provided
   if (semesterId) {
     const semester = await prisma.semester.findUnique({
       where: { id: semesterId },
@@ -399,7 +375,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
   let totalSKS = existingPaket.totalSKS;
 
   if (kelasMKIds && Array.isArray(kelasMKIds)) {
-    // Validate all kelasMK exist and calculate totalSKS
     const kelasList = await prisma.kelasMataKuliah.findMany({
       where: {
         id: { in: kelasMKIds },
@@ -427,13 +402,11 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
   }
 
   const paket = await prisma.$transaction(async (tx) => {
-    // 1. Delete all existing details jika kelasMKIds dikirim
     if (kelasMKIds && Array.isArray(kelasMKIds)) {
       await tx.paketKRSDetail.deleteMany({
         where: { paketKRSId: parseInt(id) },
       });
 
-      // 2. Create new details
       await tx.paketKRSDetail.createMany({
         data: kelasMKIds.map((kelasMKId: number) => ({
           paketKRSId: parseInt(id),
@@ -442,7 +415,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // 3. Update paket
     return await tx.paketKRS.update({
       where: { id: parseInt(id) },
       data: {
@@ -481,15 +453,10 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
   });
 });
 
-/**
- * DELETE /api/paket-krs/:id
- * Delete paket KRS
- */
 export const deleteById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
-    // Check if paket exists
     const paket = await prisma.paketKRS.findUnique({
       where: { id: parseInt(id) },
     });
@@ -498,7 +465,6 @@ export const deleteById = asyncHandler(
       throw new AppError('Paket KRS tidak ditemukan', 404);
     }
 
-    // Check if paket is being used by any KRS
     const krsUsingPaket = await prisma.kRS.count({
       where: { paketKRSId: parseInt(id) },
     });
@@ -510,7 +476,6 @@ export const deleteById = asyncHandler(
       );
     }
 
-    // Delete paket (detail will cascade delete)
     await prisma.paketKRS.delete({
       where: { id: parseInt(id) },
     });
@@ -522,10 +487,6 @@ export const deleteById = asyncHandler(
   }
 );
 
-/**
- * POST /api/paket-krs/:id/mata-kuliah
- * Add mata kuliah to paket
- */
 export const addMataKuliah = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
@@ -535,7 +496,6 @@ export const addMataKuliah = asyncHandler(
       throw new AppError('kelasMKId harus diisi', 400);
     }
 
-    // Check if paket exists
     const paket = await prisma.paketKRS.findUnique({
       where: { id: parseInt(id) },
       include: {
@@ -547,7 +507,6 @@ export const addMataKuliah = asyncHandler(
       throw new AppError('Paket KRS tidak ditemukan', 404);
     }
 
-    // Check if kelas exists
     const kelasMK = await prisma.kelasMataKuliah.findUnique({
       where: { id: parseInt(kelasMKId) },
       include: {
@@ -559,7 +518,6 @@ export const addMataKuliah = asyncHandler(
       throw new AppError('Kelas mata kuliah tidak ditemukan', 404);
     }
 
-    // Validate same semester
     if (kelasMK.semesterId !== paket.semesterId) {
       throw new AppError(
         `Kelas harus dari semester yang sama. Paket: ${paket.semester.tahunAkademik}, Kelas: semester ${kelasMK.semesterId}`,
@@ -567,7 +525,6 @@ export const addMataKuliah = asyncHandler(
       );
     }
 
-    // Check if already added
     const existing = await prisma.paketKRSDetail.findFirst({
       where: {
         paketKRSId: parseInt(id),
@@ -579,9 +536,7 @@ export const addMataKuliah = asyncHandler(
       throw new AppError('Mata kuliah sudah ada dalam paket', 400);
     }
 
-    // Add to paket and update totalSKS
     const detail = await prisma.$transaction(async (tx) => {
-      // Create detail
       const newDetail = await tx.paketKRSDetail.create({
         data: {
           paketKRSId: parseInt(id),
@@ -602,7 +557,6 @@ export const addMataKuliah = asyncHandler(
         },
       });
 
-      // Update totalSKS
       await tx.paketKRS.update({
         where: { id: parseInt(id) },
         data: {
@@ -621,15 +575,10 @@ export const addMataKuliah = asyncHandler(
   }
 );
 
-/**
- * DELETE /api/paket-krs/:id/mata-kuliah/:mkId
- * Remove mata kuliah from paket
- */
 export const removeMataKuliah = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id, mkId } = req.params;
 
-    // Find detail
     const detail = await prisma.paketKRSDetail.findFirst({
       where: {
         paketKRSId: parseInt(id),
@@ -657,7 +606,6 @@ export const removeMataKuliah = asyncHandler(
       throw new AppError('Mata kuliah tidak ditemukan dalam paket', 404);
     }
 
-    // Delete detail and update totalSKS
     await prisma.$transaction([
       prisma.paketKRSDetail.delete({
         where: { id: detail.id },

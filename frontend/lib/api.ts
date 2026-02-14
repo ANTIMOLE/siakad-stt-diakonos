@@ -255,8 +255,16 @@ export const semesterAPI = {
     api.post(`/semester/${id}/activate`)
 };
 
-
+// ============================================
+// KELAS MK API FUNCTIONS - ✅ FIXED
+// ============================================
 export const kelasMKAPI = {
+  /**
+   * ✅ FIXED: Proper logic for fetching classes
+   * - When semester_id is provided: auto use limit 1000
+   * - When no filters: auto use limit 1000
+   * - User can still override with explicit limit
+   */
   getAll: (params?: {
     semester_id?: number;
     prodi?: number;
@@ -265,9 +273,20 @@ export const kelasMKAPI = {
     limit?: number;
   }): Promise<ApiResponse<KelasMK[]>> => {
     const finalParams = { ...params };
-    if (params?.limit === undefined && !params?.semester_id) {
-      return api.get('/kelas-mk', { params: { ...finalParams, limit: 1000 } });
+    
+    // ✅ FIX: When semester_id is provided, auto use high limit (unless user overrides)
+    if (params?.semester_id && params?.limit === undefined) {
+      console.log(`🔍 Fetching classes for semester ${params.semester_id} with auto-limit 1000`);
+      finalParams.limit = 1000;
     }
+    
+    // ✅ FIX: When no semester filter, also use high limit (unless user overrides)
+    if (!params?.semester_id && params?.limit === undefined) {
+      console.log('🔍 Fetching all classes with auto-limit 1000');
+      finalParams.limit = 1000;
+    }
+    
+    console.log('📡 kelasMKAPI.getAll params:', finalParams);
     return api.get('/kelas-mk', { params: finalParams });
   },
 
@@ -293,6 +312,24 @@ export const kelasMKAPI = {
   
   delete: (id: number): Promise<ApiResponse<any>> => 
     api.delete(`/kelas-mk/${id}`),
+
+exportJadwalDosenPDF: (params: {
+    dosenId: number;
+    semesterId: number;
+  }): Promise<Blob> =>
+    api.get('/kelas-mk/dosen/export', { 
+      params,
+      responseType: 'blob' 
+    }),
+
+exportJadwalMahasiswaPDF: (params: {
+    mahasiswaId: number;
+    semesterId: number;
+  }): Promise<Blob> =>
+    api.get('/kelas-mk/mahasiswa/export', { 
+      params,
+      responseType: 'blob' 
+    }),
 };
 
 
@@ -400,6 +437,9 @@ export const nilaiAPI = {
   
   unlock: (kelasId: number): Promise<ApiResponse<any>> => 
     api.post(`/nilai/kelas/${kelasId}/unlock`),
+
+  exportNilaiKelasPDF: (kelasId: number): Promise<Blob> =>
+    api.get(`/nilai/kelas/${kelasId}/export`, { responseType: 'blob' }),
 };
 
 // ============================================
@@ -572,6 +612,13 @@ export const presensiAPI = {
     total: number;
   }>> => 
     api.post(`/presensi/${presensiId}/refresh-mahasiswa`),
+
+
+  exportPresensiPertemuanPDF: (presensiId: number): Promise<Blob> =>
+    api.get(`/presensi/${presensiId}/export`, { responseType: 'blob' }),
+
+  exportBeritaAcaraPDF: (kelasMKId: number): Promise<Blob> =>
+  api.get(`/presensi/${kelasMKId}/export-berita-acara`, { responseType: 'blob' }),
 };
 
 // ============================================

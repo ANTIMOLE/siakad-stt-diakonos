@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Loader2, Plus, ArrowLeft, AlertCircle } from 'lucide-react';
+import { Loader2, Plus, ArrowLeft, AlertCircle, ChevronsUpDown } from 'lucide-react';
 
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
@@ -59,6 +59,16 @@ export default function TambahKelasMKPage() {
   const [isLoadingRuangan, setIsLoadingRuangan] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // ✅ Search states for Mata Kuliah
+  const [mkOpen, setMkOpen] = useState(false);
+  const [mkQuery, setMkQuery] = useState('');
+  const mkRef = useRef<HTMLDivElement>(null);
+
+  // ✅ NEW: Search states for Dosen
+  const [dosenOpen, setDosenOpen] = useState(false);
+  const [dosenQuery, setDosenQuery] = useState('');
+  const dosenRef = useRef<HTMLDivElement>(null);
+
   const {
     register,
     handleSubmit,
@@ -80,29 +90,46 @@ export default function TambahKelasMKPage() {
   const jamMulai = watch('jamMulai');
   const jamSelesai = watch('jamSelesai');
 
+  // ✅ Filtered mata kuliah based on search query
+  const filteredMataKuliah = mataKuliahList.filter((mk) => {
+    const search = mkQuery.toLowerCase();
+    return (
+      mk.namaMK.toLowerCase().includes(search) ||
+      mk.kodeMK.toLowerCase().includes(search)
+    );
+  });
+
+  // ✅ NEW: Filtered dosen based on search query
+  const filteredDosen = dosenList.filter((dosen) => {
+    const search = dosenQuery.toLowerCase();
+    return (
+      dosen.namaLengkap.toLowerCase().includes(search) ||
+      dosen.nidn.includes(search)
+    );
+  });
+
   // ============================================
   // FETCH MATA KULIAH LIST
   // ============================================
   useEffect(() => {
-  const fetchMataKuliah = async () => {
-    try {
-      setIsLoadingMK(true);
-      // ✅ Add limit to prevent large queries
-      const response = await mataKuliahAPI.getAll({ limit: 200 });
+    const fetchMataKuliah = async () => {
+      try {
+        setIsLoadingMK(true);
+        const response = await mataKuliahAPI.getAll({ limit: 500 });
 
-      if (response.success && response.data) {
-        setMataKuliahList(response.data);
+        if (response.success && response.data) {
+          setMataKuliahList(response.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch mata kuliah:', err);
+        toast.error('Gagal memuat daftar mata kuliah');
+      } finally {
+        setIsLoadingMK(false);
       }
-    } catch (err) {
-      console.error('Failed to fetch mata kuliah:', err);
-      toast.error('Gagal memuat daftar mata kuliah');
-    } finally {
-      setIsLoadingMK(false);
-    }
-  };
+    };
 
-  fetchMataKuliah();
-}, []);
+    fetchMataKuliah();
+  }, []);
 
   // ============================================
   // FETCH SEMESTER LIST
@@ -136,54 +163,76 @@ export default function TambahKelasMKPage() {
   // ============================================
   // FETCH DOSEN LIST
   // ============================================
-useEffect(() => {
-  const fetchDosen = async () => {
-    try {
-      setIsLoadingDosen(true);
-      const response = await dosenAPI.getAll({ 
-        status: 'AKTIF',
-        limit: 200  // ✅ Add limit
-      });
+  useEffect(() => {
+    const fetchDosen = async () => {
+      try {
+        setIsLoadingDosen(true);
+        const response = await dosenAPI.getAll({
+          status: 'AKTIF',
+          limit: 500,
+        });
 
-      if (response.success && response.data) {
-        setDosenList(response.data);
+        if (response.success && response.data) {
+          setDosenList(response.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch dosen:', err);
+        toast.error('Gagal memuat daftar dosen');
+      } finally {
+        setIsLoadingDosen(false);
       }
-    } catch (err) {
-      console.error('Failed to fetch dosen:', err);
-      toast.error('Gagal memuat daftar dosen');
-    } finally {
-      setIsLoadingDosen(false);
-    }
-  };
+    };
 
-  fetchDosen();
-}, []);
+    fetchDosen();
+  }, []);
 
   // ============================================
   // FETCH RUANGAN LIST
   // ============================================
-useEffect(() => {
-  const fetchRuangan = async () => {
-    try {
-      setIsLoadingRuangan(true);
-      const response = await ruanganAPI.getAll({ 
-        isActive: 'true',
-        limit: 200  // ✅ Add limit
-      });
+  useEffect(() => {
+    const fetchRuangan = async () => {
+      try {
+        setIsLoadingRuangan(true);
+        const response = await ruanganAPI.getAll({
+          isActive: 'true',
+          limit: 500,
+        });
 
-      if (response.success && response.data) {
-        setRuanganList(response.data);
+        if (response.success && response.data) {
+          setRuanganList(response.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch ruangan:', err);
+        toast.error('Gagal memuat daftar ruangan');
+      } finally {
+        setIsLoadingRuangan(false);
       }
-    } catch (err) {
-      console.error('Failed to fetch ruangan:', err);
-      toast.error('Gagal memuat daftar ruangan');
-    } finally {
-      setIsLoadingRuangan(false);
-    }
-  };
+    };
 
-  fetchRuangan();
-}, []);
+    fetchRuangan();
+  }, []);
+
+  // ✅ Click outside handler for Mata Kuliah dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (mkRef.current && !mkRef.current.contains(event.target as Node)) {
+        setMkOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // ✅ NEW: Click outside handler for Dosen dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dosenRef.current && !dosenRef.current.contains(event.target as Node)) {
+        setDosenOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // ============================================
   // GET SELECTED DATA
@@ -192,6 +241,26 @@ useEffect(() => {
   const selectedSemester = semesterList.find((s) => s.id === selectedSemesterId);
   const selectedDosen = dosenList.find((d) => d.id === selectedDosenId);
   const selectedRuangan = ruanganList.find((r) => r.id === selectedRuanganId);
+
+  // ✅ Display value for MK input
+  const mkDisplayValue = selectedMK ? `${selectedMK.kodeMK} - ${selectedMK.namaMK}` : '';
+
+  // ✅ NEW: Display value for Dosen input
+  const dosenDisplayValue = selectedDosen ? `${selectedDosen.namaLengkap} (${selectedDosen.nidn})` : '';
+
+  // ✅ Handle select mata kuliah
+  const handleSelectMK = (mk: MataKuliah) => {
+    setValue('mkId', mk.id);
+    setMkOpen(false);
+    setMkQuery('');
+  };
+
+  // ✅ NEW: Handle select dosen
+  const handleSelectDosen = (dosen: Dosen) => {
+    setValue('dosenId', dosen.id);
+    setDosenOpen(false);
+    setDosenQuery('');
+  };
 
   // ============================================
   // SUBMIT HANDLER
@@ -215,7 +284,7 @@ useEffect(() => {
         jamMulai: data.jamMulai,
         jamSelesai: data.jamSelesai,
         kuotaMax: data.kuotaMax,
-        keterangan: data.keterangan || null,
+        keterangan: data.keterangan || '',
       };
 
       const response = await kelasMKAPI.create(payload);
@@ -289,29 +358,58 @@ useEffect(() => {
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Informasi Mata Kuliah */}
-            <Card>
+            <Card className="overflow-visible">
               <CardHeader>
                 <CardTitle>Informasi Mata Kuliah</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 overflow-visible">
                 <div className="grid gap-4 md:grid-cols-2">
-                  {/* Mata Kuliah */}
+                  {/* ✅ Mata Kuliah with Search */}
                   <div className="grid gap-2">
                     <Label>Mata Kuliah *</Label>
-                    <Select
-                      onValueChange={(value) => setValue('mkId', parseInt(value))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Pilih mata kuliah" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {mataKuliahList.map((mk) => (
-                          <SelectItem key={mk.id} value={mk.id.toString()}>
-                            {mk.kodeMK} - {mk.namaMK}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="relative" ref={mkRef}>
+                      <Input
+                        placeholder="Cari mata kuliah..."
+                        value={mkOpen ? mkQuery : mkDisplayValue}
+                        onChange={(e) => setMkQuery(e.target.value)}
+                        onFocus={() => {
+                          setMkOpen(true);
+                          if (!mkOpen) setMkQuery('');
+                        }}
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-0 top-0 h-full px-3 text-muted-foreground flex items-center"
+                        onClick={() => setMkOpen(!mkOpen)}
+                      >
+                        <ChevronsUpDown className="h-4 w-4" />
+                      </button>
+                      {mkOpen && (
+                        <div className="absolute z-10 w-full bg-white border rounded-md shadow-md max-h-60 overflow-auto mt-1">
+                          {filteredMataKuliah.length === 0 ? (
+                            <div className="p-2 text-center text-gray-500">
+                              Tidak ditemukan
+                            </div>
+                          ) : (
+                            filteredMataKuliah.map((mk) => (
+                              <div
+                                key={mk.id}
+                                className="p-2 hover:bg-gray-100 cursor-pointer flex flex-col"
+                                onClick={() => handleSelectMK(mk)}
+                              >
+                                <div className="font-medium">
+                                  <span className="font-mono text-blue-600">{mk.kodeMK}</span> - {mk.namaMK}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {mk.sks} SKS • Semester {mk.semesterIdeal}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
                     {errors.mkId && (
                       <p className="text-sm text-red-600">{errors.mkId.message}</p>
                     )}
@@ -346,7 +444,8 @@ useEffect(() => {
                   <Alert>
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>
-                      <strong>{selectedMK.namaMK}</strong> • {selectedMK.sks} SKS • Semester {selectedMK.semesterIdeal}
+                      <strong>{selectedMK.namaMK}</strong> • {selectedMK.sks} SKS • Semester{' '}
+                      {selectedMK.semesterIdeal}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -354,29 +453,57 @@ useEffect(() => {
             </Card>
 
             {/* Pengampu & Ruangan */}
-            <Card>
+            <Card className="overflow-visible">
               <CardHeader>
                 <CardTitle>Pengampu & Ruangan</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 overflow-visible">
                 <div className="grid gap-4 md:grid-cols-2">
-                  {/* Dosen */}
+                  {/* ✅ NEW: Dosen with Search */}
                   <div className="grid gap-2">
                     <Label>Dosen Pengampu *</Label>
-                    <Select
-                      onValueChange={(value) => setValue('dosenId', parseInt(value))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Pilih dosen" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {dosenList.map((dosen) => (
-                          <SelectItem key={dosen.id} value={dosen.id.toString()}>
-                            {dosen.namaLengkap} ({dosen.nidn})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="relative" ref={dosenRef}>
+                      <Input
+                        placeholder="Cari dosen..."
+                        value={dosenOpen ? dosenQuery : dosenDisplayValue}
+                        onChange={(e) => setDosenQuery(e.target.value)}
+                        onFocus={() => {
+                          setDosenOpen(true);
+                          if (!dosenOpen) setDosenQuery('');
+                        }}
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-0 top-0 h-full px-3 text-muted-foreground flex items-center"
+                        onClick={() => setDosenOpen(!dosenOpen)}
+                      >
+                        <ChevronsUpDown className="h-4 w-4" />
+                      </button>
+                      {dosenOpen && (
+                        <div className="absolute z-10 w-full bg-white border rounded-md shadow-md max-h-60 overflow-auto mt-1">
+                          {filteredDosen.length === 0 ? (
+                            <div className="p-2 text-center text-gray-500">
+                              Tidak ditemukan
+                            </div>
+                          ) : (
+                            filteredDosen.map((dosen) => (
+                              <div
+                                key={dosen.id}
+                                className="p-2 hover:bg-gray-100 cursor-pointer flex flex-col"
+                                onClick={() => handleSelectDosen(dosen)}
+                              >
+                                <div className="font-medium">{dosen.namaLengkap}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  NIDN: {dosen.nidn}
+                                  {dosen.prodi && ` • ${dosen.prodi.nama}`}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
                     {errors.dosenId && (
                       <p className="text-sm text-red-600">{errors.dosenId.message}</p>
                     )}
@@ -385,9 +512,7 @@ useEffect(() => {
                   {/* Ruangan */}
                   <div className="grid gap-2">
                     <Label>Ruangan *</Label>
-                    <Select
-                      onValueChange={(value) => setValue('ruanganId', parseInt(value))}
-                    >
+                    <Select onValueChange={(value) => setValue('ruanganId', parseInt(value))}>
                       <SelectTrigger>
                         <SelectValue placeholder="Pilih ruangan" />
                       </SelectTrigger>
@@ -417,9 +542,7 @@ useEffect(() => {
                   {/* Hari */}
                   <div className="grid gap-2">
                     <Label>Hari *</Label>
-                    <Select
-                      onValueChange={(value: any) => setValue('hari', value)}
-                    >
+                    <Select onValueChange={(value: any) => setValue('hari', value)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Pilih hari" />
                       </SelectTrigger>
@@ -440,11 +563,7 @@ useEffect(() => {
                   {/* Jam Mulai */}
                   <div className="grid gap-2">
                     <Label htmlFor="jamMulai">Jam Mulai *</Label>
-                    <Input
-                      id="jamMulai"
-                      type="time"
-                      {...register('jamMulai')}
-                    />
+                    <Input id="jamMulai" type="time" {...register('jamMulai')} />
                     {errors.jamMulai && (
                       <p className="text-sm text-red-600">{errors.jamMulai.message}</p>
                     )}
@@ -453,11 +572,7 @@ useEffect(() => {
                   {/* Jam Selesai */}
                   <div className="grid gap-2">
                     <Label htmlFor="jamSelesai">Jam Selesai *</Label>
-                    <Input
-                      id="jamSelesai"
-                      type="time"
-                      {...register('jamSelesai')}
-                    />
+                    <Input id="jamSelesai" type="time" {...register('jamSelesai')} />
                     {errors.jamSelesai && (
                       <p className="text-sm text-red-600">{errors.jamSelesai.message}</p>
                     )}
@@ -503,9 +618,7 @@ useEffect(() => {
               <CardContent className="space-y-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Mata Kuliah</p>
-                  <p className="font-medium line-clamp-2">
-                    {selectedMK?.namaMK || '-'}
-                  </p>
+                  <p className="font-medium line-clamp-2">{selectedMK?.namaMK || '-'}</p>
                   {selectedMK && (
                     <Badge variant="outline" className="mt-1">
                       {selectedMK.sks} SKS
@@ -552,11 +665,7 @@ useEffect(() => {
             {/* Actions */}
             <Card>
               <CardContent className="pt-6 space-y-3">
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={isSubmitting}
-                >
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
                   {isSubmitting ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -22,9 +22,9 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
 
   if (search) {
     where.OR = [
-      { nidn: { contains: search as string, mode: 'insensitive' } },
-      { namaLengkap: { contains: search as string, mode: 'insensitive' } },
-      { nuptk: { contains: search as string, mode: 'insensitive' } },
+      { nidn: { contains: search as string} },
+      { namaLengkap: { contains: search as string} },
+      { nuptk: { contains: search as string} },
     ];
   }
 

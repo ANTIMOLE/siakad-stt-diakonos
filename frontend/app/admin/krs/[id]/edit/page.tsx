@@ -40,7 +40,6 @@ export default function AdminKRSEditPage() {
   const params = useParams();
   const krsId = params?.id ? parseInt(params.id as string) : null;
 
-  // STATE
   const [krs, setKrs] = useState<KRS | null>(null);
   const [availableKelas, setAvailableKelas] = useState<KelasMK[]>([]);
   const [selectedKelasMKIds, setSelectedKelasMKIds] = useState<number[]>([]);
@@ -50,7 +49,6 @@ export default function AdminKRSEditPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // FETCH KRS DATA
   useEffect(() => {
     if (!krsId) {
       setError('ID KRS tidak valid');
@@ -69,13 +67,11 @@ export default function AdminKRSEditPage() {
           const krsData = response.data;
           setKrs(krsData);
 
-          // Check if editable
           if (krsData.status !== 'DRAFT' && krsData.status !== 'REJECTED') {
             setError(`KRS dengan status ${krsData.status} tidak dapat diedit`);
             return;
           }
 
-          // Extract selected kelas IDs
           const currentKelasMKIds = krsData.detail?.map((d) => d.kelasMKId) || [];
           setSelectedKelasMKIds(currentKelasMKIds);
         } else {
@@ -96,7 +92,6 @@ export default function AdminKRSEditPage() {
     fetchKRS();
   }, [krsId]);
 
-  // FETCH AVAILABLE KELAS MK
   useEffect(() => {
     if (!krs) return;
 
@@ -108,12 +103,25 @@ export default function AdminKRSEditPage() {
           semester_id: krs.semesterId,
         });
 
+        console.log('Fetched kelas response:', response);
+
         if (response.success && response.data) {
+          console.log(`Found ${response.data.length} classes for semester ${krs.semesterId}`);
           setAvailableKelas(response.data);
+          
+          if (response.data.length === 0) {
+            console.warn(`No classes found for semester ${krs.semesterId}`);
+            console.warn('Semester info:', {
+              semesterId: krs.semesterId,
+              semester: krs.semester
+            });
+          }
+        } else {
+          console.error('Failed to fetch classes:', response);
         }
       } catch (err: any) {
         console.error('Fetch kelas error:', err);
-        toast.error('Gagal memuat daftar kelas');
+        toast.error('Gagal memuat daftar kelas: ' + (err.response?.data?.message || err.message));
       } finally {
         setIsLoadingKelas(false);
       }
@@ -122,7 +130,6 @@ export default function AdminKRSEditPage() {
     fetchAvailableKelas();
   }, [krs]);
 
-  // HANDLERS
   const handleBack = () => {
     router.push('/admin/krs');
   };
@@ -178,7 +185,6 @@ export default function AdminKRSEditPage() {
     window.location.reload();
   };
 
-  // COMPUTED
   const selectedKelas = availableKelas.filter((k) =>
     selectedKelasMKIds.includes(k.id)
   );
@@ -202,19 +208,13 @@ export default function AdminKRSEditPage() {
       [...(krs?.detail?.map((d) => d.kelasMKId) || [])].sort()
     );
 
-  // Group available kelas by mata kuliah
-  const groupedKelas = availableKelas.reduce((acc, kelas) => {
-    const mkId = kelas.mataKuliah?.id;
-    if (!mkId) return acc;
-    
-    if (!acc[mkId]) {
-      acc[mkId] = [];
-    }
-    acc[mkId].push(kelas);
-    return acc;
-  }, {} as Record<number, KelasMK[]>);
+  // ✅ FIXED: Simple sorting instead of grouping - no need for mataKuliah.id!
+  const sortedAvailableKelas = [...availableKelas].sort((a, b) => {
+    const nameA = a.mataKuliah?.namaMK || '';
+    const nameB = b.mataKuliah?.namaMK || '';
+    return nameA.localeCompare(nameB);
+  });
 
-  // LOADING STATE
   if (isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -223,7 +223,6 @@ export default function AdminKRSEditPage() {
     );
   }
 
-  // ERROR STATE
   if (error || !krs) {
     return (
       <ErrorState
@@ -236,7 +235,6 @@ export default function AdminKRSEditPage() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <PageHeader
         title="Edit KRS"
         description={`Edit KRS ${krs.mahasiswa?.namaLengkap} - ${krs.semester?.tahunAkademik} ${krs.semester?.periode}`}
@@ -263,7 +261,6 @@ export default function AdminKRSEditPage() {
         }
       />
 
-      {/* Warning if REJECTED */}
       {krs.status === 'REJECTED' && (
         <Alert className="border-red-200 bg-red-50">
           <AlertCircle className="h-4 w-4 text-red-600" />
@@ -281,7 +278,6 @@ export default function AdminKRSEditPage() {
         </Alert>
       )}
 
-      {/* Info Alert */}
       <Alert className="border-blue-200 bg-blue-50">
         <AlertCircle className="h-4 w-4 text-blue-600" />
         <AlertDescription className="text-blue-900">
@@ -289,7 +285,6 @@ export default function AdminKRSEditPage() {
         </AlertDescription>
       </Alert>
 
-      {/* KRS Info Summary */}
       <Card>
         <CardHeader>
           <CardTitle>Ringkasan</CardTitle>
@@ -312,9 +307,6 @@ export default function AdminKRSEditPage() {
             <div>
               <p className="text-sm text-muted-foreground mb-1">Total SKS</p>
               <p className="text-2xl font-bold text-blue-600">{totalSKS}</p>
-              {totalSKS < 12 && (
-                <p className="text-xs text-red-600">Minimal 12 SKS</p>
-              )}
               {totalSKS > 24 && (
                 <p className="text-xs text-red-600">Maksimal 24 SKS</p>
               )}
@@ -331,7 +323,6 @@ export default function AdminKRSEditPage() {
         </CardContent>
       </Card>
 
-      {/* Selected Mata Kuliah */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -399,7 +390,6 @@ export default function AdminKRSEditPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {/* Total Row */}
                   <TableRow className="bg-muted/50 font-bold">
                     <TableCell colSpan={3} className="text-right">
                       Total:
@@ -416,7 +406,6 @@ export default function AdminKRSEditPage() {
         </CardContent>
       </Card>
 
-      {/* Available Mata Kuliah */}
       <Card>
         <CardHeader>
           <CardTitle>
@@ -429,63 +418,61 @@ export default function AdminKRSEditPage() {
             <div className="flex h-48 items-center justify-center">
               <LoadingSpinner size="md" text="Memuat daftar kelas..." />
             </div>
+          ) : availableKelas.length === 0 ? (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Tidak ada kelas tersedia untuk semester ini.</strong>
+                <br />
+                <span className="text-sm">
+                  Semester: {krs.semester?.tahunAkademik} {krs.semester?.periode} (ID: {krs.semesterId})
+                </span>
+                <br />
+                <span className="text-sm">
+                  Silakan tambahkan kelas mata kuliah untuk semester ini terlebih dahulu di menu Kelas MK.
+                </span>
+              </AlertDescription>
+            </Alert>
           ) : (
-            <div className="space-y-4">
-              {Object.entries(groupedKelas).map(([mkId, kelasList]) => {
-                const mk = kelasList[0]?.mataKuliah;
-                if (!mk) return null;
-
+            <div className="space-y-3">
+              <div className="text-sm text-muted-foreground mb-2">
+                Ditemukan {availableKelas.length} kelas tersedia
+              </div>
+              {sortedAvailableKelas.map((kelas) => {
+                const isSelected = selectedKelasMKIds.includes(kelas.id);
                 return (
-                  <div key={mkId} className="border rounded-lg p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <p className="font-semibold">{mk.namaMK}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {mk.kodeMK} • {mk.sks} SKS
-                        </p>
+                  <div
+                    key={kelas.id}
+                    className={`flex items-start gap-3 rounded-lg border p-4 hover:bg-muted/50 transition-colors ${
+                      isSelected ? 'bg-blue-50 border-blue-200' : ''
+                    }`}
+                  >
+                    <Checkbox
+                      id={`mk-${kelas.id}`}
+                      checked={isSelected}
+                      onCheckedChange={() => handleToggleKelas(kelas.id)}
+                    />
+                    <label
+                      htmlFor={`mk-${kelas.id}`}
+                      className="flex-1 cursor-pointer"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="font-medium">
+                            {kelas.mataKuliah?.namaMK || 'N/A'}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {kelas.mataKuliah?.kodeMK} • {kelas.dosen?.namaLengkap || 'N/A'}
+                          </p>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {kelas.hari} {kelas.jamMulai}-{kelas.jamSelesai} • {kelas.ruangan?.nama || 'N/A'}
+                          </p>
+                        </div>
+                        <Badge variant="outline">
+                          {kelas.mataKuliah?.sks || 0} SKS
+                        </Badge>
                       </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      {kelasList.map((kelas) => {
-                        const isSelected = selectedKelasMKIds.includes(kelas.id);
-                        return (
-                          <div
-                            key={kelas.id}
-                            className={`flex items-center space-x-3 p-3 rounded border ${
-                              isSelected
-                                ? 'bg-blue-50 border-blue-200'
-                                : 'hover:bg-gray-50'
-                            }`}
-                          >
-                            <Checkbox
-                              id={`kelas-${kelas.id}`}
-                              checked={isSelected}
-                              onCheckedChange={() => handleToggleKelas(kelas.id)}
-                            />
-                            <label
-                              htmlFor={`kelas-${kelas.id}`}
-                              className="flex-1 cursor-pointer"
-                            >
-                              <div className="grid grid-cols-3 gap-2 text-sm">
-                                <div>
-                                  <span className="font-medium">
-                                    {kelas.dosen?.namaLengkap || '-'}
-                                  </span>
-                                </div>
-                                <div>
-                                  <Calendar className="inline h-3 w-3 mr-1" />
-                                  {kelas.hari}, {kelas.jamMulai}-{kelas.jamSelesai}
-                                </div>
-                                <div className="text-muted-foreground">
-                                  {kelas.ruangan?.nama || '-'}
-                                </div>
-                              </div>
-                            </label>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    </label>
                   </div>
                 );
               })}
@@ -494,7 +481,6 @@ export default function AdminKRSEditPage() {
         </CardContent>
       </Card>
 
-      {/* Action Buttons Bottom */}
       <Card className="border-blue-200 bg-blue-50">
         <CardContent className="pt-6">
           <div className="flex items-center justify-between">

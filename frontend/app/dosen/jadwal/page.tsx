@@ -1,399 +1,365 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect } from 'react';
-
+import { useAuth } from '@/hooks/useAuth';
+import { kelasMKAPI, semesterAPI } from '@/lib/api';
+import { KelasMK, Semester } from '@/types/model';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from 'sonner';
+import { 
+  Calendar, 
+  Clock, 
+  MapPin, 
+  Users, 
+  BookOpen,
+  Download,
+} from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import EmptyState from '@/components/shared/EmptyState';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
-import ErrorState from '@/components/shared/ErrorState';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Calendar, Clock, MapPin, Users } from 'lucide-react';
-import { toast } from 'sonner';
-
-import { kelasMKAPI, semesterAPI } from '@/lib/api';
-import { KelasMK, Semester } from '@/types/model';
-import { useAuth } from '@/hooks/useAuth';
-
-// ============================================
-// CONSTANTS
-// ============================================
-const HARI_OPTIONS = [
-  { value: 'Senin', label: 'Senin' },
-  { value: 'Selasa', label: 'Selasa' },
-  { value: 'Rabu', label: 'Rabu' },
-  { value: 'Kamis', label: 'Kamis' },
-  { value: 'Jumat', label: 'Jumat' },
-  { value: 'Sabtu', label: 'Sabtu' },
-] as const;
-
-const HARI_ORDER: Record<string, number> = HARI_OPTIONS.reduce(
-  (acc, item, index) => {
-    acc[item.value] = index;
-    return acc;
-  },
-  {} as Record<string, number>
-);
-
-interface JadwalGroup {
-  hari: string;
-  jadwal: KelasMK[];
-}
 
 export default function JadwalDosenPage() {
-  // ============================================
-  // AUTH
-  // ============================================
-  const { user, isLoading: isAuthLoading } = useAuth('DOSEN');
-
-  // ============================================
-  // STATE MANAGEMENT
-  // ============================================
-  const [jadwalList, setJadwalList] = useState<KelasMK[]>([]);
-  const [semesterList, setSemesterList] = useState<Semester[]>([]);
+  const { user } = useAuth();
+  const [jadwal, setJadwal] = useState<KelasMK[]>([]);
+  const [semesters, setSemesters] = useState<Semester[]>([]);
+  const [selectedSemester, setSelectedSemester] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingSemester, setIsLoadingSemester] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
 
-  const [semesterFilter, setSemesterFilter] = useState<string>('ACTIVE');
-
-  // ============================================
-  // FETCH SEMESTER LIST
-  // ============================================
+  // Fetch semesters
   useEffect(() => {
-    const fetchSemester = async () => {
+    const fetchSemesters = async () => {
       try {
-        setIsLoadingSemester(true);
         const response = await semesterAPI.getAll();
-
         if (response.success && response.data) {
-          setSemesterList(response.data);
+          setSemesters(response.data);
+          
+          const activeSemester = response.data.find((s: Semester) => s.isActive);
+          if (activeSemester) {
+            setSelectedSemester(activeSemester.id);
+          }
         }
-      } catch (err: any) {
-        console.error('Fetch semester error:', err);
-        toast.error('Gagal memuat daftar semester');
-      } finally {
-        setIsLoadingSemester(false);
+      } catch (error) {
+        console.error('Error fetching semesters:', error);
+        toast.error('Gagal memuat data semester');
       }
     };
 
-    fetchSemester();
+    fetchSemesters();
   }, []);
 
-  // ============================================
-  // FETCH JADWAL (FILTERED BY DOSEN)
-  // ============================================
+  // Fetch jadwal
   useEffect(() => {
+    if (!selectedSemester || !user?.dosen?.id) return;
+
     const fetchJadwal = async () => {
-      // ✅ WAIT FOR AUTH & USER DATA
-      if (isAuthLoading) {
-        return;
-      }
-
-      // ✅ CHECK IF DOSEN DATA EXISTS
-      if (!user?.dosen?.id) {
-        setError('Data dosen tidak ditemukan');
-        setIsLoading(false);
-        return;
-      }
-
+      setIsLoading(true);
       try {
-        setIsLoading(true);
-        setError(null);
-
-        // Determine semester ID
-        let semesterId: number | undefined;
-
-        if (semesterFilter === 'ACTIVE') {
-          const activeSemester = semesterList.find((s) => s.isActive);
-          semesterId = activeSemester?.id;
-        } else if (semesterFilter !== 'ALL') {
-          semesterId = parseInt(semesterFilter);
-        }
-
-        // ✅ FETCH ONLY FOR THIS DOSEN
         const response = await kelasMKAPI.getAll({
-          semester_id: semesterId,
+          semester_id: selectedSemester,
           dosenId: user.dosen.id,
         });
 
         if (response.success && response.data) {
-          setJadwalList(response.data);
-        } else {
-          setError(response.message || 'Gagal memuat jadwal');
+          setJadwal(response.data);
         }
-      } catch (err: any) {
-        console.error('Fetch jadwal error:', err);
-        setError(
-          err.response?.data?.message ||
-            err.message ||
-            'Terjadi kesalahan saat memuat jadwal'
-        );
+      } catch (error) {
+        console.error('Error fetching jadwal:', error);
+        toast.error('Gagal memuat jadwal');
       } finally {
         setIsLoading(false);
       }
     };
 
-    // ✅ ONLY FETCH WHEN ALL DEPENDENCIES ARE READY
-    if (!isLoadingSemester && !isAuthLoading && user?.dosen?.id) {
-      fetchJadwal();
+    fetchJadwal();
+  }, [selectedSemester, user?.dosen?.id]);
+
+  // Group jadwal by day
+  const groupedJadwal = jadwal.reduce((acc, kelas) => {
+    const day = kelas.hari || 'Tidak ada jadwal';
+    if (!acc[day]) acc[day] = [];
+    acc[day].push(kelas);
+    return acc;
+  }, {} as Record<string, KelasMK[]>);
+
+  const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const sortedDays = days.filter(day => groupedJadwal[day]);
+
+
+  const handleExportExcel = async () => {
+    if (!selectedSemester || !user?.dosen?.id) {
+      toast.error('Pilih semester terlebih dahulu');
+      return;
     }
-  }, [semesterFilter, semesterList, isLoadingSemester, isAuthLoading, user]);
 
-  // ============================================
-  // SORT & GROUP JADWAL
-  // ============================================
-  const sortedJadwal = [...jadwalList].sort((a, b) => {
-    const hariCompare = HARI_ORDER[a.hari] - HARI_ORDER[b.hari];
-    if (hariCompare !== 0) return hariCompare;
-    return a.jamMulai.localeCompare(b.jamMulai);
-  });
+    setIsExportingExcel(true);
+    try {
+      const blob = await kelasMKAPI.exportToExcel({
+        semester_id: selectedSemester,
+        dosenId: user.dosen.id,
+      });
 
-  const jadwalByHari: JadwalGroup[] = HARI_OPTIONS.map((hari) => ({
-    hari: hari.value,
-    jadwal: sortedJadwal.filter((j) => j.hari === hari.value),
-  })).filter((group) => group.jadwal.length > 0);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      const semester = semesters.find(s => s.id === selectedSemester);
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `Jadwal-Dosen-${user.dosen.nidn}-${semester?.periode}-${semester?.tahunAkademik}-${timestamp}.xlsx`;
+      
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
 
-  // ============================================
-  // HANDLERS
-  // ============================================
-  const handleRetry = () => {
-    window.location.reload();
+      toast.success('Jadwal berhasil diexport ke Excel');
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      toast.error('Gagal export ke Excel');
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (!selectedSemester || !user?.dosen?.id) {
+      toast.error('Pilih semester terlebih dahulu');
+      return;
+    }
+
+    setIsExportingPDF(true);
+    try {
+      const blob = await kelasMKAPI.exportJadwalDosenPDF({
+        dosenId: user.dosen.id,
+        semesterId: selectedSemester,
+      });
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      const semester = semesters.find(s => s.id === selectedSemester);
+      const filename = `Jadwal-Dosen-${user.dosen.nidn}-${semester?.periode}-${semester?.tahunAkademik}.pdf`;
+      
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Jadwal berhasil didownload');
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      toast.error('Gagal download PDF');
+    } finally {
+      setIsExportingPDF(false);
+    }
   };
 
   // ============================================
   // LOADING STATE
   // ============================================
-  if (isAuthLoading || isLoadingSemester || isLoading) {
+  if (isLoading && jadwal.length === 0 && !selectedSemester) {
     return (
       <div className="flex h-96 items-center justify-center">
-        <LoadingSpinner size="lg" text="Memuat jadwal mengajar..." />
+        <LoadingSpinner size="lg" text="Memuat jadwal..." />
       </div>
     );
   }
 
-  // ============================================
-  // ERROR STATE - NO DOSEN DATA
-  // ============================================
-  if (!user?.dosen?.id) {
-    return (
-      <ErrorState
-        title="Data Dosen Tidak Ditemukan"
-        message="Tidak dapat memuat jadwal. Data dosen tidak tersedia."
-        onRetry={handleRetry}
-      />
-    );
-  }
-
-  // ============================================
-  // ERROR STATE - FETCH ERROR
-  // ============================================
-  if (error && jadwalList.length === 0) {
-    return (
-      <ErrorState
-        title="Gagal Memuat Jadwal"
-        message={error}
-        onRetry={handleRetry}
-      />
-    );
-  }
-
-  // ============================================
-  // GET ACTIVE SEMESTER
-  // ============================================
-  const activeSemester = semesterList.find((s) => s.isActive);
-  const selectedSemester =
-    semesterFilter === 'ACTIVE'
-      ? activeSemester
-      : semesterList.find((s) => s.id === parseInt(semesterFilter));
-
-  // ============================================
-  // RENDER
-  // ============================================
   return (
     <div className="space-y-6">
+      {/* Page Header with Actions */}
       <PageHeader
         title="Jadwal Mengajar"
-        description={`Jadwal mengajar ${user.dosen.namaLengkap}`}
+        description="Lihat jadwal mengajar Anda untuk semester ini"
         breadcrumbs={[
           { label: 'Dashboard', href: '/dosen/dashboard' },
           { label: 'Jadwal' },
         ]}
+        actions={
+          <>
+
+            <Button
+              variant="outline"
+              onClick={handleExportExcel}
+              disabled={isExportingExcel || !selectedSemester}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              {isExportingExcel ? 'Exporting...' : 'Export'}
+            </Button>
+
+            <Button
+              onClick={handleExportPDF}
+              disabled={isExportingPDF || !selectedSemester}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              {isExportingPDF ? 'Downloading...' : 'Download PDF'}
+            </Button>
+          </>
+        }
       />
 
-      {/* Semester Info & Filter */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Active Semester Info */}
-        {selectedSemester && (
-          <Card className="bg-primary/5 border-primary/20">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-5 w-5 text-primary" />
-                <div>
-                  <p className="font-medium text-primary">
-                    {selectedSemester.tahunAkademik} {selectedSemester.periode}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(
-                      selectedSemester.tanggalMulai
-                    ).toLocaleDateString('id-ID')}{' '}
-                    -{' '}
-                    {new Date(
-                      selectedSemester.tanggalSelesai
-                    ).toLocaleDateString('id-ID')}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Semester Filter */}
-        <Card>
-          <CardContent className="pt-6">
-            <Select value={semesterFilter} onValueChange={setSemesterFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filter Semester" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ACTIVE">Semester Aktif</SelectItem>
-                <SelectItem value="ALL">Semua Semester</SelectItem>
-                {semesterList.map((sem) => (
-                  <SelectItem key={sem.id} value={sem.id.toString()}>
-                    {sem.tahunAkademik} - {sem.periode}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Stats */}
+      {/* Semester Filter */}
       <Card>
         <CardContent className="pt-6">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div>
-              <p className="text-sm text-muted-foreground">Total Kelas</p>
-              <p className="text-2xl font-bold">{jadwalList.length}</p>
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+            <div className="flex-1 max-w-xs">
+              <label className="text-sm font-medium mb-2 block">
+                Pilih Semester
+              </label>
+              <Select
+                value={selectedSemester?.toString() || ''}
+                onValueChange={(value) => setSelectedSemester(parseInt(value))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih Semester" />
+                </SelectTrigger>
+                <SelectContent>
+                  {semesters.map((semester) => (
+                    <SelectItem key={semester.id} value={semester.id.toString()}>
+                      <div className="flex items-center gap-2">
+                        <span>
+                          {semester.tahunAkademik} - {semester.periode}
+                        </span>
+                        {semester.isActive && (
+                          <Badge variant="default">Aktif</Badge>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total Hari Mengajar</p>
-              <p className="text-2xl font-bold">{jadwalByHari.length}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total Mahasiswa</p>
-              <p className="text-2xl font-bold">
-                {jadwalList.reduce(
-                  (sum, j) => sum + (j._count?.krsDetail || 0),
-                  0
-                )}
-              </p>
-            </div>
+
+            {/* Stats */}
+            {jadwal.length > 0 && (
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4" />
+                  <span>{jadwal.length} Kelas</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  <span>
+                    {jadwal.reduce((sum, k) => sum + (k._count?.krsDetail || 0), 0)} Mahasiswa
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Jadwal by Hari */}
-      {jadwalList.length === 0 ? (
+      {/* Jadwal Content */}
+      {isLoading ? (
+        <Card>
+          <CardContent className="p-6">
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+            </div>
+          </CardContent>
+        </Card>
+      ) : jadwal.length === 0 ? (
         <Card>
           <CardContent className="py-12">
             <EmptyState
               icon={Calendar}
-              title="Tidak Ada Jadwal"
-              description="Anda tidak memiliki jadwal mengajar pada semester ini"
+              title="Tidak ada jadwal mengajar"
+              description="Belum ada kelas yang ditugaskan untuk semester ini"
               className="border-0"
             />
           </CardContent>
         </Card>
       ) : (
-        jadwalByHari.map((group) => (
-          <Card key={group.hari}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+        <div className="space-y-6">
+          {sortedDays.map((day) => (
+            <Card key={day}>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
                   <Calendar className="h-5 w-5" />
-                  <CardTitle>{group.hari}</CardTitle>
-                </div>
-                <Badge variant="secondary">{group.jadwal.length} kelas</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Waktu</TableHead>
-                      <TableHead>Mata Kuliah</TableHead>
-                      <TableHead>SKS</TableHead>
-                      <TableHead>Ruangan</TableHead>
-                      <TableHead>Mahasiswa</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {group.jadwal.map((j) => (
-                      <TableRow key={j.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">
-                              {j.jamMulai} - {j.jamSelesai}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">
-                              {j.mataKuliah?.namaMK || 'N/A'}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {j.mataKuliah?.kodeMK || '-'}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {j.mataKuliah?.sks || 0} SKS
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-muted-foreground" />
-                            {j.ruangan?.nama || '-'}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4 text-muted-foreground" />
-                            <span>
-                              {j._count?.krsDetail || 0} / {j.kuotaMax || '-'}
-                            </span>
-                          </div>
-                        </TableCell>
+                  {day}
+                </CardTitle>
+                <CardDescription>
+                  {groupedJadwal[day].length} kelas pada hari ini
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Waktu</TableHead>
+                        <TableHead>Mata Kuliah</TableHead>
+                        <TableHead>Ruangan</TableHead>
+                        <TableHead>Mahasiswa</TableHead>
+                        <TableHead className="text-right">Aksi</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        ))
+                    </TableHeader>
+                    <TableBody>
+                      {groupedJadwal[day]
+                        .sort((a, b) => (a.jamMulai || '').localeCompare(b.jamSelesai || ''))
+                        .map((kelas) => (
+                          <TableRow key={kelas.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Clock className="h-4 w-4 text-muted-foreground" />
+                                <span className="font-mono text-sm">
+                                  {kelas.jamMulai} - {kelas.jamSelesai}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="font-medium">{kelas.mataKuliah?.namaMK}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {kelas.mataKuliah?.kodeMK} • {kelas.mataKuliah?.sks} SKS
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-4 w-4 text-muted-foreground" />
+                                <span>{kelas.ruangan?.nama}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Users className="h-4 w-4 text-muted-foreground" />
+                                <span>
+                                  {kelas._count?.krsDetail || 0} / {kelas.kuotaMax}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => window.location.href = `/dosen/presensi?kelasId=${kelas.id}`}
+                              >
+                                Presensi
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
     </div>
   );

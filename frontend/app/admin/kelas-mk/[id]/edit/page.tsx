@@ -209,7 +209,7 @@ export default function EditKelasMKPage() {
       jamMulai: formData.jamMulai,                    // ✅ jamMulai not jam_mulai
       jamSelesai: formData.jamSelesai,                // ✅ jamSelesai not jam_selesai
       kuotaMax: parseInt(formData.kuotaMax),          // ✅ kuotaMax not kuota_max
-      keterangan: formData.keterangan || null,
+      keterangan: formData.keterangan || '',
     };
 
     const response = await kelasMKAPI.update(kelasId, payload);

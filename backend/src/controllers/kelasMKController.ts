@@ -4,6 +4,7 @@ import { AuthRequest } from '../types';
 import { asyncHandler, AppError } from '../middlewares/errorMiddleware';
 import { Prisma } from '@prisma/client';
 import { exportKelasMKToExcel } from '../utils/excelExport';
+import {  generatePDF, getJadwalDosenHTMLTemplate, getJadwalMahasiswaHTMLTemplate } from '../utils/pdfGenerator';
 
 export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
@@ -23,14 +24,14 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   // Build where clause
   const where: Prisma.KelasMataKuliahWhereInput = {};
 
+
   if (search) {
     where.OR = [
-      { mataKuliah: { kodeMK: { contains: search as string, mode: 'insensitive' } } },
-      { mataKuliah: { namaMK: { contains: search as string, mode: 'insensitive' } } },
-      { dosen: { namaLengkap: { contains: search as string, mode: 'insensitive' } } },
+      { mataKuliah: { kodeMK: { contains: search as string } } },
+      { mataKuliah: { namaMK: { contains: search as string } } },
+      { dosen: { namaLengkap: { contains: search as string } } },
     ];
   }
-
 
   const semesterIdValue = semester_id || semesterId;
   if (semesterIdValue) {
@@ -90,8 +91,6 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
       },
     },
     })
-
-    
 
     let semesterLabel: string | undefined;
     if (semesterId) {
@@ -160,7 +159,6 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     },
   });
 
-
   const kelasWithFinalizedStatus = await Promise.all(
     kelasMK.map(async (kelas) => {
       // Count total nilai for this kelas
@@ -181,7 +179,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
 
       return {
         ...kelas,
-        isNilaiFinalized, // ✅ ADD THIS FIELD
+        isNilaiFinalized,
       };
     })
   );
@@ -189,7 +187,7 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
   res.status(200).json({
     success: true,
     message: 'Data kelas mata kuliah berhasil diambil',
-    data: kelasWithFinalizedStatus, // ✅ SEND MODIFIED DATA
+    data: kelasWithFinalizedStatus,
     pagination: {
       page: pageNum,
       limit: limitNum,
@@ -198,7 +196,6 @@ export const getAll = asyncHandler(async (req: AuthRequest, res: Response) => {
     },
   });
 });
-
 
 export const getById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -245,7 +242,6 @@ export const getById = asyncHandler(
     });
   }
 );
-
 
 const checkScheduleConflict = async (
   hari: string,
@@ -390,7 +386,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
     keterangan,
   } = req.body;
 
-
   const existingKelas = await prisma.kelasMataKuliah.findUnique({
     where: { id: parseInt(id) },
   });
@@ -398,7 +393,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!existingKelas) {
     throw new AppError('Kelas mata kuliah tidak ditemukan', 404);
   }
-
 
   if (hari || jamMulai || jamSelesai || ruanganId || dosenId) {
     const conflict = await checkScheduleConflict(
@@ -415,7 +409,6 @@ export const update = asyncHandler(async (req: AuthRequest, res: Response) => {
       throw new AppError(conflict, 400);
     }
   }
-
 
   const kelasMK = await prisma.kelasMataKuliah.update({
     where: { id: parseInt(id) },
@@ -481,3 +474,96 @@ export const deleteById = asyncHandler(
     });
   }
 );
+
+
+export const exportJadwalDosenPDF = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { dosenId, semesterId } = req.query;
+  
+  const dosen = await prisma.dosen.findUnique({ where: { id: Number(dosenId) }});
+  const semester = await prisma.semester.findUnique({ where: { id: Number(semesterId) }});
+  const jadwal = await prisma.kelasMataKuliah.findMany({
+    where: { dosenId: Number(dosenId), semesterId: Number(semesterId) },
+    include: { mataKuliah: true, ruangan: true, _count: { select: { krsDetail: true } } }
+  });
+
+  const html = getJadwalDosenHTMLTemplate({
+    dosen,
+    jadwal,
+    semester,
+    generatedAt: new Date().toLocaleString('id-ID')
+  });
+
+  await generatePDF(html, `Jadwal-Dosen-${dosen?.nidn}.pdf`, res);
+});
+
+/**
+ * Export Jadwal Mahasiswa PDF
+ * GET /api/kelas-mk/mahasiswa/export?mahasiswaId=1&semesterId=1
+ */
+export const exportJadwalMahasiswaPDF = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { mahasiswaId, semesterId } = req.query;
+
+  if (!mahasiswaId || !semesterId) {
+    throw new AppError('mahasiswaId dan semesterId required', 400);
+  }
+
+  // Get mahasiswa
+  const mahasiswa = await prisma.mahasiswa.findUnique({ 
+    where: { id: Number(mahasiswaId) },
+    include: { prodi: true }
+  });
+
+  if (!mahasiswa) {
+    throw new AppError('Mahasiswa tidak ditemukan', 404);
+  }
+
+  // Get semester
+  const semester = await prisma.semester.findUnique({ 
+    where: { id: Number(semesterId) }
+  });
+
+  if (!semester) {
+    throw new AppError('Semester tidak ditemukan', 404);
+  }
+
+
+  const krs = await prisma.kRS.findFirst({
+    where: {
+      mahasiswaId: Number(mahasiswaId),
+      semesterId: Number(semesterId),
+      status: 'APPROVED', // Only approved KRS
+    },
+    include: {
+      detail: {
+        include: {
+          kelasMK: {
+            include: {
+              mataKuliah: true,
+              dosen: true,
+              ruangan: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!krs || !krs.detail || krs.detail.length === 0) {
+    throw new AppError('KRS tidak ditemukan atau belum disetujui', 404);
+  }
+
+
+  const jadwal = krs.detail.map(d => d.kelasMK).filter(Boolean);
+
+  const html = getJadwalMahasiswaHTMLTemplate({
+    mahasiswa,
+    jadwal,
+    semester,
+    generatedAt: new Date().toLocaleString('id-ID', {
+      dateStyle: 'full',
+      timeStyle: 'short',
+    }),
+  });
+
+  await generatePDF(html, `Jadwal-Mahasiswa-${mahasiswa.nim}.pdf`, res);
+});

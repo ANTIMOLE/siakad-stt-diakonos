@@ -49,7 +49,7 @@ function randomAttendanceStatus(): string {
 async function cleanDatabase() {
   console.log('🧹 Cleaning database...\n');
 
-  // ✅ Use actual PostgreSQL table names (from @@map in schema)
+  // ✅ MySQL table names (from @@map in schema)
   const tables = [
     'presensi_detail',
     'presensi',
@@ -60,36 +60,40 @@ async function cleanDatabase() {
     'krs',
     'paket_krs_detail',
     'paket_krs',
+    'kelas_mk_file',
     'kelas_mata_kuliah',
     'mata_kuliah',
     'semester',
     'ruangan',
     'mahasiswa',
     'dosen',
-    'users',  // Note: "users" not "User"
+    'users',
     'program_studi',
     'audit_log',
   ];
 
-  // Disable foreign key checks temporarily
-  await prisma.$executeRawUnsafe('SET session_replication_role = replica;');
+  try {
+    // ✅ MYSQL: Disable foreign key checks
+    await prisma.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 0;');
 
-  // Truncate all tables and reset IDs
-  for (const table of tables) {
-    try {
-      await prisma.$executeRawUnsafe(
-        `TRUNCATE TABLE "${table}" RESTART IDENTITY CASCADE;`
-      );
-      console.log(`✓ Cleaned ${table}`);
-    } catch (error: any) {
-      console.log(`⚠ Error cleaning ${table}:`, error.message);
+    // ✅ MYSQL: Truncate all tables
+    for (const table of tables) {
+      try {
+        await prisma.$executeRawUnsafe(`TRUNCATE TABLE \`${table}\`;`);
+        console.log(`✓ Cleaned ${table}`);
+      } catch (error: any) {
+        console.log(`⚠ Error cleaning ${table}:`, error.message);
+      }
     }
+
+    // ✅ MYSQL: Re-enable foreign key checks
+    await prisma.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 1;');
+
+    console.log('\n✅ Database cleaned successfully!\n');
+  } catch (error: any) {
+    console.error('❌ Error in cleanDatabase:', error.message);
+    throw error;
   }
-
-  // Re-enable foreign key checks
-  await prisma.$executeRawUnsafe('SET session_replication_role = DEFAULT;');
-
-  console.log('\n✅ Database cleaned successfully!\n');
 }
 
 async function main() {
@@ -154,9 +158,9 @@ async function main() {
   const dosenData = [
     { nidn: '0101018901', nuptk: '1234567890123456', nama: 'Dr. Andreas Sitorus, M.Th', prodi: prodiTEO.id, username: 'dosen1' },
     { nidn: '0102028902', nuptk: '1234567890123457', nama: 'Dr. Maria Simanjuntak, M.Div', prodi: prodiTEO.id, username: 'dosen2' },
-    { nidn: '0103038903', nuptk: '1234567890123458', nama: 'Pdt. Yohanes Hutabarat, M.Th', prodi: prodiTEO.id, username: null },
-    { nidn: '0104048904', nuptk: '1234567890123459', nama: 'Dr. Ruth Siahaan, M.Pd.K', prodi: prodiPAK.id, username: null },
-    { nidn: '0105058905', nuptk: '1234567890123460', nama: 'Pdt. Daniel Manurung, M.Pd.K', prodi: prodiPAK.id, username: null },
+    { nidn: '0103038903', nuptk: '1234567890123458', nama: 'Pdt. Yohanes Hutabarat, M.Th', prodi: prodiTEO.id, username: 'dosen3' },
+    { nidn: '0104048904', nuptk: '1234567890123459', nama: 'Dr. Ruth Siahaan, M.Pd.K', prodi: prodiPAK.id, username: 'dosen4' },
+    { nidn: '0105058905', nuptk: '1234567890123460', nama: 'Pdt. Daniel Manurung, M.Pd.K', prodi: prodiPAK.id, username: 'dosen5' },
   ];
 
   const dosens = [];
@@ -190,29 +194,37 @@ async function main() {
 
   // ============================================
   // 4. MAHASISWA (15 mahasiswa)
+  // ✅ NEW NIM FORMAT: XX.YY.ZZZ
   // ============================================
   console.log('👨‍🎓 Seeding Mahasiswa...');
 
   const mahasiswaData = [
     // Angkatan 2024 - Teologi (5)
-    { nim: '2024010001', nama: 'Samuel Pakpahan', prodi: prodiTEO.id, angkatan: 2024, wali: dosens[0].id },
-    { nim: '2024010002', nama: 'Debora Simbolon', prodi: prodiTEO.id, angkatan: 2024, wali: dosens[1].id },
-    { nim: '2024010003', nama: 'Hosea Lumban Gaol', prodi: prodiTEO.id, angkatan: 2024, wali: dosens[2].id },
-    { nim: '2024010004', nama: 'Ester Nainggolan', prodi: prodiTEO.id, angkatan: 2024, wali: dosens[0].id },
-    { nim: '2024010005', nama: 'Timotius Sihombing', prodi: prodiTEO.id, angkatan: 2024, wali: dosens[1].id },
+    // Format: 24.01.XXX (24 = tahun, 01 = TEO, XXX = nomor urut)
+    { nim: '24.01.001', nama: 'Samuel Pakpahan', prodi: prodiTEO.id, angkatan: 2024, wali: dosens[0].id },
+    { nim: '24.01.002', nama: 'Debora Simbolon', prodi: prodiTEO.id, angkatan: 2024, wali: dosens[1].id },
+    { nim: '24.01.003', nama: 'Hosea Lumban Gaol', prodi: prodiTEO.id, angkatan: 2024, wali: dosens[2].id },
+    { nim: '24.01.004', nama: 'Ester Nainggolan', prodi: prodiTEO.id, angkatan: 2024, wali: dosens[0].id },
+    { nim: '24.01.005', nama: 'Timotius Sihombing', prodi: prodiTEO.id, angkatan: 2024, wali: dosens[1].id },
+    
     // Angkatan 2024 - PAK (5)
-    { nim: '2024020001', nama: 'Rut Simamora', prodi: prodiPAK.id, angkatan: 2024, wali: dosens[3].id },
-    { nim: '2024020002', nama: 'Daud Hutajulu', prodi: prodiPAK.id, angkatan: 2024, wali: dosens[4].id },
-    { nim: '2024020003', nama: 'Sara Napitupulu', prodi: prodiPAK.id, angkatan: 2024, wali: dosens[3].id },
-    { nim: '2024020004', nama: 'Stefanus Panjaitan', prodi: prodiPAK.id, angkatan: 2024, wali: dosens[4].id },
-    { nim: '2024020005', nama: 'Lidia Situmorang', prodi: prodiPAK.id, angkatan: 2024, wali: dosens[3].id },
+    // Format: 24.02.XXX (24 = tahun, 02 = PAK, XXX = nomor urut)
+    { nim: '24.02.001', nama: 'Rut Simamora', prodi: prodiPAK.id, angkatan: 2024, wali: dosens[3].id },
+    { nim: '24.02.002', nama: 'Daud Hutajulu', prodi: prodiPAK.id, angkatan: 2024, wali: dosens[4].id },
+    { nim: '24.02.003', nama: 'Sara Napitupulu', prodi: prodiPAK.id, angkatan: 2024, wali: dosens[3].id },
+    { nim: '24.02.004', nama: 'Stefanus Panjaitan', prodi: prodiPAK.id, angkatan: 2024, wali: dosens[4].id },
+    { nim: '24.02.005', nama: 'Lidia Situmorang', prodi: prodiPAK.id, angkatan: 2024, wali: dosens[3].id },
+    
     // Angkatan 2023 - Teologi (3)
-    { nim: '2023010001', nama: 'Petrus Sinaga', prodi: prodiTEO.id, angkatan: 2023, wali: dosens[0].id },
-    { nim: '2023010002', nama: 'Hana Sitompul', prodi: prodiTEO.id, angkatan: 2023, wali: dosens[1].id },
-    { nim: '2023010003', nama: 'Yakub Hutapea', prodi: prodiTEO.id, angkatan: 2023, wali: dosens[2].id },
+    // Format: 23.01.XXX
+    { nim: '23.01.001', nama: 'Petrus Sinaga', prodi: prodiTEO.id, angkatan: 2023, wali: dosens[0].id },
+    { nim: '23.01.002', nama: 'Hana Sitompul', prodi: prodiTEO.id, angkatan: 2023, wali: dosens[1].id },
+    { nim: '23.01.003', nama: 'Yakub Hutapea', prodi: prodiTEO.id, angkatan: 2023, wali: dosens[2].id },
+    
     // Angkatan 2023 - PAK (2)
-    { nim: '2023020001', nama: 'Maria Sirait', prodi: prodiPAK.id, angkatan: 2023, wali: dosens[3].id },
-    { nim: '2023020002', nama: 'Yosua Tamba', prodi: prodiPAK.id, angkatan: 2023, wali: dosens[4].id },
+    // Format: 23.02.XXX
+    { nim: '23.02.001', nama: 'Maria Sirait', prodi: prodiPAK.id, angkatan: 2023, wali: dosens[3].id },
+    { nim: '23.02.002', nama: 'Yosua Tamba', prodi: prodiPAK.id, angkatan: 2023, wali: dosens[4].id },
   ];
 
   const mahasiswas = [];
@@ -792,16 +804,18 @@ async function main() {
     }
   }
 
-  // Angkatan 2023 students - Semesters 1, 2, 3
+  // Angkatan 2023 students - Semesters 1, 2
   for (let i = 10; i < 15; i++) {
     const mhs = mahasiswas[i];
+    const paketSem3 = mhs.prodiId === prodiTEO.id ? paket2023Sem3TEO : paket2023Sem3PAK;
+    const paketSem4 = mhs.prodiId === prodiTEO.id ? paket2023Sem4TEO : paket2023Sem4PAK;
 
     // Semester 1 (as Semester 3 for them)
     const krs1 = await prisma.kRS.create({
       data: {
         mahasiswaId: mhs.id,
         semesterId: semester1.id,
-        paketKRSId: paket2023Sem3TEO.id,
+        paketKRSId: paketSem3.id,
         status: 'APPROVED',
         totalSKS: 20,
         tanggalSubmit: new Date('2024-07-20'),
@@ -821,7 +835,7 @@ async function main() {
       data: {
         mahasiswaId: mhs.id,
         semesterId: semester2.id,
-        paketKRSId: paket2023Sem4TEO.id,
+        paketKRSId: paketSem4.id,
         status: 'APPROVED',
         totalSKS: 20,
         tanggalSubmit: new Date('2025-01-05'),
@@ -1035,21 +1049,59 @@ async function main() {
 
   console.log('✅ Presensi created\n');
 
-  console.log('\n🎉 Seed completed successfully!\n');
-  console.log('Summary:');
-  console.log('- 2 Program Studi');
-  console.log('- 1 Admin, 1 Keuangan');
-  console.log('- 5 Dosen');
-  console.log('- 15 Mahasiswa (10 Sem 2, 5 Sem 4)');
-  console.log('- 4 Ruangan');
-  console.log('- 30 Mata Kuliah');
-  console.log('- 4 Semester (1 Active: 2025/2026 GANJIL)');
-  console.log('- Complete historical data (KRS, Nilai, KHS, Pembayaran, Presensi)');
-  console.log('\nLogin credentials:');
-  console.log('- Admin: admin / password123');
-  console.log('- Keuangan: keuangan / password123');
-  console.log('- Dosen: 0101018901 / password123 (or dosen1 / password123)');
-  console.log('- Mahasiswa: 2024010001 / password123');
+  console.log('\n' + '='.repeat(70));
+  console.log('🎉 SEED COMPLETED SUCCESSFULLY! (MySQL Edition + NIM Format XX.YY.ZZZ)');
+  console.log('='.repeat(70));
+  console.log('📊 SUMMARY:');
+  console.log('-'.repeat(70));
+  console.log('Master Data:');
+  console.log('  ✅ 2 Program Studi (TEO, PAK)');
+  console.log('  ✅ 1 Admin + 1 Keuangan');
+  console.log('  ✅ 5 Dosen');
+  console.log('  ✅ 15 Mahasiswa (NEW NIM FORMAT: XX.YY.ZZZ):');
+  console.log('     • Angkatan 2024 TEO: 24.01.001 - 24.01.005');
+  console.log('     • Angkatan 2024 PAK: 24.02.001 - 24.02.005');
+  console.log('     • Angkatan 2023 TEO: 23.01.001 - 23.01.003');
+  console.log('     • Angkatan 2023 PAK: 23.02.001 - 23.02.002');
+  console.log('  ✅ 4 Ruangan');
+  console.log('  ✅ 30 Mata Kuliah (8+8+7+7 per semester)');
+  console.log('');
+  console.log('Academic Timeline:');
+  console.log('  ✅ 2024/2025 GANJIL   - COMPLETED (has historical data)');
+  console.log('  ✅ 2024/2025 GENAP    - COMPLETED (has historical data)');
+  console.log('  🔴 2025/2026 GANJIL   - ACTIVE (pakets ready, no KRS yet)');
+  console.log('  ⏳ 2025/2026 GENAP    - FUTURE');
+  console.log('');
+  console.log('Complete Historical Data:');
+  console.log('  ✅ KRS (all APPROVED)');
+  console.log('  ✅ Nilai (random grades 65-95)');
+  console.log('  ✅ KHS (IPS & IPK calculated)');
+  console.log('  ✅ Pembayaran (KRS + UTS + Monthly)');
+  console.log('  ✅ Presensi (14-16 meetings per class)');
+  console.log('='.repeat(70));
+  console.log('\n🔑 LOGIN CREDENTIALS (NEW NIM FORMAT):');
+  console.log('-'.repeat(70));
+  console.log('Admin & Keuangan:');
+  console.log('  Admin:         admin / password123');
+  console.log('  Keuangan:      keuangan / password123');
+  console.log('');
+  console.log('Dosen (Username / NIDN / NUPTK):');
+  console.log('  Dosen 1:       dosen1 / password123');
+  console.log('  Dosen 1 NIDN:  0101018901 / password123');
+  console.log('  Dosen 1 NUPTK: 1234567890123456 / password123');
+  console.log('');
+  console.log('Mahasiswa (NEW FORMAT):');
+  console.log('  2024 TEO:      24.01.001 / password123');
+  console.log('  2024 PAK:      24.02.001 / password123');
+  console.log('  2023 TEO:      23.01.001 / password123');
+  console.log('  2023 PAK:      23.02.001 / password123');
+  console.log('');
+  console.log('✨ NIM Format: XX.YY.ZZZ');
+  console.log('   XX  = 2 digit tahun (24 = 2024, 23 = 2023)');
+  console.log('   YY  = 2 digit kode prodi (01 = TEO, 02 = PAK)');
+  console.log('   ZZZ = 3 digit nomor urut (001, 002, ...)');
+  console.log('='.repeat(70));
+  console.log('\n✨ MySQL database seeded with NEW NIM FORMAT! Ready to rock! ✨\n');
 }
 
 main()

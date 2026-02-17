@@ -58,7 +58,7 @@ const getCookieOptions = () => ({
 export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { identifier, password, recaptchaToken } = req.body;
   
-  // ✅ VERIFY RECAPTCHA
+ 
   if (recaptchaToken) {
     const isValidRecaptcha = await verifyRecaptcha(recaptchaToken);
     

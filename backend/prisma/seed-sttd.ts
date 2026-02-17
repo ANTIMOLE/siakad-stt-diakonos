@@ -56,10 +56,10 @@ async function main() {
 
   console.log('🏫 Seeding Ruangan...');
   const ruangans = await Promise.all([
-    prisma.ruangan.create({ data: { nama: 'Teologi 1', kapasitas: 30 } }),
-    prisma.ruangan.create({ data: { nama: 'Teologi 2', kapasitas: 30 } }),
-    prisma.ruangan.create({ data: { nama: 'PAK 1', kapasitas: 30 } }),
-    prisma.ruangan.create({ data: { nama: 'PAK 2', kapasitas: 30 } }),
+    prisma.ruangan.create({ data: { nama: 'Teologi I', kapasitas: 30 } }),
+    prisma.ruangan.create({ data: { nama: 'Teologi II', kapasitas: 30 } }),
+    prisma.ruangan.create({ data: { nama: 'PAK I', kapasitas: 30 } }),
+    prisma.ruangan.create({ data: { nama: 'PAK II', kapasitas: 30 } }),
   ]);
   console.log('✅ 6 Ruangan created\n');
 

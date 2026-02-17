@@ -364,6 +364,42 @@ async function main() {
       dosenName: 'Paulus Setyo Pramono',
       ruangan: ruanganTeologi1
     },
+    { 
+      hari: 'Sabtu', 
+      jamMulai: '18:00', 
+      jamSelesai: '19:40',
+      kodeMK: 'BB 6674',
+      namaMK: 'PPL',
+      dosenName: 'Orance Amelia Neonane',
+      ruangan: ruanganPAK1
+    },
+    { 
+      hari: 'Sabtu', 
+      jamMulai: '18:00', 
+      jamSelesai: '19:40',
+      kodeMK: 'BB 6674',
+      namaMK: 'PPL',
+      dosenName: 'Fajar Dani Eko Mei Setiawan',
+      ruangan: ruanganTeologi1
+    },
+    { 
+      hari: 'Sabtu', 
+      jamMulai: '17:00', 
+      jamSelesai: '18:40',
+      kodeMK: 'BB 8675',
+      namaMK: 'Skrispi',
+      dosenName: 'Dr. Sutoyo',
+      ruangan: ruanganPAK1
+    },
+    { 
+      hari: 'Sabtu', 
+      jamMulai: '17:00', 
+      jamSelesai: '18:40',
+      kodeMK: 'BB 8675',
+      namaMK: 'Skrispi',
+      dosenName: 'Dafit Mei Dianto',
+      ruangan: ruanganTeologi1
+    },
   ];
 
   let successCount = 0;

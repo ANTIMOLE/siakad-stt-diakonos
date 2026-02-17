@@ -40,8 +40,8 @@ const mahasiswaSchema = z.object({
   prodiId: z.number().min(1, 'Pilih program studi'),
   angkatan: z.number().min(2000, 'Angkatan tidak valid'),
   dosenWaliId: z.number().optional(),
-  password: z.string().min(6, 'Password minimal 6 karakter'),
-  confirmPassword: z.string().min(6, 'Konfirmasi password minimal 6 karakter'),
+  password: z.string().min(8, 'Password minimal 8 karakter'),
+  confirmPassword: z.string().min(8, 'Konfirmasi password minimal 8 karakter'),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Password tidak cocok",
   path: ["confirmPassword"],
@@ -306,7 +306,7 @@ export default function TambahMahasiswaPage() {
                       <Input
                         id="password"
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="Minimal 6 karakter"
+                        placeholder="Minimal 8 karakter"
                         className="pr-10"
                         {...register('password')}
                       />

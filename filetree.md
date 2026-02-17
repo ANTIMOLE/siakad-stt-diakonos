@@ -1,12 +1,19 @@
 # File Tree: siakad-stt-diakonos
 
-**Generated:** 2/12/2026, 2:48:26 PM
+**Generated:** 2/17/2026, 7:09:02 PM
 **Root Path:** `d:\DIAKONOS\SIAKAD\siakad-stt-diakonos`
 
 ```
 ├── 📁 backend
 │   ├── 📁 dbml
 │   │   └── 📄 schema.dbml
+│   ├── 📁 logo
+│   │   ├── 🖼️ LOGO.png
+│   │   ├── 🖼️ android-chrome-192x192.png
+│   │   ├── 🖼️ android-chrome-512x512.png
+│   │   ├── 🖼️ apple-touch-icon.png
+│   │   ├── 🖼️ favicon-16x16.png
+│   │   └── 🖼️ favicon-32x32.png
 │   ├── 📁 prisma
 │   │   ├── 📁 migrations
 │   │   │   ├── 📁 20251230065832_initial_schema
@@ -32,6 +39,9 @@
 │   │   ├── 📄 seed-clean.ts
 │   │   ├── 📄 seed-clean_2.ts
 │   │   ├── 📄 seed-incremental.ts
+│   │   ├── 📄 seed-kelasmk.ts
+│   │   ├── 📄 seed-paketkrs.ts
+│   │   ├── 📄 seed-sttd.ts
 │   │   └── 📄 seed.ts
 │   ├── 📁 src
 │   │   ├── 📁 config
@@ -110,11 +120,10 @@
 │   │   ├── 📁 kelasmkfiles
 │   │   └── 📁 pembayaran
 │   ├── ⚙️ .gitignore
-│   ├── 🐳 Dockerfile
-│   ├── 📦 backend.zip
 │   ├── ⚙️ package-lock.json
 │   ├── ⚙️ package.json
 │   ├── 📄 prisma.config.ts
+│   ├── 📄 render-build.sh
 │   └── ⚙️ tsconfig.json
 ├── 📁 frontend
 │   ├── 📁 app
@@ -178,6 +187,14 @@
 │   │   │   │   │   └── 📄 page.tsx
 │   │   │   │   └── 📄 page.tsx
 │   │   │   ├── 📁 pembayaran
+│   │   │   │   └── 📄 page.tsx
+│   │   │   ├── 📁 ruangan
+│   │   │   │   ├── 📁 [id]
+│   │   │   │   │   ├── 📁 edit
+│   │   │   │   │   │   └── 📄 page.tsx
+│   │   │   │   │   └── 📄 page.tsx
+│   │   │   │   ├── 📁 tambah
+│   │   │   │   │   └── 📄 page.tsx
 │   │   │   │   └── 📄 page.tsx
 │   │   │   ├── 📁 semester
 │   │   │   │   ├── 📁 [id]
@@ -358,11 +375,9 @@
 │   │   ├── 📄 index.ts
 │   │   └── 📄 model.ts
 │   ├── ⚙️ .gitignore
-│   ├── 🐳 DockerFile
 │   ├── 📝 README.md
 │   ├── ⚙️ components.json
 │   ├── 📄 eslint.config.mjs
-│   ├── 📦 frontend.zip
 │   ├── 📄 global.d.ts
 │   ├── 📄 next-env.d.ts
 │   ├── 📄 next.config.ts
@@ -371,9 +386,7 @@
 │   ├── 📄 postcss.config.mjs
 │   ├── 📄 tailwind.config.ts
 │   └── ⚙️ tsconfig.json
-├── ⚙️ .gitignore
-├── ⚙️ docker-compose.yml
-└── ⚙️ railway.toml
+└── ⚙️ .gitignore
 ```
 
 ---

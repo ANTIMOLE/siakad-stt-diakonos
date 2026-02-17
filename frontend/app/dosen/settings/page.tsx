@@ -27,8 +27,8 @@ const validatePassword = (form: {
   if (!form.oldPassword || !form.newPassword || !form.confirmPassword) {
     return 'Semua field password harus diisi';
   }
-  if (form.newPassword.length < 6) {
-    return 'Password baru minimal 6 karakter';
+  if (form.newPassword.length < 8) {
+    return 'Password baru minimal 8 karakter';
   }
   if (form.newPassword !== form.confirmPassword) {
     return 'Password baru dan konfirmasi tidak cocok';

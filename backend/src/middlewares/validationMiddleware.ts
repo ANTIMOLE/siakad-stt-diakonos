@@ -42,8 +42,8 @@ import { body, param, query } from 'express-validator';
 // Password validation
 export const passwordValidation = (field: string = 'password') =>
   body(field)
-    .isLength({ min: 6 })
-    .withMessage('Password minimal 6 karakter')
+    .isLength({ min: 8 })
+    .withMessage('Password minimal 8 karakter')
     .matches(/[A-Z]/)
     .withMessage('Password harus mengandung huruf besar')
     .matches(/[a-z]/)
@@ -54,8 +54,8 @@ export const passwordValidation = (field: string = 'password') =>
 // Simple password validation (without complexity requirements)
 export const simplePasswordValidation = (field: string = 'password') =>
   body(field)
-    .isLength({ min: 6 })
-    .withMessage('Password minimal 6 karakter');
+    .isLength({ min: 8 })
+    .withMessage('Password minimal 8 karakter');
 
 // ID parameter validation
 export const idParamValidation = (paramName: string = 'id') =>

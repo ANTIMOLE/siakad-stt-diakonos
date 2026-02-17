@@ -20,6 +20,7 @@ import nilaiRoutes from './routes/nilaiRoutes';
 import khsRoutes from './routes/khsRoutes';
 import pembayaranRoutes from './routes/pembayaranRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
+import dashboardKeuanganRoutes from './routes/dashboardKeuanganRoutes';
 import presensiRoutes from './routes/presensiRoutes';
 import kelasMKFileRoutes from './routes/kelasMKFileRoutes';
 
@@ -199,6 +200,8 @@ app.get('/api', (req: Request, res: Response) => {
       pembayaran: '/api/pembayaran',
       dashboard: '/api/dashboard',
       presensi: '/api/presensi',
+      kelasMKFiles: '/api/kelas-mk-files',
+      dashboardKeuangan: '/api/dashboard-keuangan',
     },
   });
 });
@@ -228,7 +231,7 @@ app.use('/api/pembayaran', pembayaranRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/presensi', presensiRoutes);
 app.use('/api/kelas-mk-files', kelasMKFileRoutes);
-
+app.use('/api/dashboard-keuangan', dashboardKeuanganRoutes);
 app.use(
   '/uploads',
   async (req, res, next) => {

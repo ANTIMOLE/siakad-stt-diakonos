@@ -1,6 +1,0 @@
-# railway.toml
-# This tells Railway we have multiple services
-
-[build]
-builder = "DOCKERFILE"
-```

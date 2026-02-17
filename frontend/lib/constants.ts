@@ -261,7 +261,7 @@ export const FILE_UPLOAD = {
 export const VALIDATION = {
   NIM_LENGTH: 9,
   NIDN_LENGTH: 10,
-  PASSWORD_MIN_LENGTH: 6,
+  PASSWORD_MIN_LENGTH: 8,
   EMAIL_REGEX: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
   PHONE_REGEX: /^(\+62|0)8\d{8,11}$/,
 } as const;

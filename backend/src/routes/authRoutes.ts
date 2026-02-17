@@ -118,8 +118,8 @@ router.post(
       .notEmpty()
       .withMessage('Password lama wajib diisi'),
     body('newPassword')
-      .isLength({ min: 6 })
-      .withMessage('Password baru minimal 6 karakter'),
+      .isLength({ min: 8 })
+      .withMessage('Password baru minimal 8 karakter'),
     body('confirmPassword')
       .notEmpty()
       .withMessage('Konfirmasi password wajib diisi')

@@ -78,6 +78,12 @@ async function main() {
     { nidn: '2014037902', nuptk: '5646757658130150', nama: 'Agus Silo Witrasno, M.Pd.K', prodi: 'Teologi', tempat: 'Sukoharjo', tgl: '1979-03-14', posisi: 'Asisten Ahli', jafung: 'Asisten Ahli', alumni: 'STAK Marturia Yogyakarta', lama: '12 Tahun' },
     { nidn: '2324076202', nuptk: '8056740641230060', nama: 'Tabita Todingbua, M.Div.', prodi: 'Teologi', tempat: 'Tana Toraja', tgl: '1962-07-14', posisi: 'Asisten Ahli', jafung: 'Asisten Ahli', alumni: 'Asia Pacific Nazarene Theological Seminary', lama: '15 Tahun' },
     { nidn: '2305057601', nuptk: '2837754655130210', nama: 'John Marlin, M.Th.', prodi: 'Teologi', tempat: 'Cilacap', tgl: '1976-05-05', posisi: 'Lektor 200', jafung: 'Lektor 200', alumni: 'STTII Yogyakarta', lama: '7 Tahun' },
+    { nidn: '1000000001', nuptk: '2000000000000001', nama: 'Raden Ade Christian Aritonang, M.Th.', prodi: 'Teologi', tempat: 'Jakarta', tgl: '1980-01-01', posisi: 'Dosen Tetap', jafung: 'Asisten Ahli 100', alumni: 'STT Indonesia', lama: '5 Tahun' },
+    { nidn: '1000000002', nuptk: '2000000000000002', nama: 'Dr. Mulyono, M.Pd.K.', prodi: 'PAK', tempat: 'Solo', tgl: '1962-04-21', posisi: 'Tidak Tetap', jafung: 'Lektor 200', alumni: 'STT Berita Hidup Solo', lama: '10 Tahun' },
+    { nidn: '1000000003', nuptk: '2000000000000003', nama: 'Agoes Prijanto, M.Th.', prodi: 'Teologi', tempat: 'Malang', tgl: '1968-04-28', posisi: 'Tidak Tetap', jafung: 'Lektor 200', alumni: 'STAN Malang', lama: '7 Tahun' },
+    { nidn: '1000000004', nuptk: '2000000000000004', nama: 'Nunung Kadarwati, M.Pd.', prodi: 'Manajemen Pendidikan', tempat: 'Sragen', tgl: '1981-09-25', posisi: 'Tidak Tetap', jafung: 'Asisten Ahli 150', alumni: 'STT Berita Hidup Solo', lama: '17 Tahun' },
+    { nidn: '1000000005', nuptk: '2000000000000005', nama: 'Wahyu Oktorio Stevanus, S.Mg.', prodi: 'Manajemen', tempat: 'Purwokerto', tgl: '1977-10-03', posisi: 'Tidak Tetap', jafung: 'Asisten Ahli 100', alumni: 'UKRIM Yogyakarta', lama: '3 Tahun' },
+    { nidn: '1000000006', nuptk: '2000000000000006', nama: 'Udin Firman Hidayat, M.Pd.', prodi: 'Teologi', tempat: 'Malang', tgl: '1991-03-28', posisi: 'Tidak Tetap', jafung: 'Asisten Ahli 100', alumni: 'UKI Jakarta', lama: '4 Tahun' },
   ];
 
   const dosens: any[] = [];

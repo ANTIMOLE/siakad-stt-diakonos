@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { use, useState, useEffect, useCallback } from 'react';
+import { use, useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import ErrorState from '@/components/shared/ErrorState';
@@ -27,15 +27,23 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
   ArrowLeft,
   Upload,
   FileText,
   Download,
   Pencil,
   Trash2,
-  Clock,
-  Calendar,
   BookOpen,
+  Calendar,
+  Clock,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
@@ -75,16 +83,17 @@ interface KelasMKFile {
   };
 }
 
+// ✅ Constants outside component
 const FILE_TYPE_LABELS = {
-  RPS: 'Rencana Pembelajaran Semester',
-  RPP: 'Rencana Pelaksanaan Pembelajaran',
-  MATERI: 'Materi Pembelajaran',
-};
+  RPS: 'RPS',
+  RPP: 'RPP',
+  MATERI: 'Materi',
+} as const;
 
 const FILE_TYPE_COLORS = {
-  RPS: 'bg-blue-100 text-blue-700 border-blue-200',
-  RPP: 'bg-purple-100 text-purple-700 border-purple-200',
-  MATERI: 'bg-green-100 text-green-700 border-green-200',
+  RPS: 'default' as const,
+  RPP: 'secondary' as const,
+  MATERI: 'outline' as const,
 };
 
 export default function DosenMateriKelasDetailPage({
@@ -93,8 +102,6 @@ export default function DosenMateriKelasDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const router = useRouter();
-  
-
   const resolvedParams = use(params);
   const kelasMKId = parseInt(resolvedParams.id);
 
@@ -112,7 +119,6 @@ export default function DosenMateriKelasDetailPage({
   const [fileWeekFilter, setFileWeekFilter] = useState<string>('ALL');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Upload form
   const [uploadForm, setUploadForm] = useState({
     tipeFile: 'MATERI' as 'RPS' | 'RPP' | 'MATERI',
     mingguKe: '',
@@ -120,13 +126,15 @@ export default function DosenMateriKelasDetailPage({
     file: null as File | null,
   });
 
-  // Rename form
   const [renameForm, setRenameForm] = useState('');
 
+  // ============================================
+  // FETCH DATA
+  // ============================================
   const fetchKelas = useCallback(async () => {
     try {
       const response = await kelasMKAPI.getById(kelasMKId);
-      if (response && response.data) {
+      if (response?.data) {
         setKelas(response.data);
       }
     } catch (err: any) {
@@ -145,18 +153,14 @@ export default function DosenMateriKelasDetailPage({
         mingguKe: fileWeekFilter === 'ALL' ? undefined : fileWeekFilter,
       });
 
-      if (response && response.data) {
+      if (response?.data) {
         setFiles(response.data);
       } else {
         setError('Gagal memuat data file');
       }
     } catch (err: any) {
       console.error('Fetch files error:', err);
-      setError(
-        err.response?.data?.message ||
-          err.message ||
-          'Terjadi kesalahan saat memuat data file'
-      );
+      setError(err.response?.data?.message || 'Terjadi kesalahan');
     } finally {
       setIsLoading(false);
     }
@@ -166,14 +170,17 @@ export default function DosenMateriKelasDetailPage({
     fetchKelas();
     fetchFiles();
   }, [fetchKelas, fetchFiles]);
-  
-  useEffect(() => {
-  if (typeFilter !== 'MATERI') {
-    setFileWeekFilter('ALL');
-  }
-}, [typeFilter]);
 
-  const handleUpload = async () => {
+  useEffect(() => {
+    if (typeFilter !== 'MATERI') {
+      setFileWeekFilter('ALL');
+    }
+  }, [typeFilter]);
+
+  // ============================================
+  // HANDLERS
+  // ============================================
+  const handleUpload = useCallback(async () => {
     if (!uploadForm.file) {
       toast.error('File harus dipilih');
       return;
@@ -192,7 +199,6 @@ export default function DosenMateriKelasDetailPage({
       formData.append('tipeFile', uploadForm.tipeFile);
       formData.append('file', uploadForm.file);
 
-      // Auto-generate namaFile
       let namaFile = `${uploadForm.tipeFile} ${kelas?.mataKuliah?.namaMK ?? ''}`;
       if (uploadForm.tipeFile === 'MATERI' && uploadForm.mingguKe) {
         namaFile += ` Minggu ${uploadForm.mingguKe}`;
@@ -206,7 +212,7 @@ export default function DosenMateriKelasDetailPage({
 
       const response = await kelasMKFileAPI.uploadFile(formData);
 
-      if (response && response.success) {
+      if (response?.success) {
         toast.success('File berhasil diupload');
         setShowUploadDialog(false);
         setUploadForm({
@@ -221,17 +227,13 @@ export default function DosenMateriKelasDetailPage({
       }
     } catch (err: any) {
       console.error('Upload error:', err);
-      toast.error(
-        err.response?.data?.message ||
-          err.message ||
-          'Terjadi kesalahan saat upload file'
-      );
+      toast.error(err.response?.data?.message || 'Terjadi kesalahan');
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [uploadForm, kelasMKId, kelas, fetchFiles]);
 
-  const handleRename = async () => {
+  const handleRename = useCallback(async () => {
     if (!selectedFile || !renameForm.trim()) {
       toast.error('Nama file harus diisi');
       return;
@@ -242,7 +244,7 @@ export default function DosenMateriKelasDetailPage({
 
       const response = await kelasMKFileAPI.renameFile(selectedFile.id, renameForm.trim());
 
-      if (response && response.success) {
+      if (response?.success) {
         toast.success('Nama file berhasil diubah');
         setShowRenameDialog(false);
         setSelectedFile(null);
@@ -253,17 +255,13 @@ export default function DosenMateriKelasDetailPage({
       }
     } catch (err: any) {
       console.error('Rename error:', err);
-      toast.error(
-        err.response?.data?.message ||
-          err.message ||
-          'Terjadi kesalahan saat mengubah nama file'
-      );
+      toast.error(err.response?.data?.message || 'Terjadi kesalahan');
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [selectedFile, renameForm, fetchFiles]);
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!selectedFile) return;
 
     try {
@@ -271,7 +269,7 @@ export default function DosenMateriKelasDetailPage({
 
       const response = await kelasMKFileAPI.deleteFile(selectedFile.id);
 
-      if (response && response.success) {
+      if (response?.success) {
         toast.success('File berhasil dihapus');
         setShowDeleteDialog(false);
         setSelectedFile(null);
@@ -281,26 +279,22 @@ export default function DosenMateriKelasDetailPage({
       }
     } catch (err: any) {
       console.error('Delete error:', err);
-      toast.error(
-        err.response?.data?.message ||
-          err.message ||
-          'Terjadi kesalahan saat menghapus file'
-      );
+      toast.error(err.response?.data?.message || 'Terjadi kesalahan');
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [selectedFile, fetchFiles]);
 
-  const handleDownload = (fileId: number) => {
+  const handleDownload = useCallback((fileId: number) => {
     const url = kelasMKFileAPI.getFileUrl(fileId);
     window.open(url, '_blank');
-  };
+  }, []);
 
-  const handleRetry = () => {
+  const handleRetry = useCallback(() => {
     fetchFiles();
-  };
+  }, [fetchFiles]);
 
-  const openUploadDialog = () => {
+  const openUploadDialog = useCallback(() => {
     setUploadForm({
       tipeFile: 'MATERI',
       mingguKe: '',
@@ -308,28 +302,22 @@ export default function DosenMateriKelasDetailPage({
       file: null,
     });
     setShowUploadDialog(true);
-  };
+  }, []);
 
-  const openRenameDialog = (file: KelasMKFile) => {
+  const openRenameDialog = useCallback((file: KelasMKFile) => {
     setSelectedFile(file);
     setRenameForm(file.namaFile);
     setShowRenameDialog(true);
-  };
+  }, []);
 
-  const openDeleteDialog = (file: KelasMKFile) => {
+  const openDeleteDialog = useCallback((file: KelasMKFile) => {
     setSelectedFile(file);
     setShowDeleteDialog(true);
-  };
+  }, []);
 
-  // Group files by type
-  const groupedFiles = files.reduce((acc, file) => {
-    if (!acc[file.tipeFile]) {
-      acc[file.tipeFile] = [];
-    }
-    acc[file.tipeFile].push(file);
-    return acc;
-  }, {} as Record<string, KelasMKFile[]>);
-
+  // ============================================
+  // LOADING & ERROR
+  // ============================================
   if (isLoading && !kelas) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -342,56 +330,54 @@ export default function DosenMateriKelasDetailPage({
     return <ErrorState title="Gagal Memuat Data" message={error} onRetry={handleRetry} />;
   }
 
+  // ============================================
+  // RENDER
+  // ============================================
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="space-y-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.back()}
-            className="gap-2 mb-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Kembali
-          </Button>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {kelas?.mataKuliah?.namaMK}
-          </h1>
-          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <BookOpen className="h-4 w-4" />
-              <span>
+      {/* Header - Compact */}
+      <div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.back()}
+          className="gap-2 mb-3"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Kembali
+        </Button>
+        
+        <div className="flex items-start justify-between">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold">{kelas?.mataKuliah?.namaMK}</h1>
+            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <BookOpen className="h-3 w-3" />
                 {kelas?.mataKuliah?.kodeMK} • {kelas?.mataKuliah?.sks} SKS
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Calendar className="h-4 w-4" />
-              <span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
                 {kelas?.semester?.tahunAkademik} {kelas?.semester?.periode}
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Clock className="h-4 w-4" />
-              <span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
                 {kelas?.hari}, {kelas?.jamMulai}-{kelas?.jamSelesai}
-              </span>
+              </div>
             </div>
           </div>
+          <Button onClick={openUploadDialog} className="gap-2">
+            <Upload className="h-4 w-4" />
+            Upload
+          </Button>
         </div>
-        <Button onClick={openUploadDialog} className="gap-2">
-          <Upload className="h-4 w-4" />
-          Upload File
-        </Button>
       </div>
 
-      {/* Filter */}
+      {/* Filter + Table */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center gap-4 space-y-0 pb-4">
           <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Filter tipe" />
+            <SelectTrigger className="w-[160px]">
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Semua Tipe</SelectItem>
@@ -401,12 +387,10 @@ export default function DosenMateriKelasDetailPage({
             </SelectContent>
           </Select>
 
-          <div className="flex-1" />
-
           {typeFilter === 'MATERI' && (
             <Select value={fileWeekFilter} onValueChange={setFileWeekFilter}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Filter minggu" />
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Semua Minggu</SelectItem>
@@ -419,92 +403,106 @@ export default function DosenMateriKelasDetailPage({
             </Select>
           )}
         </CardHeader>
-        <CardContent>
+
+        <CardContent className="p-0">
           {files.length === 0 ? (
-            <EmptyState
-              icon={FileText}
-              title="Belum Ada File"
-              description="Upload RPS, RPP, atau materi pembelajaran untuk kelas ini"
-              className="my-8 border-0"
-            />
+            <div className="py-12">
+              <EmptyState
+                icon={FileText}
+                title="Belum Ada File"
+                description="Upload RPS, RPP, atau materi pembelajaran"
+                className="border-0"
+              />
+            </div>
           ) : (
-            <div className="space-y-6">
-              {Object.entries(groupedFiles).map(([type, typeFiles]) => (
-                <div key={type}>
-                  <h3 className="font-semibold mb-3">
-                    {FILE_TYPE_LABELS[type as keyof typeof FILE_TYPE_LABELS]}
-                  </h3>
-                  <div className="space-y-2">
-                    {typeFiles.map((file) => (
-                      <Card key={file.id} className="hover:shadow-sm transition-shadow">
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1 space-y-2">
-                              <div className="flex items-center gap-2">
-                                <Badge
-                                  variant="outline"
-                                  className={FILE_TYPE_COLORS[file.tipeFile]}
-                                >
-                                  {file.tipeFile}
-                                </Badge>
-                                {file.mingguKe && (
-                                  <Badge variant="outline">Minggu {file.mingguKe}</Badge>
-                                )}
-                              </div>
-                              <p className="font-medium">{file.namaFile}</p>
-                              <p className="text-sm text-muted-foreground">
-                                Upload:{' '}
-                                {format(new Date(file.uploadedAt), 'dd MMM yyyy HH:mm', {
-                                  locale: idLocale,
-                                })}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDownload(file.id)}
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => openRenameDialog(file)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                onClick={() => openDeleteDialog(file)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">No</TableHead>
+                    <TableHead>Tipe</TableHead>
+                    <TableHead>Nama File</TableHead>
+                    <TableHead className="text-center">Minggu</TableHead>
+                    <TableHead>Upload</TableHead>
+                    <TableHead className="text-center w-40">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {files.map((file, index) => (
+                    <TableRow key={file.id} className="hover:bg-muted/50">
+                      <TableCell className="text-center font-medium">
+                        {index + 1}
+                      </TableCell>
+
+                      <TableCell>
+                        <Badge variant={FILE_TYPE_COLORS[file.tipeFile]}>
+                          {FILE_TYPE_LABELS[file.tipeFile]}
+                        </Badge>
+                      </TableCell>
+
+                      <TableCell className="font-medium max-w-sm truncate">
+                        {file.namaFile}
+                      </TableCell>
+
+                      <TableCell className="text-center">
+                        {file.mingguKe ? (
+                          <Badge variant="outline">Minggu {file.mingguKe}</Badge>
+                        ) : (
+                          '-'
+                        )}
+                      </TableCell>
+
+                      <TableCell className="text-sm text-muted-foreground">
+                        {format(new Date(file.uploadedAt), 'dd MMM yyyy', {
+                          locale: idLocale,
+                        })}
+                      </TableCell>
+
+                      <TableCell>
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDownload(file.id)}
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => openRenameDialog(file)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-600 hover:text-red-700"
+                            onClick={() => openDeleteDialog(file)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Upload Dialog */}
+      {/* Dialogs - Same as before */}
       <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
         <DialogContent className="bg-white">
           <DialogHeader>
             <DialogTitle>Upload File</DialogTitle>
-            <DialogDescription>Upload RPS, RPP, atau materi pembelajaran</DialogDescription>
+            <DialogDescription>Upload RPS, RPP, atau materi</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="tipeFile">Tipe File *</Label>
+              <Label>Tipe File *</Label>
               <Select
                 value={uploadForm.tipeFile}
                 onValueChange={(value) =>
@@ -524,7 +522,7 @@ export default function DosenMateriKelasDetailPage({
 
             {uploadForm.tipeFile === 'MATERI' && (
               <div className="space-y-2">
-                <Label htmlFor="mingguKe">Minggu Ke *</Label>
+                <Label>Minggu Ke *</Label>
                 <Select
                   value={uploadForm.mingguKe}
                   onValueChange={(value) =>
@@ -546,10 +544,9 @@ export default function DosenMateriKelasDetailPage({
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="keterangan">Keterangan (Opsional)</Label>
+              <Label>Keterangan (Opsional)</Label>
               <Input
-                id="keterangan"
-                placeholder="Contoh: Revisi, Tambahan, dll"
+                placeholder="Revisi, Tambahan, dll"
                 value={uploadForm.keterangan}
                 onChange={(e) =>
                   setUploadForm({ ...uploadForm, keterangan: e.target.value })
@@ -558,9 +555,8 @@ export default function DosenMateriKelasDetailPage({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="file">File (PDF/DOC/DOCX, Max 10MB) *</Label>
+              <Label>File (PDF/DOC/DOCX, Max 10MB) *</Label>
               <Input
-                id="file"
                 type="file"
                 accept=".pdf,.doc,.docx"
                 onChange={(e) =>
@@ -587,20 +583,15 @@ export default function DosenMateriKelasDetailPage({
         </DialogContent>
       </Dialog>
 
-      {/* Rename Dialog */}
       <Dialog open={showRenameDialog} onOpenChange={setShowRenameDialog}>
         <DialogContent className="bg-white">
           <DialogHeader>
             <DialogTitle>Ubah Nama File</DialogTitle>
-            <DialogDescription>
-              Ubah nama tampilan file (tidak mengubah file asli)
-            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="namaFile">Nama File *</Label>
+              <Label>Nama File *</Label>
               <Input
-                id="namaFile"
                 value={renameForm}
                 onChange={(e) => setRenameForm(e.target.value)}
               />
@@ -621,14 +612,12 @@ export default function DosenMateriKelasDetailPage({
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent className="bg-white">
           <DialogHeader>
             <DialogTitle>Hapus File</DialogTitle>
             <DialogDescription>
-              Apakah Anda yakin ingin menghapus file ini? Tindakan ini tidak dapat
-              dibatalkan.
+              Tindakan ini tidak dapat dibatalkan.
             </DialogDescription>
           </DialogHeader>
           {selectedFile && (

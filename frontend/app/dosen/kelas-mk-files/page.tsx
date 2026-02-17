@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import ErrorState from '@/components/shared/ErrorState';
@@ -17,16 +17,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { BookOpen, FileText, Calendar, Clock, Users, ArrowRight, Filter, CheckCircle } from 'lucide-react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { BookOpen, Calendar, Clock, Users, ExternalLink, Filter, CheckCircle } from 'lucide-react';
 
 import { kelasMKAPI, semesterAPI } from '@/lib/api';
 import { KelasMK, Semester } from '@/types/model';
-import { useAuth } from '@/hooks/useAuth'; // ✅ ADDED
+import { useAuth } from '@/hooks/useAuth';
 
 export default function DosenMateriKelasPage() {
   const router = useRouter();
-  
-  // ✅ GET LOGGED-IN DOSEN
   const { user, isLoading: isAuthLoading } = useAuth('DOSEN');
   
   const [kelasList, setKelasList] = useState<KelasMK[]>([]);
@@ -34,7 +40,6 @@ export default function DosenMateriKelasPage() {
   const [selectedSemesterId, setSelectedSemesterId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [searchQuery, setSearchQuery] = useState('');
 
   // ============================================
@@ -45,16 +50,14 @@ export default function DosenMateriKelasPage() {
       try {
         const response = await semesterAPI.getAll();
         
-        if (response && response.data) {
+        if (response?.data) {
           const semesters = response.data || [];
           setSemesterList(semesters);
           
-          // ✅ Auto-select active semester
           const activeSemester = semesters.find((s) => s.isActive);
           if (activeSemester) {
             setSelectedSemesterId(activeSemester.id);
           } else if (semesters.length > 0) {
-            // Fallback to most recent
             setSelectedSemesterId(semesters[0].id);
           }
         }
@@ -67,20 +70,10 @@ export default function DosenMateriKelasPage() {
   }, []);
 
   // ============================================
-  // FETCH KELAS BY SEMESTER & DOSEN
+  // FETCH KELAS
   // ============================================
   const fetchKelas = useCallback(async () => {
-    if (selectedSemesterId === null) return;
-
-    // ✅ WAIT FOR AUTH
-    if (isAuthLoading) {
-      return;
-    }
-
-    // ✅ CHECK IF DOSEN DATA EXISTS
-    if (!user?.dosen?.id) {
-      setError('Data dosen tidak ditemukan');
-      setIsLoading(false);
+    if (selectedSemesterId === null || isAuthLoading || !user?.dosen?.id) {
       return;
     }
 
@@ -88,25 +81,20 @@ export default function DosenMateriKelasPage() {
       setIsLoading(true);
       setError(null);
 
-      // ✅ FIXED: Filter by BOTH semester_id AND dosenId
       const response = await kelasMKAPI.getAll({
-        semester_id: selectedSemesterId, // ✅ Filter semester
-        dosenId: user.dosen.id,          // ✅ CRITICAL: Filter by dosen!
+        semester_id: selectedSemesterId,
+        dosenId: user.dosen.id,
         limit: 1000,
       });
 
-      if (response && response.data) {
+      if (response?.data) {
         setKelasList(response.data);
       } else {
         setError('Gagal memuat data kelas');
       }
     } catch (err: any) {
       console.error('Fetch kelas error:', err);
-      setError(
-        err.response?.data?.message ||
-          err.message ||
-          'Terjadi kesalahan saat memuat data kelas'
-      );
+      setError(err.response?.data?.message || 'Terjadi kesalahan');
     } finally {
       setIsLoading(false);
     }
@@ -118,31 +106,45 @@ export default function DosenMateriKelasPage() {
     }
   }, [fetchKelas, isAuthLoading, user]);
 
-  const handleRetry = () => {
-    fetchKelas();
-  };
+  // ============================================
+  // MEMOIZED VALUES
+  // ============================================
+  const selectedSemester = useMemo(
+    () => semesterList.find((s) => s.id === selectedSemesterId),
+    [semesterList, selectedSemesterId]
+  );
 
-  const handleViewKelas = (kelasId: number) => {
-    router.push(`/dosen/kelas-mk-files/${kelasId}`);
-  };
-
-  const handleSemesterChange = (value: string) => {
-    setSelectedSemesterId(parseInt(value));
-  };
-
-  // Filter by search only (semester & dosen already filtered by API)
-  const filteredKelas = kelasList.filter((kelas) => {
-    if (!searchQuery) return true;
+  const filteredKelas = useMemo(() => {
+    if (!searchQuery) return kelasList;
     
-    const matchSearch =
-      kelas.mataKuliah?.namaMK.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      kelas.mataKuliah?.kodeMK.toLowerCase().includes(searchQuery.toLowerCase());
-
-    return matchSearch;
-  });
+    return kelasList.filter((kelas) => {
+      const namaMK = kelas.mataKuliah?.namaMK.toLowerCase() || '';
+      const kodeMK = kelas.mataKuliah?.kodeMK.toLowerCase() || '';
+      return namaMK.includes(searchQuery.toLowerCase()) || 
+             kodeMK.includes(searchQuery.toLowerCase());
+    });
+  }, [kelasList, searchQuery]);
 
   // ============================================
-  // LOADING STATE
+  // HANDLERS
+  // ============================================
+  const handleViewKelas = useCallback(
+    (kelasId: number) => {
+      router.push(`/dosen/kelas-mk-files/${kelasId}`);
+    },
+    [router]
+  );
+
+  const handleSemesterChange = useCallback((value: string) => {
+    setSelectedSemesterId(parseInt(value));
+  }, []);
+
+  const handleRetry = useCallback(() => {
+    fetchKelas();
+  }, [fetchKelas]);
+
+  // ============================================
+  // LOADING & ERROR
   // ============================================
   if (isAuthLoading || isLoading) {
     return (
@@ -152,9 +154,6 @@ export default function DosenMateriKelasPage() {
     );
   }
 
-  // ============================================
-  // ERROR STATE - NO DOSEN DATA
-  // ============================================
   if (!user?.dosen?.id) {
     return (
       <ErrorState
@@ -165,9 +164,6 @@ export default function DosenMateriKelasPage() {
     );
   }
 
-  // ============================================
-  // ERROR STATE - FETCH ERROR
-  // ============================================
   if (error && kelasList.length === 0) {
     return (
       <ErrorState
@@ -178,13 +174,12 @@ export default function DosenMateriKelasPage() {
     );
   }
 
-  const selectedSemester = semesterList.find((s) => s.id === selectedSemesterId);
-
   // ============================================
   // RENDER
   // ============================================
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Materi & Dokumen Kelas</h1>
@@ -193,7 +188,6 @@ export default function DosenMateriKelasPage() {
           </p>
         </div>
         
-        {/* Semester Filter */}
         {semesterList.length > 0 && (
           <div className="flex items-center gap-3">
             <Filter className="h-4 w-4 text-muted-foreground" />
@@ -225,7 +219,7 @@ export default function DosenMateriKelasPage() {
         )}
       </div>
 
-      {/* Semester Info Card */}
+      {/* Semester Info */}
       {selectedSemester && (
         <Card className="bg-muted/50">
           <CardContent className="pt-6">
@@ -249,6 +243,7 @@ export default function DosenMateriKelasPage() {
         </Card>
       )}
 
+      {/* Search + Table */}
       <Card>
         <CardHeader>
           <SearchBar
@@ -257,74 +252,103 @@ export default function DosenMateriKelasPage() {
             defaultValue={searchQuery}
           />
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {filteredKelas.length === 0 ? (
-            <EmptyState
-              icon={FileText}
-              title="Tidak Ada Kelas"
-              description={
-                searchQuery
-                  ? 'Tidak ada kelas yang sesuai dengan pencarian'
-                  : `Anda tidak mengajar kelas di semester ${selectedSemester?.tahunAkademik} ${selectedSemester?.periode}`
-              }
-              className="my-8 border-0"
-            />
+            <div className="py-12">
+              <EmptyState
+                icon={BookOpen}
+                title="Tidak Ada Kelas"
+                description={
+                  searchQuery
+                    ? 'Tidak ada kelas yang sesuai dengan pencarian'
+                    : `Anda tidak mengajar kelas di semester ${selectedSemester?.tahunAkademik} ${selectedSemester?.periode}`
+                }
+                className="border-0"
+              />
+            </div>
           ) : (
-            <div className="grid gap-4">
-              {filteredKelas.map((kelas) => (
-                <Card key={kelas.id} className="hover:shadow-md transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 space-y-3">
-                        <div className="flex items-start gap-3">
-                          <div className="rounded-lg bg-primary/10 p-2">
-                            <BookOpen className="h-5 w-5 text-primary" />
-                          </div>
-                          <div className="flex-1">
-                            <h3 className="font-semibold text-lg">
-                              {kelas.mataKuliah?.namaMK}
-                            </h3>
-                            <p className="text-sm text-muted-foreground">
-                              {kelas.mataKuliah?.kodeMK} • {kelas.mataKuliah?.sks} SKS
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">No</TableHead>
+                    <TableHead>Mata Kuliah</TableHead>
+                    <TableHead className="text-center">SKS</TableHead>
+                    <TableHead>Jadwal</TableHead>
+                    <TableHead>Ruangan</TableHead>
+                    <TableHead className="text-center">Mahasiswa</TableHead>
+                    <TableHead className="text-center w-32">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredKelas.map((kelas, index) => (
+                    <TableRow
+                      key={kelas.id}
+                      className="hover:bg-muted/50 cursor-pointer"
+                      onClick={() => handleViewKelas(kelas.id)}
+                    >
+                      <TableCell className="text-center font-medium">
+                        {index + 1}
+                      </TableCell>
+
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{kelas.mataKuliah?.namaMK}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {kelas.mataKuliah?.kodeMK}
+                          </p>
+                        </div>
+                      </TableCell>
+
+                      <TableCell className="text-center">
+                        <Badge variant="outline">
+                          {kelas.mataKuliah?.sks} SKS
+                        </Badge>
+                      </TableCell>
+
+                      <TableCell>
+                        <div className="flex items-center gap-2 text-sm">
+                          <Clock className="h-3 w-3 text-muted-foreground" />
+                          <div>
+                            <p>{kelas.hari}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {kelas.jamMulai}-{kelas.jamSelesai}
                             </p>
                           </div>
                         </div>
+                      </TableCell>
 
-                        <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="h-4 w-4" />
-                            <span>
-                              {kelas.semester?.tahunAkademik} {kelas.semester?.periode}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-4 w-4" />
-                            <span>
-                              {kelas.hari}, {kelas.jamMulai}-{kelas.jamSelesai}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Users className="h-4 w-4" />
-                            <span>{kelas.ruangan?.nama}</span>
-                          </div>
+                      <TableCell className="text-sm">
+                        {kelas.ruangan?.nama || '-'}
+                      </TableCell>
+
+                      <TableCell className="text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <Users className="h-3 w-3 text-muted-foreground" />
+                          <span className="font-medium">
+                            {kelas._count?.krsDetail || 0}
+                          </span>
                         </div>
+                      </TableCell>
 
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">
-                            <FileText className="h-3 w-3 mr-1" />
-                            {kelas._count?.krsDetail || 0} mahasiswa
-                          </Badge>
-                        </div>
-                      </div>
-
-                      <Button onClick={() => handleViewKelas(kelas.id)} className="gap-2">
-                        Kelola Materi
-                        <ArrowRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                      <TableCell className="text-center">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="gap-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleViewKelas(kelas.id);
+                          }}
+                        >
+                          Kelola
+                          <ExternalLink className="h-3 w-3" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>

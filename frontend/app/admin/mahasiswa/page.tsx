@@ -1,24 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/**
- * Admin - List Mahasiswa Page
- * ✅ UPDATED: Sesuai schema baru (tempatTanggalLahir, jenisKelamin, alamat)
- * ✅ FIXED: Excel export functionality
- */
-
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  Plus,
-  Download,
-  FileText,
-  MoreHorizontal,
-  Eye,
-  Edit,
-  Trash2,
-  UserX,
-} from 'lucide-react';
+import { Plus, Download, FileText, MoreHorizontal, Eye, Edit, Trash2, UserX } from 'lucide-react';
+
 import PageHeader from '@/components/shared/PageHeader';
 import SearchBar from '@/components/shared/SearchBar';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
@@ -26,14 +12,7 @@ import EmptyState from '@/components/shared/EmptyState';
 import ErrorState from '@/components/shared/ErrorState';
 import StatusBadge from '@/components/features/status/StatusBadge';
 import { Button } from '@/components/ui/button';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,13 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 
@@ -56,12 +29,140 @@ import { mahasiswaAPI } from '@/lib/api';
 import { Mahasiswa, MahasiswaFilters } from '@/types/model';
 import { PAGINATION } from '@/lib/constants';
 
+// ============================================
+// CONSTANTS
+// ============================================
+const GENDER_OPTIONS = [
+  { value: 'all', label: 'Semua' },
+  { value: 'L', label: 'Laki-laki' },
+  { value: 'P', label: 'Perempuan' },
+];
+
+const PRODI_OPTIONS = [
+  { value: 'all', label: 'Semua Prodi' },
+  { value: '1', label: 'PAK' },
+  { value: '2', label: 'Teologi' },
+];
+
+const ANGKATAN_OPTIONS = [2025, 2024, 2023, 2022, 2021, 2020];
+
+const STATUS_OPTIONS = [
+  { value: 'all', label: 'Semua Status' },
+  { value: 'AKTIF', label: 'Aktif' },
+  { value: 'NON_AKTIF', label: 'Nonaktif' },
+  { value: 'CUTI', label: 'Cuti' },
+  { value: 'LULUS', label: 'Lulus' },
+  { value: 'DO', label: 'DO' },
+];
+
+const LIMIT_OPTIONS = [
+  { value: '10', label: '10 / hal' },
+  { value: '25', label: '25 / hal' },
+  { value: '50', label: '50 / hal' },
+];
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+const getGenderLabel = (gender: string | null): string => {
+  return gender === 'L' ? 'Laki-laki' : gender === 'P' ? 'Perempuan' : '-';
+};
+
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+// ============================================
+// FILTER SELECT COMPONENT
+// ============================================
+const FilterSelect = ({
+  value,
+  onValueChange,
+  options,
+  placeholder,
+  className,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  placeholder?: string;
+  className?: string;
+}) => (
+  <Select value={value} onValueChange={onValueChange}>
+    <SelectTrigger className={className}>
+      <SelectValue placeholder={placeholder} />
+    </SelectTrigger>
+    <SelectContent>
+      {options.map((option) => (
+        <SelectItem key={option.value} value={option.value}>
+          {option.label}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+);
+
+// ============================================
+// MAHASISWA ROW ACTIONS COMPONENT
+// ============================================
+const MahasiswaActions = ({
+  mahasiswa,
+  onView,
+  onEdit,
+  onDeactivate,
+  onDelete,
+}: {
+  mahasiswa: Mahasiswa;
+  onView: () => void;
+  onEdit: () => void;
+  onDeactivate: () => void;
+  onDelete: () => void;
+}) => (
+  <DropdownMenu>
+    <DropdownMenuTrigger asChild>
+      <Button variant="ghost" size="icon">
+        <MoreHorizontal className="h-4 w-4" />
+      </Button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent align="end">
+      <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onClick={onView}>
+        <Eye className="mr-2 h-4 w-4" />
+        Lihat Detail
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={onEdit}>
+        <Edit className="mr-2 h-4 w-4" />
+        Edit
+      </DropdownMenuItem>
+      {mahasiswa.status === 'AKTIF' && (
+        <DropdownMenuItem onClick={onDeactivate}>
+          <UserX className="mr-2 h-4 w-4" />
+          Nonaktifkan
+        </DropdownMenuItem>
+      )}
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onClick={onDelete} className="text-red-600">
+        <Trash2 className="mr-2 h-4 w-4" />
+        Hapus
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  </DropdownMenu>
+);
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 export default function MahasiswaPage() {
   const router = useRouter();
 
-  // ============================================
-  // STATE MANAGEMENT
-  // ============================================
   const [mahasiswa, setMahasiswa] = useState<Mahasiswa[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +182,7 @@ export default function MahasiswaPage() {
   });
 
   // ============================================
-  // FETCH MAHASISWA DATA
+  // FETCH DATA
   // ============================================
   useEffect(() => {
     const fetchMahasiswa = async () => {
@@ -100,11 +201,7 @@ export default function MahasiswaPage() {
         }
       } catch (err: any) {
         console.error('Fetch mahasiswa error:', err);
-        setError(
-          err.response?.message ||
-          err.message ||
-          'Terjadi kesalahan saat memuat data mahasiswa'
-        );
+        setError(err.response?.message || err.message || 'Terjadi kesalahan');
       } finally {
         setIsLoading(false);
       }
@@ -124,7 +221,21 @@ export default function MahasiswaPage() {
   ]);
 
   // ============================================
-  // MEMOIZED HANDLERS
+  // MEMOIZED VALUES
+  // ============================================
+  const angkatanOptions = useMemo(() => [
+    { value: 'all', label: 'Semua Angkatan' },
+    ...ANGKATAN_OPTIONS.map(year => ({ value: year.toString(), label: year.toString() }))
+  ], []);
+
+  const paginationInfo = useMemo(() => ({
+    current: filters.page || 1,
+    total: totalPages,
+    items: totalItems,
+  }), [filters.page, totalPages, totalItems]);
+
+  // ============================================
+  // HANDLERS
   // ============================================
   const handleSearch = useCallback((query: string) => {
     setFilters((prev) => ({ ...prev, search: query, page: 1 }));
@@ -166,11 +277,7 @@ export default function MahasiswaPage() {
       }
     } catch (err: any) {
       console.error('Delete error:', err);
-      toast.error(
-        err.response?.message ||
-        err.message ||
-        'Terjadi kesalahan saat menghapus mahasiswa'
-      );
+      toast.error(err.response?.message || 'Terjadi kesalahan');
     }
   }, []);
 
@@ -190,16 +297,11 @@ export default function MahasiswaPage() {
       }
     } catch (err: any) {
       console.error('Deactivate error:', err);
-      toast.error(
-        err.response?.message ||
-        err.message ||
-        'Terjadi kesalahan saat menonaktifkan mahasiswa'
-      );
+      toast.error(err.response?.message || 'Terjadi kesalahan');
     }
   }, []);
 
-
-  const handleExport = async () => {
+  const handleExport = useCallback(async () => {
     try {
       const response = await mahasiswaAPI.exportToExcel({
         search: filters.search,
@@ -209,31 +311,22 @@ export default function MahasiswaPage() {
         jenisKelamin: filters.jenisKelamin,
       });
 
-      // Create blob and download
-      const url = window.URL.createObjectURL(new Blob([response]));
-      const link = document.createElement('a');
-      link.href = url;
-      
       const timestamp = new Date().toISOString().split('T')[0];
-      link.setAttribute('download', `Mahasiswa_${timestamp}.xlsx`);
-      
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      downloadBlob(response, `Mahasiswa_${timestamp}.xlsx`);
       
       toast.success('Data mahasiswa berhasil di-export');
     } catch (err: any) {
       console.error('Export error:', err);
       toast.error('Gagal export data mahasiswa');
     }
-  };
+  }, [filters]);
 
   const handleRetry = useCallback(() => {
     setFilters(prev => ({ ...prev, page: 1 }));
   }, []);
 
   // ============================================
-  // LOADING STATE
+  // LOADING & ERROR
   // ============================================
   if (isLoading && mahasiswa.length === 0) {
     return (
@@ -243,9 +336,6 @@ export default function MahasiswaPage() {
     );
   }
 
-  // ============================================
-  // ERROR STATE
-  // ============================================
   if (error && mahasiswa.length === 0) {
     return (
       <ErrorState
@@ -261,7 +351,6 @@ export default function MahasiswaPage() {
   // ============================================
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <PageHeader
         title="Data Mahasiswa"
         description="Kelola data mahasiswa STT Diakonos"
@@ -287,7 +376,6 @@ export default function MahasiswaPage() {
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center">
-            {/* Search */}
             <div className="flex-1">
               <SearchBar
                 placeholder="Cari berdasarkan nama, NIM, atau alamat..."
@@ -295,97 +383,52 @@ export default function MahasiswaPage() {
               />
             </div>
 
-            {/* Filter Jenis Kelamin */}
-            <Select
+            <FilterSelect
               value={filters.jenisKelamin || 'all'}
               onValueChange={(value) =>
                 handleFilterChange('jenisKelamin', value === 'all' ? undefined : value as 'L' | 'P')
               }
-            >
-              <SelectTrigger className="w-full md:w-40">
-                <SelectValue placeholder="Jenis Kelamin" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Semua</SelectItem>
-                <SelectItem value="L">Laki-laki</SelectItem>
-                <SelectItem value="P">Perempuan</SelectItem>
-              </SelectContent>
-            </Select>
+              options={GENDER_OPTIONS}
+              placeholder="Jenis Kelamin"
+              className="w-full md:w-40"
+            />
 
-            {/* Filter Prodi */}
-            <Select
+            <FilterSelect
               value={filters.prodiId?.toString() || 'all'}
               onValueChange={(value) =>
                 handleFilterChange('prodiId', value === 'all' ? undefined : parseInt(value))
               }
-            >
-              <SelectTrigger className="w-full md:w-48">
-                <SelectValue placeholder="Semua Prodi" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Semua Prodi</SelectItem>
-                <SelectItem value="1">PAK</SelectItem>
-                <SelectItem value="2">Teologi</SelectItem>
-              </SelectContent>
-            </Select>
+              options={PRODI_OPTIONS}
+              placeholder="Semua Prodi"
+              className="w-full md:w-48"
+            />
 
-            {/* Filter Angkatan */}
-            <Select
+            <FilterSelect
               value={filters.angkatan?.toString() || 'all'}
               onValueChange={(value) =>
                 handleFilterChange('angkatan', value === 'all' ? undefined : parseInt(value))
               }
-            >
-              <SelectTrigger className="w-full md:w-40">
-                <SelectValue placeholder="Angkatan" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Semua Angkatan</SelectItem>
-                <SelectItem value="2025">2025</SelectItem>
-                <SelectItem value="2024">2024</SelectItem>
-                <SelectItem value="2023">2023</SelectItem>
-                <SelectItem value="2022">2022</SelectItem>
-                <SelectItem value="2021">2021</SelectItem>
-                <SelectItem value="2020">2020</SelectItem>
-              </SelectContent>
-            </Select>
+              options={angkatanOptions}
+              placeholder="Angkatan"
+              className="w-full md:w-40"
+            />
 
-            {/* Filter Status */}
-            <Select
+            <FilterSelect
               value={filters.status || 'all'}
               onValueChange={(value) =>
                 handleFilterChange('status', value === 'all' ? undefined : value)
               }
-            >
-              <SelectTrigger className="w-full md:w-40">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Semua Status</SelectItem>
-                <SelectItem value="AKTIF">Aktif</SelectItem>
-                <SelectItem value="NON_AKTIF">Nonaktif</SelectItem>
-                <SelectItem value="CUTI">Cuti</SelectItem>
-                <SelectItem value="LULUS">Lulus</SelectItem>
-                <SelectItem value="DO">DO</SelectItem>
-              </SelectContent>
-            </Select>
+              options={STATUS_OPTIONS}
+              placeholder="Status"
+              className="w-full md:w-40"
+            />
 
-            {/* Items per page */}
-            <Select
+            <FilterSelect
               value={filters.limit?.toString() || '10'}
-              onValueChange={(value) =>
-                handleFilterChange('limit', parseInt(value))
-              }
-            >
-              <SelectTrigger className="w-full md:w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="10">10 / hal</SelectItem>
-                <SelectItem value="25">25 / hal</SelectItem>
-                <SelectItem value="50">50 / hal</SelectItem>
-              </SelectContent>
-            </Select>
+              onValueChange={(value) => handleFilterChange('limit', parseInt(value))}
+              options={LIMIT_OPTIONS}
+              className="w-full md:w-32"
+            />
           </div>
         </CardContent>
       </Card>
@@ -407,7 +450,6 @@ export default function MahasiswaPage() {
             />
           ) : (
             <>
-              {/* Table */}
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -429,12 +471,8 @@ export default function MahasiswaPage() {
                           {item.nim}
                         </TableCell>
                         <TableCell className="font-medium">{item.namaLengkap}</TableCell>
-                        <TableCell>
-                          {item.jenisKelamin === 'L' ? 'Laki-laki' : item.jenisKelamin === 'P' ? 'Perempuan' : '-'}
-                        </TableCell>
-                        <TableCell>
-                          {item.prodi ? item.prodi.kode : '-'}
-                        </TableCell>
+                        <TableCell>{getGenderLabel(item.jenisKelamin || null)}</TableCell>
+                        <TableCell>{item.prodi ? item.prodi.kode : '-'}</TableCell>
                         <TableCell>{item.angkatan}</TableCell>
                         <TableCell className="text-sm">
                           {item.dosenWali ? item.dosenWali.namaLengkap : '-'}
@@ -443,41 +481,13 @@ export default function MahasiswaPage() {
                           <StatusBadge status={item.status} />
                         </TableCell>
                         <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuLabel>Aksi</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => handleView(item.id)}>
-                                <Eye className="mr-2 h-4 w-4" />
-                                Lihat Detail
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleEdit(item.id)}>
-                                <Edit className="mr-2 h-4 w-4" />
-                                Edit
-                              </DropdownMenuItem>
-                              {item.status === 'AKTIF' && (
-                                <DropdownMenuItem
-                                  onClick={() => handleDeactivate(item.id, item.namaLengkap)}
-                                >
-                                  <UserX className="mr-2 h-4 w-4" />
-                                  Nonaktifkan
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => handleDelete(item.id, item.namaLengkap)}
-                                className="text-red-600"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Hapus
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <MahasiswaActions
+                            mahasiswa={item}
+                            onView={() => handleView(item.id)}
+                            onEdit={() => handleEdit(item.id)}
+                            onDeactivate={() => handleDeactivate(item.id, item.namaLengkap)}
+                            onDelete={() => handleDelete(item.id, item.namaLengkap)}
+                          />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -485,26 +495,25 @@ export default function MahasiswaPage() {
                 </Table>
               </div>
 
-              {/* Pagination */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between border-t px-6 py-4">
                   <div className="text-sm text-muted-foreground">
-                    Halaman {filters.page} dari {totalPages} • Total {totalItems} data
+                    Halaman {paginationInfo.current} dari {paginationInfo.total} • Total {paginationInfo.items} data
                   </div>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handlePageChange((filters.page || 1) - 1)}
-                      disabled={filters.page === 1}
+                      onClick={() => handlePageChange(paginationInfo.current - 1)}
+                      disabled={paginationInfo.current === 1}
                     >
                       Sebelumnya
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handlePageChange((filters.page || 1) + 1)}
-                      disabled={filters.page === totalPages}
+                      onClick={() => handlePageChange(paginationInfo.current + 1)}
+                      disabled={paginationInfo.current === totalPages}
                     >
                       Selanjutnya
                     </Button>

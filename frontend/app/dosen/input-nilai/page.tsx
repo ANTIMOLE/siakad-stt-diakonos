@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 import PageHeader from '@/components/shared/PageHeader';
@@ -21,46 +21,118 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { FileText, Users, Calendar } from 'lucide-react';
-import { toast } from 'sonner';
 
 import { kelasMKAPI, semesterAPI } from '@/lib/api';
 import { KelasMK, Semester } from '@/types/model';
 import { useAuth } from '@/hooks/useAuth';
 
 // ============================================
-// EXTENDED TYPE
+// TYPES
 // ============================================
 interface KelasMKWithNilai extends KelasMK {
   isNilaiFinalized?: boolean;
 }
 
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+const formatDate = (dateString: string): string => {
+  return new Date(dateString).toLocaleDateString('id-ID');
+};
+
+const filterKelasBySearch = (kelasList: KelasMKWithNilai[], search: string): KelasMKWithNilai[] => {
+  if (!search) return kelasList;
+  return kelasList.filter((kelas) =>
+    kelas.mataKuliah?.namaMK.toLowerCase().includes(search.toLowerCase())
+  );
+};
+
+const calculateStats = (kelasList: KelasMKWithNilai[]) => ({
+  total: kelasList.length,
+  finalized: kelasList.filter(k => k.isNilaiFinalized).length,
+  draft: kelasList.filter(k => !k.isNilaiFinalized).length,
+});
+
+// ============================================
+// STAT CARD COMPONENT
+// ============================================
+const StatCard = ({ value, label, color }: { value: number; label: string; color?: string }) => (
+  <Card>
+    <CardContent className="pt-6">
+      <div className={`text-2xl font-bold ${color || ''}`}>{value}</div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+    </CardContent>
+  </Card>
+);
+
+// ============================================
+// KELAS ROW COMPONENT
+// ============================================
+const KelasRow = ({
+  kelas,
+  onInputNilai,
+}: {
+  kelas: KelasMKWithNilai;
+  onInputNilai: (id: number) => void;
+}) => (
+  <TableRow>
+    <TableCell>
+      <div>
+        <p className="font-medium">{kelas.mataKuliah?.namaMK || 'N/A'}</p>
+        <p className="text-xs text-muted-foreground">
+          {kelas.mataKuliah?.kodeMK || '-'} • {kelas.mataKuliah?.sks || 0} SKS
+        </p>
+      </div>
+    </TableCell>
+    <TableCell>
+      <div className="text-sm">
+        <p>{kelas.hari}</p>
+        <p className="text-xs text-muted-foreground">
+          {kelas.jamMulai} - {kelas.jamSelesai}
+        </p>
+      </div>
+    </TableCell>
+    <TableCell className="text-sm">{kelas.ruangan?.nama || '-'}</TableCell>
+    <TableCell>
+      <div className="flex items-center gap-1">
+        <Users className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm">{kelas._count?.krsDetail || 0}</span>
+      </div>
+    </TableCell>
+    <TableCell>
+      {kelas.isNilaiFinalized ? (
+        <Badge className="bg-green-100 text-green-700 hover:bg-green-100 text-xs">
+          Finalized
+        </Badge>
+      ) : (
+        <Badge variant="outline" className="text-xs">Draft</Badge>
+      )}
+    </TableCell>
+    <TableCell className="text-right">
+      <Button size="sm" onClick={() => onInputNilai(kelas.id)}>
+        {kelas.isNilaiFinalized ? 'Lihat' : 'Input'}
+      </Button>
+    </TableCell>
+  </TableRow>
+);
+
 export default function InputNilaiPage() {
   const router = useRouter();
-  
-  // ✅ GET LOGGED-IN DOSEN
   const { user, isLoading: isAuthLoading } = useAuth('DOSEN');
 
-  // ============================================
-  // STATE MANAGEMENT
-  // ============================================
   const [kelasList, setKelasList] = useState<KelasMKWithNilai[]>([]);
   const [activeSemester, setActiveSemester] = useState<Semester | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [search, setSearch] = useState('');
 
   // ============================================
-  // FETCH ACTIVE SEMESTER & KELAS
+  // FETCH DATA
   // ============================================
   useEffect(() => {
     const fetchData = async () => {
-      // ✅ WAIT FOR AUTH
-      if (isAuthLoading) {
-        return;
-      }
+      if (isAuthLoading) return;
 
-      // ✅ CHECK IF DOSEN DATA EXISTS
       if (!user?.dosen?.id) {
         setError('Data dosen tidak ditemukan');
         setIsLoading(false);
@@ -71,7 +143,6 @@ export default function InputNilaiPage() {
         setIsLoading(true);
         setError(null);
 
-        // 1. Get active semester
         const semesterResponse = await semesterAPI.getAll();
         if (!semesterResponse.success || !semesterResponse.data) {
           throw new Error('Gagal memuat semester');
@@ -83,10 +154,9 @@ export default function InputNilaiPage() {
         }
         setActiveSemester(active);
 
-        // 2. Get kelas for this dosen in active semester
         const kelasResponse = await kelasMKAPI.getAll({
-          semester_id: active.id,     // ✅ ONLY ACTIVE SEMESTER
-          dosenId: user.dosen.id,    // ✅ ONLY THIS DOSEN
+          semester_id: active.id,
+          dosenId: user.dosen.id,
         });
 
         if (kelasResponse.success && kelasResponse.data) {
@@ -96,11 +166,7 @@ export default function InputNilaiPage() {
         }
       } catch (err: any) {
         console.error('Fetch data error:', err);
-        setError(
-          err.response?.data?.message ||
-          err.message ||
-          'Terjadi kesalahan saat memuat data'
-        );
+        setError(err.response?.data?.message || err.message || 'Terjadi kesalahan');
       } finally {
         setIsLoading(false);
       }
@@ -112,22 +178,37 @@ export default function InputNilaiPage() {
   }, [isAuthLoading, user]);
 
   // ============================================
-  // FILTER KELAS BY SEARCH
+  // MEMOIZED VALUES
   // ============================================
-  const filteredKelas = kelasList.filter((kelas) =>
-    kelas.mataKuliah?.namaMK.toLowerCase().includes(search.toLowerCase())
+  const filteredKelas = useMemo(
+    () => filterKelasBySearch(kelasList, search),
+    [kelasList, search]
   );
+
+  const stats = useMemo(() => calculateStats(kelasList), [kelasList]);
+
+  const semesterInfo = useMemo(() => {
+    if (!activeSemester) return null;
+    return {
+      title: `${activeSemester.tahunAkademik} ${activeSemester.periode}`,
+      dateRange: `${formatDate(activeSemester.tanggalMulai)} - ${formatDate(activeSemester.tanggalSelesai)}`,
+    };
+  }, [activeSemester]);
 
   // ============================================
   // HANDLERS
   // ============================================
-  const handleInputNilai = (id: number) => {
+  const handleInputNilai = useCallback((id: number) => {
     router.push(`/dosen/input-nilai/${id}`);
-  };
+  }, [router]);
 
-  const handleRetry = () => {
+  const handleRetry = useCallback(() => {
     window.location.reload();
-  };
+  }, []);
+
+  const handleSearch = useCallback((value: string) => {
+    setSearch(value);
+  }, []);
 
   // ============================================
   // LOADING STATE
@@ -141,7 +222,7 @@ export default function InputNilaiPage() {
   }
 
   // ============================================
-  // ERROR STATE - NO DOSEN DATA
+  // ERROR STATES
   // ============================================
   if (!user?.dosen?.id) {
     return (
@@ -153,9 +234,6 @@ export default function InputNilaiPage() {
     );
   }
 
-  // ============================================
-  // ERROR STATE - FETCH ERROR
-  // ============================================
   if (error && kelasList.length === 0) {
     return (
       <ErrorState
@@ -173,7 +251,7 @@ export default function InputNilaiPage() {
     <div className="space-y-6">
       <PageHeader
         title="Input Nilai Mahasiswa"
-        description={`Kelola nilai mahasiswa di kelas yang Anda ampu`}
+        description="Kelola nilai mahasiswa di kelas yang Anda ampu"
         breadcrumbs={[
           { label: 'Dashboard', href: '/dosen/dashboard' },
           { label: 'Input Nilai' },
@@ -181,19 +259,17 @@ export default function InputNilaiPage() {
       />
 
       {/* Active Semester Info */}
-      {activeSemester && (
+      {semesterInfo && (
         <Card className="bg-primary/5 border-primary/20">
           <CardContent className="pt-6">
             <div className="flex items-center gap-2">
               <Calendar className="h-5 w-5 text-primary" />
               <div>
                 <p className="font-medium text-primary">
-                  Semester Aktif: {activeSemester.tahunAkademik}{' '}
-                  {activeSemester.periode}
+                  Semester Aktif: {semesterInfo.title}
                 </p>
-                <p className="text-sm text-muted-foreground">
-                  {new Date(activeSemester.tanggalMulai).toLocaleDateString('id-ID')} -{' '}
-                  {new Date(activeSemester.tanggalSelesai).toLocaleDateString('id-ID')}
+                <p className="text-xs text-muted-foreground">
+                  {semesterInfo.dateRange}
                 </p>
               </div>
             </div>
@@ -201,12 +277,12 @@ export default function InputNilaiPage() {
         </Card>
       )}
 
-      {/* Search Filter */}
+      {/* Search */}
       <Card>
         <CardContent className="pt-6">
           <SearchBar
             placeholder="Cari mata kuliah..."
-            onSearch={setSearch}
+            onSearch={handleSearch}
             defaultValue={search}
           />
         </CardContent>
@@ -214,28 +290,9 @@ export default function InputNilaiPage() {
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{kelasList.length}</div>
-            <p className="text-sm text-muted-foreground">Total Kelas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-green-600">
-              {kelasList.filter(k => k.isNilaiFinalized).length}
-            </div>
-            <p className="text-sm text-muted-foreground">Nilai Finalized</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-yellow-600">
-              {kelasList.filter(k => !k.isNilaiFinalized).length}
-            </div>
-            <p className="text-sm text-muted-foreground">Belum Finalized</p>
-          </CardContent>
-        </Card>
+        <StatCard value={stats.total} label="Total Kelas" />
+        <StatCard value={stats.finalized} label="Nilai Finalized" color="text-green-600" />
+        <StatCard value={stats.draft} label="Belum Finalized" color="text-yellow-600" />
       </div>
 
       {/* Kelas List */}
@@ -267,53 +324,11 @@ export default function InputNilaiPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredKelas.map((kelas) => (
-                    <TableRow key={kelas.id}>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">
-                            {kelas.mataKuliah?.namaMK || 'N/A'}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {kelas.mataKuliah?.kodeMK || '-'} •{' '}
-                            {kelas.mataKuliah?.sks || 0} SKS
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <p>{kelas.hari}</p>
-                          <p className="text-muted-foreground">
-                            {kelas.jamMulai} - {kelas.jamSelesai}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>{kelas.ruangan?.nama || '-'}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Users className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm">
-                            {kelas._count?.krsDetail || 0}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {kelas.isNilaiFinalized ? (
-                          <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                            Finalized
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline">Draft</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          onClick={() => handleInputNilai(kelas.id)}
-                        >
-                          {kelas.isNilaiFinalized ? 'Lihat Nilai' : 'Input Nilai'}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
+                    <KelasRow
+                      key={kelas.id}
+                      kelas={kelas}
+                      onInputNilai={handleInputNilai}
+                    />
                   ))}
                 </TableBody>
               </Table>

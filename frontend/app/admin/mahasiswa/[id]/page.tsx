@@ -1,14 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/**
- * Detail Mahasiswa Page
- * ✅ UPDATED: Sesuai schema baru (tempatTanggalLahir, jenisKelamin, alamat)
- * ✅ FIXED: Param KRS & KHS API call menggunakan camelCase (mahasiswaId)
- * ✅ ADDED: Handler download PDF untuk KHS di tab riwayat
- */
-
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Edit, Trash2, User, FileText, Award, ArrowLeft, MapPin, Calendar, Download } from 'lucide-react';
 import Link from 'next/link';
@@ -27,14 +20,172 @@ import { toast } from 'sonner';
 import { mahasiswaAPI, krsAPI, khsAPI } from '@/lib/api';
 import { Mahasiswa, KRS, KHS } from '@/types/model';
 
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+const calculateCurrentSemester = (angkatan: number): number => {
+  const currentYear = new Date().getFullYear();
+  const yearsSinceEnrollment = currentYear - angkatan;
+  return Math.min(yearsSinceEnrollment * 2 + 1, 8);
+};
+
+const getLatestKHS = (khsHistory: KHS[]): KHS | null => {
+  if (khsHistory.length === 0) return null;
+  return khsHistory.reduce((latest, khs) => {
+    return new Date(khs.createdAt) > new Date(latest.createdAt) ? khs : latest;
+  }, khsHistory[0]);
+};
+
+const calculateMahasiswaStats = (mahasiswa: Mahasiswa | null, khsHistory: KHS[]) => {
+  if (!mahasiswa) {
+    return { semester: '-', ipk: '-', totalSKS: '-' };
+  }
+
+  const latestKHS = getLatestKHS(khsHistory);
+  
+  return {
+    semester: calculateCurrentSemester(mahasiswa.angkatan),
+    ipk: latestKHS ? Number(latestKHS.ipk).toFixed(2) : '-',
+    totalSKS: latestKHS ? latestKHS.totalSKSKumulatif : '-',
+  };
+};
+
+const getGenderLabel = (gender: string): string => {
+  return gender === 'L' ? 'Laki-laki' : gender === 'P' ? 'Perempuan' : '-';
+};
+
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+};
+
+// ============================================
+// QUICK STAT CARD COMPONENT
+// ============================================
+const QuickStatCard = ({ 
+  value, 
+  label, 
+  children 
+}: { 
+  value: string | number; 
+  label: string;
+  children?: React.ReactNode;
+}) => (
+  <Card>
+    <CardContent className="pt-6">
+      {children || <div className="text-2xl font-bold">{value}</div>}
+      <p className="text-xs text-muted-foreground mt-2">{label}</p>
+    </CardContent>
+  </Card>
+);
+
+// ============================================
+// INFO ROW COMPONENT
+// ============================================
+const InfoRow = ({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon?: any;
+  label: string;
+  value: React.ReactNode;
+}) => (
+  <div>
+    <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+      {Icon && <Icon className="h-4 w-4" />}
+      {label}
+    </dt>
+    <dd className="mt-1 text-sm">{value}</dd>
+  </div>
+);
+
+// ============================================
+// KRS HISTORY ITEM COMPONENT
+// ============================================
+const KRSHistoryItem = ({ krs }: { krs: KRS }) => (
+  <div className="flex items-center justify-between border-b pb-4 last:border-0">
+    <div>
+      <p className="font-medium">
+        {krs.semester?.tahunAkademik || '-'} {krs.semester?.periode || '-'}
+      </p>
+      <p className="text-sm text-muted-foreground">
+        {krs.totalSKS} SKS • {krs._count?.detail || 0} Mata Kuliah
+      </p>
+      {krs.tanggalSubmit && (
+        <p className="text-xs text-muted-foreground mt-1">
+          Submit: {formatDate(krs.tanggalSubmit)}
+        </p>
+      )}
+    </div>
+    <div className="flex items-center gap-2">
+      <StatusBadge status={krs.status} />
+      <Link href={`/admin/krs/${krs.id}`}>
+        <Button variant="ghost" size="sm">
+          Detail
+        </Button>
+      </Link>
+    </div>
+  </div>
+);
+
+// ============================================
+// KHS HISTORY ITEM COMPONENT
+// ============================================
+const KHSHistoryItem = ({
+  khs,
+  onDownload,
+  isDownloading,
+}: {
+  khs: KHS;
+  onDownload: (id: number) => void;
+  isDownloading: boolean;
+}) => (
+  <div className="flex items-center justify-between border-b pb-4 last:border-0">
+    <div>
+      <p className="font-medium">
+        {khs.semester?.tahunAkademik || '-'} {khs.semester?.periode || '-'}
+      </p>
+      <p className="text-sm text-muted-foreground">
+        IPS: {Number(khs.ips).toFixed(2)} • IPK: {Number(khs.ipk).toFixed(2)} • {khs.totalSKSSemester} SKS
+      </p>
+      <p className="text-xs text-muted-foreground mt-1">
+        Total SKS Kumulatif: {khs.totalSKSKumulatif}
+      </p>
+    </div>
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => onDownload(khs.id)}
+      disabled={isDownloading}
+    >
+      <Download className="mr-2 h-4 w-4" />
+      {isDownloading ? 'Downloading...' : 'Download PDF'}
+    </Button>
+  </div>
+);
+
+// ============================================
+// EMPTY STATE COMPONENT
+// ============================================
+const EmptyHistoryState = ({ message }: { message: string }) => (
+  <p className="text-sm text-muted-foreground text-center py-8">{message}</p>
+);
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 export default function DetailMahasiswaPage() {
   const router = useRouter();
   const params = useParams();
   const mahasiswaId = parseInt(params.id as string);
 
-  // ============================================
-  // STATE MANAGEMENT
-  // ============================================
   const [mahasiswa, setMahasiswa] = useState<Mahasiswa | null>(null);
   const [krsHistory, setKrsHistory] = useState<KRS[]>([]);
   const [khsHistory, setKhsHistory] = useState<KHS[]>([]);
@@ -52,7 +203,6 @@ export default function DetailMahasiswaPage() {
         setIsLoading(true);
         setError(null);
 
-        // Fetch mahasiswa detail
         const mhsResponse = await mahasiswaAPI.getById(mahasiswaId);
 
         if (!mhsResponse.success) {
@@ -62,7 +212,6 @@ export default function DetailMahasiswaPage() {
 
         setMahasiswa(mhsResponse.data || null);
 
-        // Fetch KRS history - ✅ FIXED: camelCase mahasiswaId
         try {
           const krsResponse = await krsAPI.getAll({ mahasiswaId: mahasiswaId });
           if (krsResponse.success) {
@@ -72,7 +221,6 @@ export default function DetailMahasiswaPage() {
           console.warn('Failed to fetch KRS history:', err);
         }
 
-        // Fetch KHS history - ✅ FIXED: camelCase mahasiswaId
         try {
           const khsResponse = await khsAPI.getAll({ mahasiswaId: mahasiswaId });
           if (khsResponse.success) {
@@ -83,11 +231,7 @@ export default function DetailMahasiswaPage() {
         }
       } catch (err: any) {
         console.error('Fetch mahasiswa error:', err);
-        setError(
-          err.response?.data?.message ||
-          err.message ||
-          'Terjadi kesalahan saat memuat data mahasiswa'
-        );
+        setError(err.response?.data?.message || err.message || 'Terjadi kesalahan');
       } finally {
         setIsLoading(false);
       }
@@ -99,9 +243,27 @@ export default function DetailMahasiswaPage() {
   }, [mahasiswaId]);
 
   // ============================================
+  // MEMOIZED VALUES
+  // ============================================
+  const stats = useMemo(
+    () => calculateMahasiswaStats(mahasiswa, khsHistory),
+    [mahasiswa, khsHistory]
+  );
+
+  const sortedKRSHistory = useMemo(
+    () => [...krsHistory].sort((a, b) => b.id - a.id),
+    [krsHistory]
+  );
+
+  const sortedKHSHistory = useMemo(
+    () => [...khsHistory].sort((a, b) => b.id - a.id),
+    [khsHistory]
+  );
+
+  // ============================================
   // HANDLERS
   // ============================================
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!mahasiswa) return;
 
     if (!confirm(`Apakah Anda yakin ingin menghapus mahasiswa ${mahasiswa.namaLengkap}?`)) {
@@ -119,28 +281,17 @@ export default function DetailMahasiswaPage() {
       }
     } catch (err: any) {
       console.error('Delete error:', err);
-      toast.error(
-        err.response?.data?.message ||
-        err.message ||
-        'Terjadi kesalahan saat menghapus mahasiswa'
-      );
+      toast.error(err.response?.data?.message || 'Terjadi kesalahan');
     }
-  };
+  }, [mahasiswa, router]);
 
-  // ✅ ADDED: Handler download PDF KHS per item
-  const handleDownloadKHS = async (khsId: number) => {
+  const handleDownloadKHS = useCallback(async (khsId: number) => {
     try {
       setIsDownloadingKHS(khsId);
       const blob = await khsAPI.downloadPDF(khsId);
 
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `KHS_${mahasiswa?.nim}_Semester_${khsId}.pdf`; // Bisa improve dengan semester info
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const filename = `KHS_${mahasiswa?.nim}_${khsId}.pdf`;
+      downloadBlob(blob, filename);
 
       toast.success('KHS berhasil didownload');
     } catch (err: any) {
@@ -149,45 +300,18 @@ export default function DetailMahasiswaPage() {
     } finally {
       setIsDownloadingKHS(null);
     }
-  };
+  }, [mahasiswa]);
 
-  const handleRetry = () => {
+  const handleRetry = useCallback(() => {
     window.location.reload();
-  };
+  }, []);
+
+  const handleBack = useCallback(() => {
+    router.back();
+  }, [router]);
 
   // ============================================
-  // CALCULATE STATS
-  // ============================================
-  const calculateStats = () => {
-    if (!mahasiswa || khsHistory.length === 0) {
-      return {
-        semester: '-',
-        ipk: '-',
-        totalSKS: '-',
-      };
-    }
-
-    // Get latest KHS for IPK and total SKS
-    const latestKHS = khsHistory.reduce((latest, khs) => {
-      return new Date(khs.createdAt) > new Date(latest.createdAt) ? khs : latest;
-    }, khsHistory[0]);
-
-    // Calculate current semester based on angkatan
-    const currentYear = new Date().getFullYear();
-    const yearsSinceEnrollment = currentYear - mahasiswa.angkatan;
-    const currentSemester = Math.min(yearsSinceEnrollment * 2 + 1, 8);
-
-    return {
-      semester: currentSemester,
-      ipk: Number(latestKHS.ipk).toFixed(2),
-      totalSKS: latestKHS.totalSKSKumulatif,
-    };
-  };
-
-  const stats = calculateStats();
-
-  // ============================================
-  // LOADING STATE
+  // LOADING & ERROR
   // ============================================
   if (isLoading) {
     return (
@@ -197,9 +321,6 @@ export default function DetailMahasiswaPage() {
     );
   }
 
-  // ============================================
-  // ERROR STATE
-  // ============================================
   if (error || !mahasiswa) {
     return (
       <ErrorState
@@ -226,7 +347,7 @@ export default function DetailMahasiswaPage() {
           ]}
         />
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => router.back()}>
+          <Button variant="outline" onClick={handleBack}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Kembali
           </Button>
@@ -245,30 +366,12 @@ export default function DetailMahasiswaPage() {
 
       {/* Quick Stats */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{stats.semester}</div>
-            <p className="text-xs text-muted-foreground">Semester</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{stats.ipk}</div>
-            <p className="text-xs text-muted-foreground">IPK</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{stats.totalSKS}</div>
-            <p className="text-xs text-muted-foreground">Total SKS</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <StatusBadge status={mahasiswa.status} />
-            <p className="text-xs text-muted-foreground mt-2">Status</p>
-          </CardContent>
-        </Card>
+        <QuickStatCard value={stats.semester} label="Semester" />
+        <QuickStatCard value={stats.ipk} label="IPK" />
+        <QuickStatCard value={stats.totalSKS} label="Total SKS" />
+        <QuickStatCard label="Status" value={mahasiswa.status}>
+          <StatusBadge status={mahasiswa.status} />
+        </QuickStatCard>
       </div>
 
       {/* Tabs */}
@@ -298,50 +401,29 @@ export default function DetailMahasiswaPage() {
               </CardHeader>
               <CardContent>
                 <dl className="grid grid-cols-1 gap-4">
-                  <div>
-                    <dt className="text-sm font-medium text-muted-foreground">NIM</dt>
-                    <dd className="mt-1 text-sm font-mono">{mahasiswa.nim}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm font-medium text-muted-foreground">Nama Lengkap</dt>
-                    <dd className="mt-1 text-sm font-semibold">{mahasiswa.namaLengkap}</dd>
-                  </div>
-                  
-                  <div>
-                    <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      Tempat/Tanggal Lahir
-                    </dt>
-                    <dd className="mt-1 text-sm">
-                      {mahasiswa.tempatTanggalLahir || '-'}
-                    </dd>
-                  </div>
-
-                  <div>
-                    <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      Jenis Kelamin
-                    </dt>
-                    <dd className="mt-1">
-                      {mahasiswa.jenisKelamin ? (
-                        <Badge variant="outline">
-                          {mahasiswa.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan'}
-                        </Badge>
+                  <InfoRow label="NIM" value={<span className="font-mono">{mahasiswa.nim}</span>} />
+                  <InfoRow label="Nama Lengkap" value={<span className="font-semibold">{mahasiswa.namaLengkap}</span>} />
+                  <InfoRow
+                    icon={Calendar}
+                    label="Tempat/Tanggal Lahir"
+                    value={mahasiswa.tempatTanggalLahir || '-'}
+                  />
+                  <InfoRow
+                    icon={User}
+                    label="Jenis Kelamin"
+                    value={
+                      mahasiswa.jenisKelamin ? (
+                        <Badge variant="outline">{getGenderLabel(mahasiswa.jenisKelamin)}</Badge>
                       ) : (
-                        <span className="text-sm text-muted-foreground">-</span>
-                      )}
-                    </dd>
-                  </div>
-
-                  <div>
-                    <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                      <MapPin className="h-4 w-4" />
-                      Alamat
-                    </dt>
-                    <dd className="mt-1 text-sm">
-                      {mahasiswa.alamat || '-'}
-                    </dd>
-                  </div>
+                        <span className="text-muted-foreground">-</span>
+                      )
+                    }
+                  />
+                  <InfoRow
+                    icon={MapPin}
+                    label="Alamat"
+                    value={mahasiswa.alamat || '-'}
+                  />
                 </dl>
               </CardContent>
             </Card>
@@ -353,42 +435,36 @@ export default function DetailMahasiswaPage() {
               </CardHeader>
               <CardContent>
                 <dl className="grid grid-cols-1 gap-4">
-                  <div>
-                    <dt className="text-sm font-medium text-muted-foreground">Program Studi</dt>
-                    <dd className="mt-1">
-                      {mahasiswa.prodi ? (
+                  <InfoRow
+                    label="Program Studi"
+                    value={
+                      mahasiswa.prodi ? (
                         <Badge>{mahasiswa.prodi.kode} - {mahasiswa.prodi.nama}</Badge>
                       ) : (
-                        <span className="text-sm">-</span>
-                      )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm font-medium text-muted-foreground">Angkatan</dt>
-                    <dd className="mt-1">
-                      <Badge variant="secondary">{mahasiswa.angkatan}</Badge>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm font-medium text-muted-foreground">Status</dt>
-                    <dd className="mt-1">
-                      <StatusBadge status={mahasiswa.status} />
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm font-medium text-muted-foreground">Dosen Wali</dt>
-                    <dd className="mt-1 text-sm">
-                      {mahasiswa.dosenWali?.namaLengkap || '-'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm font-medium text-muted-foreground">Terdaftar Sejak</dt>
-                    <dd className="mt-1 text-sm">{formatDate(mahasiswa.createdAt)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm font-medium text-muted-foreground">Terakhir Diupdate</dt>
-                    <dd className="mt-1 text-sm">{formatDate(mahasiswa.updatedAt)}</dd>
-                  </div>
+                        '-'
+                      )
+                    }
+                  />
+                  <InfoRow
+                    label="Angkatan"
+                    value={<Badge variant="secondary">{mahasiswa.angkatan}</Badge>}
+                  />
+                  <InfoRow
+                    label="Status"
+                    value={<StatusBadge status={mahasiswa.status} />}
+                  />
+                  <InfoRow
+                    label="Dosen Wali"
+                    value={mahasiswa.dosenWali?.namaLengkap || '-'}
+                  />
+                  <InfoRow
+                    label="Terdaftar Sejak"
+                    value={formatDate(mahasiswa.createdAt)}
+                  />
+                  <InfoRow
+                    label="Terakhir Diupdate"
+                    value={formatDate(mahasiswa.updatedAt)}
+                  />
                 </dl>
               </CardContent>
             </Card>
@@ -402,42 +478,13 @@ export default function DetailMahasiswaPage() {
               <CardTitle>Riwayat KRS</CardTitle>
             </CardHeader>
             <CardContent>
-              {krsHistory.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  Belum ada riwayat KRS
-                </p>
+              {sortedKRSHistory.length === 0 ? (
+                <EmptyHistoryState message="Belum ada riwayat KRS" />
               ) : (
                 <div className="space-y-4">
-                  {krsHistory
-                    .sort((a, b) => b.id - a.id)
-                    .map((krs) => (
-                      <div
-                        key={krs.id}
-                        className="flex items-center justify-between border-b pb-4 last:border-0"
-                      >
-                        <div>
-                          <p className="font-medium">
-                            {krs.semester?.tahunAkademik || '-'} {krs.semester?.periode || '-'}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {krs.totalSKS} SKS • {krs._count?.detail || 0} Mata Kuliah
-                          </p>
-                          {krs.tanggalSubmit && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Submit: {formatDate(krs.tanggalSubmit)}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <StatusBadge status={krs.status} />
-                          <Link href={`/admin/krs/${krs.id}`}>
-                            <Button variant="ghost" size="sm">
-                              Detail
-                            </Button>
-                          </Link>
-                        </div>
-                      </div>
-                    ))}
+                  {sortedKRSHistory.map((krs) => (
+                    <KRSHistoryItem key={krs.id} krs={krs} />
+                  ))}
                 </div>
               )}
             </CardContent>
@@ -451,41 +498,18 @@ export default function DetailMahasiswaPage() {
               <CardTitle>Riwayat KHS</CardTitle>
             </CardHeader>
             <CardContent>
-              {khsHistory.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  Belum ada riwayat KHS
-                </p>
+              {sortedKHSHistory.length === 0 ? (
+                <EmptyHistoryState message="Belum ada riwayat KHS" />
               ) : (
                 <div className="space-y-4">
-                  {khsHistory
-                    .sort((a, b) => b.id - a.id)
-                    .map((khs) => (
-                      <div
-                        key={khs.id}
-                        className="flex items-center justify-between border-b pb-4 last:border-0"
-                      >
-                        <div>
-                          <p className="font-medium">
-                            {khs.semester?.tahunAkademik || '-'} {khs.semester?.periode || '-'}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            IPS: {Number(khs.ips).toFixed(2)} • IPK: {Number(khs.ipk).toFixed(2)} • {khs.totalSKSSemester} SKS
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Total SKS Kumulatif: {khs.totalSKSKumulatif}
-                          </p>
-                        </div>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => handleDownloadKHS(khs.id)}
-                          disabled={isDownloadingKHS === khs.id}
-                        >
-                          <Download className="mr-2 h-4 w-4" />
-                          {isDownloadingKHS === khs.id ? 'Downloading...' : 'Download PDF'}
-                        </Button>
-                      </div>
-                    ))}
+                  {sortedKHSHistory.map((khs) => (
+                    <KHSHistoryItem
+                      key={khs.id}
+                      khs={khs}
+                      onDownload={handleDownloadKHS}
+                      isDownloading={isDownloadingKHS === khs.id}
+                    />
+                  ))}
                 </div>
               )}
             </CardContent>

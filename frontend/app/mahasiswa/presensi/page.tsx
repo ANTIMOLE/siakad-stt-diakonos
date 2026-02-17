@@ -1,16 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Calendar, Users, CheckCircle, Filter, TrendingUp } from 'lucide-react';
-import { toast } from 'sonner';
+import { Calendar, Users, CheckCircle, Filter, TrendingUp, ExternalLink } from 'lucide-react';
 
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import ErrorState from '@/components/shared/ErrorState';
 import EmptyState from '@/components/shared/EmptyState';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,10 +19,47 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
 
 import { presensiAPI, semesterAPI } from '@/lib/api';
-import { KelasMK, Semester } from '@/types/model';
+import { Semester } from '@/types/model';
+
+// ✅ Helper functions di luar component
+const getStatusConfig = (persentase: number) => {
+  if (persentase >= 80) {
+    return {
+      color: 'text-green-600',
+      bgColor: 'bg-green-50',
+      icon: '✅',
+      label: 'Baik',
+      variant: 'default' as const,
+    };
+  }
+  if (persentase >= 60) {
+    return {
+      color: 'text-yellow-600',
+      bgColor: 'bg-yellow-50',
+      icon: '⚠️',
+      label: 'Cukup',
+      variant: 'secondary' as const,
+    };
+  }
+  return {
+    color: 'text-red-600',
+    bgColor: 'bg-red-50',
+    icon: '❌',
+    label: 'Kurang',
+    variant: 'destructive' as const,
+  };
+};
 
 export default function MahasiswaPresensiDashboard() {
   const router = useRouter();
@@ -46,12 +82,10 @@ export default function MahasiswaPresensiDashboard() {
           const semesters = response.data || [];
           setSemesterList(semesters);
 
-          // ✅ Auto-select active semester
           const activeSemester = semesters.find((s) => s.isActive);
           if (activeSemester) {
             setSelectedSemesterId(activeSemester.id);
           } else if (semesters.length > 0) {
-            // Fallback to most recent
             setSelectedSemesterId(semesters[0].id);
           }
         }
@@ -74,7 +108,6 @@ export default function MahasiswaPresensiDashboard() {
         setIsLoading(true);
         setError(null);
 
-        // ✅ Call mahasiswa-specific endpoint
         const response = await presensiAPI.getMahasiswaClasses({
           semesterId: selectedSemesterId,
         });
@@ -96,33 +129,48 @@ export default function MahasiswaPresensiDashboard() {
   }, [selectedSemesterId]);
 
   // ============================================
-  // HANDLERS
+  // MEMOIZED COMPUTED VALUES
   // ============================================
-  const handleOpenKelas = (kelasMKId: number) => {
-    router.push(`/mahasiswa/presensi/${kelasMKId}`);
-  };
-
-  const handleSemesterChange = (value: string) => {
-    setSelectedSemesterId(parseInt(value));
-  };
-
-  // ============================================
-  // CALCULATE OVERALL STATS
-  // ============================================
-  const overallStats = kelasList.reduce(
-    (acc, kelas) => {
-      const stats = kelas.presensiStats || { totalPertemuan: 0, hadir: 0 };
-      acc.totalPertemuan += stats.totalPertemuan;
-      acc.hadir += stats.hadir;
-      return acc;
-    },
-    { totalPertemuan: 0, hadir: 0 }
+  const selectedSemester = useMemo(
+    () => semesterList.find((s) => s.id === selectedSemesterId),
+    [semesterList, selectedSemesterId]
   );
 
-  const overallPersentase =
-    overallStats.totalPertemuan > 0
+  const overallStats = useMemo(() => {
+    return kelasList.reduce(
+      (acc, kelas) => {
+        const stats = kelas.presensiStats || { totalPertemuan: 0, hadir: 0 };
+        acc.totalPertemuan += stats.totalPertemuan;
+        acc.hadir += stats.hadir;
+        return acc;
+      },
+      { totalPertemuan: 0, hadir: 0 }
+    );
+  }, [kelasList]);
+
+  const overallPersentase = useMemo(() => {
+    return overallStats.totalPertemuan > 0
       ? (overallStats.hadir / overallStats.totalPertemuan) * 100
       : 0;
+  }, [overallStats]);
+
+  // ============================================
+  // MEMOIZED HANDLERS
+  // ============================================
+  const handleOpenKelas = useCallback(
+    (kelasMKId: number) => {
+      router.push(`/mahasiswa/presensi/${kelasMKId}`);
+    },
+    [router]
+  );
+
+  const handleSemesterChange = useCallback((value: string) => {
+    setSelectedSemesterId(parseInt(value));
+  }, []);
+
+  const handleRetry = useCallback(() => {
+    window.location.reload();
+  }, []);
 
   // ============================================
   // LOADING STATE
@@ -143,7 +191,7 @@ export default function MahasiswaPresensiDashboard() {
       <ErrorState
         title="Gagal Memuat Data"
         message={error}
-        onRetry={() => window.location.reload()}
+        onRetry={handleRetry}
       />
     );
   }
@@ -151,8 +199,6 @@ export default function MahasiswaPresensiDashboard() {
   // ============================================
   // RENDER
   // ============================================
-  const selectedSemester = semesterList.find((s) => s.id === selectedSemesterId);
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -195,7 +241,7 @@ export default function MahasiswaPresensiDashboard() {
         }
       />
 
-      {/* Semester Info + Overall Stats */}
+      {/* Stats Cards - Keep this for overview */}
       {selectedSemester && (
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="bg-muted/50">
@@ -243,105 +289,140 @@ export default function MahasiswaPresensiDashboard() {
 
       {/* EMPTY STATE */}
       {kelasList.length === 0 ? (
-        <EmptyState
-          title="Tidak Ada Kelas"
-          description={`Anda belum mengambil kelas di semester ${selectedSemester?.tahunAkademik} ${selectedSemester?.periode}`}
-        />
+        <Card>
+          <CardContent className="py-12">
+            <EmptyState
+              title="Tidak Ada Kelas"
+              description={`Anda belum mengambil kelas di semester ${selectedSemester?.tahunAkademik} ${selectedSemester?.periode}`}
+              className="border-0"
+            />
+          </CardContent>
+        </Card>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {kelasList.map((kelas: any) => {
-            const stats = kelas.presensiStats || {
-              totalPertemuan: 0,
-              hadir: 0,
-              persentase: 0,
-            };
+        /* ✅ TABLE VIEW - Lebih optimal daripada cards */
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">No</TableHead>
+                    <TableHead>Mata Kuliah</TableHead>
+                    <TableHead className="text-center">SKS</TableHead>
+                    <TableHead>Dosen</TableHead>
+                    <TableHead>Jadwal</TableHead>
+                    <TableHead className="text-center w-48">Kehadiran</TableHead>
+                    <TableHead className="text-center">Status</TableHead>
+                    <TableHead className="text-center w-32">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {kelasList.map((kelas: any, index: number) => {
+                    const stats = kelas.presensiStats || {
+                      totalPertemuan: 0,
+                      hadir: 0,
+                      persentase: 0,
+                    };
 
-            const statusColor =
-              stats.persentase >= 80
-                ? 'text-green-600 bg-green-50 border-green-200'
-                : stats.persentase >= 60
-                ? 'text-yellow-600 bg-yellow-50 border-yellow-200'
-                : 'text-red-600 bg-red-50 border-red-200';
+                    const statusConfig = getStatusConfig(stats.persentase);
 
-            const statusIcon =
-              stats.persentase >= 80 ? '✅' : stats.persentase >= 60 ? '⚠️' : '❌';
+                    return (
+                      <TableRow
+                        key={kelas.id}
+                        className="hover:bg-muted/50 cursor-pointer"
+                        onClick={() => handleOpenKelas(kelas.id)}
+                      >
+                        <TableCell className="text-center font-medium">
+                          {index + 1}
+                        </TableCell>
 
-            return (
-              <Card
-                key={kelas.id}
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => handleOpenKelas(kelas.id)}
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="text-lg line-clamp-2">
-                        {kelas.mataKuliah?.namaMK}
-                      </CardTitle>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {kelas.mataKuliah?.kodeMK} • {kelas.mataKuliah?.sks} SKS
-                      </p>
-                    </div>
-                    <Badge variant="outline" className="shrink-0 ml-2">
-                      {kelas.semester?.periode}
-                    </Badge>
-                  </div>
-                </CardHeader>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{kelas.mataKuliah?.namaMK}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {kelas.mataKuliah?.kodeMK}
+                            </p>
+                          </div>
+                        </TableCell>
 
-                <CardContent className="space-y-4">
-                  {/* Class Info */}
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Calendar className="h-4 w-4" />
-                      <span>
-                        {kelas.hari}, {kelas.jamMulai} - {kelas.jamSelesai}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Users className="h-4 w-4" />
-                      <span>{kelas.dosen?.namaLengkap}</span>
-                    </div>
-                    {kelas.ruangan && (
-                      <div className="text-muted-foreground">📍 {kelas.ruangan.nama}</div>
-                    )}
-                  </div>
+                        <TableCell className="text-center">
+                          <Badge variant="outline">
+                            {kelas.mataKuliah?.sks} SKS
+                          </Badge>
+                        </TableCell>
 
-                  {/* Attendance Stats */}
-                  <div className={`p-4 rounded-lg border ${statusColor}`}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Kehadiran</span>
-                      <span className="text-2xl">{statusIcon}</span>
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-bold">
-                        {stats.persentase.toFixed(1)}%
-                      </span>
-                      <span className="text-sm opacity-75">
-                        {stats.hadir}/{stats.totalPertemuan} hadir
-                      </span>
-                    </div>
-                    <Progress
-                      value={stats.persentase}
-                      className={`mt-3 ${
-                        stats.persentase >= 80
-                          ? '[&>div]:bg-green-500'
-                          : stats.persentase >= 60
-                          ? '[&>div]:bg-yellow-500'
-                          : '[&>div]:bg-red-500'
-                      }`}
-                    />
-                  </div>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Users className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-sm">
+                              {kelas.dosen?.namaLengkap}
+                            </span>
+                          </div>
+                        </TableCell>
 
-                  {/* Action */}
-                  <Button className="w-full gap-2" variant="outline">
-                    <Calendar className="h-4 w-4" />
-                    Lihat Detail Presensi
-                  </Button>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                        <TableCell>
+                          <div className="flex items-center gap-2 text-sm">
+                            <Calendar className="h-3 w-3 text-muted-foreground" />
+                            <div>
+                              <p>{kelas.hari}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {kelas.jamMulai} - {kelas.jamSelesai}
+                              </p>
+                            </div>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="font-medium">
+                                {stats.persentase.toFixed(1)}%
+                              </span>
+                              <span className="text-muted-foreground text-xs">
+                                {stats.hadir}/{stats.totalPertemuan}
+                              </span>
+                            </div>
+                            <Progress
+                              value={stats.persentase}
+                              className={`h-2 ${
+                                stats.persentase >= 80
+                                  ? '[&>div]:bg-green-500'
+                                  : stats.persentase >= 60
+                                  ? '[&>div]:bg-yellow-500'
+                                  : '[&>div]:bg-red-500'
+                              }`}
+                            />
+                          </div>
+                        </TableCell>
+
+                        <TableCell className="text-center">
+                          <Badge variant={statusConfig.variant}>
+                            {statusConfig.icon} {statusConfig.label}
+                          </Badge>
+                        </TableCell>
+
+                        <TableCell className="text-center">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="gap-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenKelas(kelas.id);
+                            }}
+                          >
+                            Detail
+                            <ExternalLink className="h-3 w-3" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

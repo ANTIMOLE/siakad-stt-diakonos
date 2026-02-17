@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
@@ -30,7 +30,7 @@ import { Award, Download, FileText, TrendingUp, TrendingDown, Info } from 'lucid
 import { toast } from 'sonner';
 
 import { khsAPI, semesterAPI } from '@/lib/api';
-import { useAuth } from '@/hooks/useAuth'; // Adjust path sesuai lokasi hook
+import { useAuth } from '@/hooks/useAuth';
 import { KHS, Semester, Nilai } from '@/types/model';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -38,6 +38,26 @@ interface KHSWithDetails extends KHS {
   nilai?: Nilai[];
   predikat?: string;
 }
+
+// ✅ Cache interface
+interface KHSCache {
+  [semesterId: string]: {
+    khs: KHSWithDetails;
+    nilai: Nilai[];
+    timestamp: number;
+  };
+}
+
+// ✅ Konstanta
+const GRADE_COLORS = {
+  excellent: 'text-green-600',
+  good: 'text-blue-600',
+  fair: 'text-yellow-600',
+  poor: 'text-red-600',
+  default: 'text-gray-600',
+} as const;
+
+const CACHE_DURATION = 5 * 60 * 1000; // 5 menit
 
 export default function KHSPage() {
   // ============================================
@@ -48,6 +68,7 @@ export default function KHSPage() {
   // ============================================
   // STATE MANAGEMENT
   // ============================================
+  const [khsCache, setKhsCache] = useState<KHSCache>({});
   const [khsList, setKhsList] = useState<KHS[]>([]);
   const [semesterList, setSemesterList] = useState<Semester[]>([]);
   const [selectedSemesterId, setSelectedSemesterId] = useState<string>('');
@@ -60,7 +81,7 @@ export default function KHSPage() {
   const [isDownloading, setIsDownloading] = useState(false);
 
   // ============================================
-  // FETCH DATA
+  // FETCH DATA SEMESTER & KHS LIST
   // ============================================
   useEffect(() => {
     if (authLoading || !user?.mahasiswa?.id) {
@@ -75,7 +96,6 @@ export default function KHSPage() {
         setIsLoading(true);
         setError(null);
 
-        // 1. Fetch all semesters
         const semesterResponse = await semesterAPI.getAll();
         if (semesterResponse.success && semesterResponse.data) {
           const sorted = semesterResponse.data.sort((a, b) => {
@@ -87,16 +107,14 @@ export default function KHSPage() {
           throw new Error('Gagal memuat data semester');
         }
 
-        // 2. Fetch KHS history untuk mahasiswa ini
         const khsResponse = await khsAPI.getAll({ mahasiswaId: mahasiswaId });
 
         if (khsResponse.success && khsResponse.data) {
           const khsData = khsResponse.data;
           setKhsList(khsData);
 
-          // Auto-select semester terbaru yang punya KHS
           if (khsData.length > 0) {
-            const latestKHS = khsData[0]; // backend sudah order desc
+            const latestKHS = khsData[0];
             setSelectedSemesterId(latestKHS.semesterId.toString());
           }
         } else {
@@ -119,7 +137,7 @@ export default function KHSPage() {
   }, [authLoading, user]);
 
   // ============================================
-  // FETCH DETAIL KHS + NILAI + PREDIKAT KETIKA SEMESTER DIPILIH
+  // FETCH DETAIL KHS DENGAN CACHE
   // ============================================
   useEffect(() => {
     const fetchDetail = async () => {
@@ -129,10 +147,19 @@ export default function KHSPage() {
         return;
       }
 
+      // ✅ Check cache dengan timestamp validation
+      const cached = khsCache[selectedSemesterId];
+      const now = Date.now();
+      
+      if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+        setSelectedKHS(cached.khs);
+        setNilaiList(cached.nilai);
+        return; // Use cached data
+      }
+
       try {
         setIsLoadingNilai(true);
 
-        // Cari KHS berdasarkan semesterId
         const khs = khsList.find(k => k.semesterId === Number(selectedSemesterId));
         
         if (!khs) {
@@ -141,13 +168,24 @@ export default function KHSPage() {
           return;
         }
 
-        // Fetch detail lengkap (termasuk nilai & predikat)
         const detailResponse = await khsAPI.getById(khs.id);
         
         if (detailResponse.success && detailResponse.data) {
           const data = detailResponse.data as KHSWithDetails;
+          const nilai = data.nilai || [];
+          
           setSelectedKHS(data);
-          setNilaiList(data.nilai || []);
+          setNilaiList(nilai);
+          
+          // ✅ Save to cache with timestamp
+          setKhsCache(prev => ({
+            ...prev,
+            [selectedSemesterId]: {
+              khs: data,
+              nilai: nilai,
+              timestamp: now,
+            },
+          }));
         } else {
           setSelectedKHS(null);
           setNilaiList([]);
@@ -163,12 +201,49 @@ export default function KHSPage() {
     };
 
     fetchDetail();
-  }, [selectedSemesterId, khsList]);
+  }, [selectedSemesterId, khsList]); // Tidak include khsCache di deps
 
   // ============================================
-  // HANDLERS
+  // MEMOIZED COMPUTED VALUES
   // ============================================
-  const handleDownloadPDF = async () => {
+  const previousKHS = useMemo(() => {
+    if (!selectedKHS || khsList.length <= 1) return null;
+    if (khsList[0].id !== selectedKHS.id) return null;
+    return khsList[1];
+  }, [selectedKHS, khsList]);
+
+  const ipsTrend = useMemo(() => {
+    if (!selectedKHS || !previousKHS) return null;
+    return Number(selectedKHS.ips) - Number(previousKHS.ips);
+  }, [selectedKHS, previousKHS]);
+
+  const getNilaiGrade = useCallback((bobot: number | null): string => {
+    if (bobot === null) return GRADE_COLORS.default;
+    if (bobot >= 3.5) return GRADE_COLORS.excellent;
+    if (bobot >= 3.0) return GRADE_COLORS.good;
+    if (bobot >= 2.5) return GRADE_COLORS.fair;
+    return GRADE_COLORS.poor;
+  }, []);
+
+  const semesterOptions = useMemo(() => {
+    return semesterList.map((sem) => {
+      const hasKHS = khsList.some(k => k.semesterId === sem.id);
+      return {
+        semester: sem,
+        hasKHS,
+      };
+    });
+  }, [semesterList, khsList]);
+
+  const sisaSKS = useMemo(() => {
+    if (!selectedKHS) return 0;
+    return 144 - selectedKHS.totalSKSKumulatif;
+  }, [selectedKHS]);
+
+  // ============================================
+  // MEMOIZED HANDLERS
+  // ============================================
+  const handleDownloadPDF = useCallback(async () => {
     if (!selectedKHS) return;
 
     try {
@@ -193,31 +268,19 @@ export default function KHSPage() {
     } finally {
       setIsDownloading(false);
     }
-  };
+  }, [selectedKHS, user?.mahasiswa?.nim]);
 
-  const handleRetry = () => {
+  const handleRetry = useCallback(() => {
     window.location.reload();
-  };
+  }, []);
 
-  // ============================================
-  // COMPUTED VALUES
-  // ============================================
-  // khsList sudah di-order desc oleh backend (terbaru dulu)
-  const previousKHS = selectedKHS && khsList.length > 1 && khsList[0].id === selectedKHS.id
-    ? khsList[1]
-    : null;
+  const handleSemesterChange = useCallback((value: string) => {
+    setSelectedSemesterId(value);
+  }, []);
 
-  const ipsTrend = selectedKHS && previousKHS
-    ? Number(selectedKHS.ips) - Number(previousKHS.ips)
-    : null;
-
-  const getNilaiGrade = (bobot: number | null) => {
-    if (bobot === null) return 'text-gray-600';
-    if (bobot >= 3.5) return 'text-green-600';
-    if (bobot >= 3.0) return 'text-blue-600';
-    if (bobot >= 2.5) return 'text-yellow-600';
-    return 'text-red-600';
-  };
+  const handleLoginRedirect = useCallback(() => {
+    window.location.href = '/login';
+  }, []);
 
   // ============================================
   // RENDER
@@ -235,7 +298,7 @@ export default function KHSPage() {
       <ErrorState
         title="Akses Ditolak"
         message="Anda belum login atau session telah berakhir. Silakan login kembali."
-        onRetry={() => (window.location.href = '/login')}
+        onRetry={handleLoginRedirect}
       />
     );
   }
@@ -262,40 +325,39 @@ export default function KHSPage() {
     <div className="space-y-6">
       {/* Page Header */}
       <PageHeader
-  title="Kartu Hasil Studi (KHS)"
-  description="Lihat hasil studi Anda per semester"
-  actions={
-    selectedKHS && (
-      <TooltipProvider delayDuration={300}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            {/* Wrapper span memastikan tooltip muncul meski button disabled */}
-            <div className="inline-block">
-              <Button 
-                onClick={handleDownloadPDF} 
-                disabled={isDownloading}
-                variant="outline" // Opsional: ganti sesuai tema
-              >
-                <Download className="mr-2 h-4 w-4" />
-                {isDownloading ? 'Downloading...' : 'Download PDF'}
-              </Button>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="max-w-62.5 bg-slate-900 text-white p-3 shadow-lg">
-            <div className="flex flex-col gap-1">
-              <p className="font-semibold flex items-center gap-1 text-amber-400">
-                <Info className="h-3 w-3" /> Tips Unduh
-              </p>
-              <p className="text-xs leading-relaxed">
-                Disarankan mengunduh KHS saat <strong>seluruh nilai mata kuliah dalam semester ini </strong> sudah disubmit agar hasil lebih lengkap dan akurat.
-              </p>
-            </div>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    )
-  }
-/>
+        title="Kartu Hasil Studi (KHS)"
+        description="Lihat hasil studi Anda per semester"
+        actions={
+          selectedKHS && (
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="inline-block">
+                    <Button 
+                      onClick={handleDownloadPDF} 
+                      disabled={isDownloading}
+                      variant="outline"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      {isDownloading ? 'Downloading...' : 'Download PDF'}
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-62.5 bg-slate-900 text-white p-3 shadow-lg">
+                  <div className="flex flex-col gap-1">
+                    <p className="font-semibold flex items-center gap-1 text-amber-400">
+                      <Info className="h-3 w-3" /> Tips Unduh
+                    </p>
+                    <p className="text-xs leading-relaxed">
+                      Disarankan mengunduh KHS saat <strong>seluruh nilai mata kuliah dalam semester ini </strong> sudah disubmit agar hasil lebih lengkap dan akurat.
+                    </p>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )
+        }
+      />
 
       {/* Belum ada KHS */}
       {khsList.length === 0 && (
@@ -316,26 +378,23 @@ export default function KHSPage() {
             </label>
             <Select 
               value={selectedSemesterId} 
-              onValueChange={setSelectedSemesterId}
+              onValueChange={handleSemesterChange}
               disabled={khsList.length === 0}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Pilih semester..." />
               </SelectTrigger>
               <SelectContent>
-                {semesterList.map((sem) => {
-                  const hasKHS = khsList.some(k => k.semesterId === sem.id);
-                  return (
-                    <SelectItem 
-                      key={sem.id} 
-                      value={sem.id.toString()}
-                      disabled={!hasKHS}
-                    >
-                      {sem.tahunAkademik} {sem.periode === 'GANJIL' ? 'Ganjil' : 'Genap'}
-                      {!hasKHS && ' (Belum tersedia)'}
-                    </SelectItem>
-                  );
-                })}
+                {semesterOptions.map(({ semester, hasKHS }) => (
+                  <SelectItem 
+                    key={semester.id} 
+                    value={semester.id.toString()}
+                    disabled={!hasKHS}
+                  >
+                    {semester.tahunAkademik} {semester.periode === 'GANJIL' ? 'Ganjil' : 'Genap'}
+                    {!hasKHS && ' (Belum tersedia)'}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -507,7 +566,7 @@ export default function KHSPage() {
             </CardContent>
           </Card>
 
-          {/* Summary dengan predikat dari backend */}
+          {/* Summary */}
           <Card className="border-blue-200 bg-blue-50">
             <CardContent className="pt-6">
               <div className="grid gap-6 md:grid-cols-2">
@@ -547,7 +606,7 @@ export default function KHSPage() {
                     </li>
                     <li className="flex justify-between">
                       <span>Sisa SKS (estimasi):</span>
-                      <strong>{144 - selectedKHS.totalSKSKumulatif}</strong>
+                      <strong>{sisaSKS}</strong>
                     </li>
                     <li className="flex justify-between pt-2 border-t border-blue-200">
                       <span>Predikat:</span>

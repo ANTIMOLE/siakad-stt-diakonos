@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Edit, Eye, Trash2, MoreHorizontal, Download } from 'lucide-react';
 
@@ -32,19 +32,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
 import { mataKuliahAPI } from '@/lib/api';
 import { MataKuliah } from '@/types/model';
 import { PAGINATION } from '@/lib/constants';
 
+// ============================================
+// TYPES
+// ============================================
 interface MataKuliahFilters {
   search?: string;
   semesterIdeal?: number;
@@ -55,6 +52,139 @@ interface MataKuliahFilters {
   sortOrder?: 'asc' | 'desc';
 }
 
+// ============================================
+// CONSTANTS
+// ============================================
+const SEMESTER_OPTIONS = [
+  { value: 'all', label: 'Semua Semester' },
+  { value: '1', label: 'Semester 1' },
+  { value: '2', label: 'Semester 2' },
+  { value: '3', label: 'Semester 3' },
+  { value: '4', label: 'Semester 4' },
+  { value: '5', label: 'Semester 5' },
+  { value: '6', label: 'Semester 6' },
+  { value: '7', label: 'Semester 7' },
+  { value: '8', label: 'Semester 8' },
+];
+
+const STATUS_OPTIONS = [
+  { value: 'all', label: 'Semua Status' },
+  { value: 'true', label: 'Aktif' },
+  { value: 'false', label: 'Nonaktif' },
+];
+
+const LIMIT_OPTIONS = [
+  { value: '10', label: '10 / hal' },
+  { value: '25', label: '25 / hal' },
+  { value: '50', label: '50 / hal' },
+];
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+};
+
+// ============================================
+// FILTER SELECT COMPONENT
+// ============================================
+const FilterSelect = ({
+  value,
+  onValueChange,
+  options,
+  placeholder,
+  className,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  placeholder?: string;
+  className?: string;
+}) => (
+  <Select value={value} onValueChange={onValueChange}>
+    <SelectTrigger className={className}>
+      <SelectValue placeholder={placeholder} />
+    </SelectTrigger>
+    <SelectContent>
+      {options.map((option) => (
+        <SelectItem key={option.value} value={option.value}>
+          {option.label}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+);
+
+// ============================================
+// STATUS BADGE COMPONENT
+// ============================================
+const ActiveStatusBadge = ({ isActive }: { isActive: boolean }) => (
+  isActive ? (
+    <Badge variant="default" className="bg-green-600">Aktif</Badge>
+  ) : (
+    <Badge variant="secondary">Nonaktif</Badge>
+  )
+);
+
+const LintasProdiaBadge = ({ isLintasProdi }: { isLintasProdi: boolean }) => (
+  isLintasProdi ? (
+    <Badge variant="secondary">Ya</Badge>
+  ) : (
+    <Badge variant="outline">Tidak</Badge>
+  )
+);
+
+// ============================================
+// MATA KULIAH ACTIONS COMPONENT
+// ============================================
+const MataKuliahActions = ({
+  mk,
+  onView,
+  onEdit,
+  onDelete,
+}: {
+  mk: MataKuliah;
+  onView: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) => (
+  <DropdownMenu>
+    <DropdownMenuTrigger asChild>
+      <Button variant="ghost" size="icon">
+        <MoreHorizontal className="h-4 w-4" />
+      </Button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent align="end">
+      <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onClick={onView}>
+        <Eye className="mr-2 h-4 w-4" />
+        Lihat Detail
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={onEdit}>
+        <Edit className="mr-2 h-4 w-4" />
+        Edit
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onClick={onDelete} className="text-red-600">
+        <Trash2 className="mr-2 h-4 w-4" />
+        Hapus
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  </DropdownMenu>
+);
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 export default function MataKuliahListPage() {
   const router = useRouter();
 
@@ -85,6 +215,9 @@ export default function MataKuliahListPage() {
   });
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // ============================================
+  // FETCH DATA
+  // ============================================
   const fetchMataKuliah = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -101,11 +234,7 @@ export default function MataKuliahListPage() {
       }
     } catch (err: any) {
       console.error('Fetch mata kuliah error:', err);
-      setError(
-        err.response?.data?.message ||
-        err.message ||
-        'Terjadi kesalahan saat memuat data mata kuliah'
-      );
+      setError(err.response?.data?.message || err.message || 'Terjadi kesalahan');
     } finally {
       setIsLoading(false);
     }
@@ -123,39 +252,55 @@ export default function MataKuliahListPage() {
     fetchMataKuliah();
   }, [fetchMataKuliah]);
 
+  // ============================================
+  // MEMOIZED VALUES
+  // ============================================
+  const paginationInfo = useMemo(() => ({
+    current: filters.page || 1,
+    total: totalPages,
+    items: totalItems,
+  }), [filters.page, totalPages, totalItems]);
+
+  const activeStatusValue = useMemo(() => {
+    return filters.isActive === undefined ? 'all' : filters.isActive.toString();
+  }, [filters.isActive]);
+
+  // ============================================
+  // HANDLERS
+  // ============================================
   const handleSearch = useCallback((query: string) => {
     setFilters((prev) => ({ ...prev, search: query, page: 1 }));
   }, []);
 
-  const handleFilterChange = (key: keyof MataKuliahFilters, value: any) => {
+  const handleFilterChange = useCallback((key: keyof MataKuliahFilters, value: any) => {
     setFilters((prev) => ({ ...prev, [key]: value, page: 1 }));
-  };
+  }, []);
 
-  const handlePageChange = (newPage: number) => {
+  const handlePageChange = useCallback((newPage: number) => {
     setFilters((prev) => ({ ...prev, page: newPage }));
-  };
+  }, []);
 
-  const handleAdd = () => {
+  const handleAdd = useCallback(() => {
     router.push('/admin/mata-kuliah/tambah');
-  };
+  }, [router]);
 
-  const handleView = (id: number) => {
+  const handleView = useCallback((id: number) => {
     router.push(`/admin/mata-kuliah/${id}`);
-  };
+  }, [router]);
 
-  const handleEdit = (id: number) => {
+  const handleEdit = useCallback((id: number) => {
     router.push(`/admin/mata-kuliah/${id}/edit`);
-  };
+  }, [router]);
 
-  const handleDeleteClick = (mk: MataKuliah) => {
+  const handleDeleteClick = useCallback((mk: MataKuliah) => {
     setDeleteDialog({
       open: true,
       mkId: mk.id,
       mkNama: mk.namaMK,
     });
-  };
+  }, []);
 
-  const confirmDelete = async () => {
+  const confirmDelete = useCallback(async () => {
     if (!deleteDialog.mkId) return;
 
     try {
@@ -172,17 +317,13 @@ export default function MataKuliahListPage() {
       }
     } catch (err: any) {
       console.error('Delete error:', err);
-      toast.error(
-        err.response?.data?.message ||
-        err.message ||
-        'Terjadi kesalahan saat menghapus mata kuliah'
-      );
+      toast.error(err.response?.data?.message || 'Terjadi kesalahan');
     } finally {
       setIsDeleting(false);
     }
-  };
+  }, [deleteDialog.mkId, fetchMataKuliah]);
 
-  const handleExport = async () => {
+  const handleExport = useCallback(async () => {
     try {
       toast.loading('Mengekspor data...');
       
@@ -192,14 +333,8 @@ export default function MataKuliahListPage() {
         isActive: filters.isActive,
       });
       
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `MataKuliah_${new Date().toISOString().split('T')[0]}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const timestamp = new Date().toISOString().split('T')[0];
+      downloadBlob(blob, `MataKuliah_${timestamp}.xlsx`);
       
       toast.dismiss();
       toast.success('Data berhasil diekspor');
@@ -207,12 +342,27 @@ export default function MataKuliahListPage() {
       toast.dismiss();
       toast.error(err.response?.data?.message || 'Gagal mengekspor data');
     }
-  };
+  }, [filters]);
 
-  const handleRetry = () => {
+  const handleRetry = useCallback(() => {
     fetchMataKuliah();
-  };
+  }, [fetchMataKuliah]);
 
+  const handleSemesterChange = useCallback((value: string) => {
+    handleFilterChange('semesterIdeal', value === 'all' ? undefined : parseInt(value));
+  }, [handleFilterChange]);
+
+  const handleStatusChange = useCallback((value: string) => {
+    handleFilterChange('isActive', value === 'all' ? undefined : value === 'true');
+  }, [handleFilterChange]);
+
+  const handleLimitChange = useCallback((value: string) => {
+    handleFilterChange('limit', parseInt(value));
+  }, [handleFilterChange]);
+
+  // ============================================
+  // LOADING & ERROR
+  // ============================================
   if (isLoading && mataKuliah.length === 0) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -231,6 +381,9 @@ export default function MataKuliahListPage() {
     );
   }
 
+  // ============================================
+  // RENDER
+  // ============================================
   return (
     <div className="space-y-6">
       <PageHeader
@@ -264,59 +417,28 @@ export default function MataKuliahListPage() {
               />
             </div>
 
-            <Select
+            <FilterSelect
               value={filters.semesterIdeal?.toString() || 'all'}
-              onValueChange={(value) =>
-                handleFilterChange('semesterIdeal', value === 'all' ? undefined : parseInt(value))
-              }
-            >
-              <SelectTrigger className="w-full md:w-40">
-                <SelectValue placeholder="Semester" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Semua Semester</SelectItem>
-                <SelectItem value="1">Semester 1</SelectItem>
-                <SelectItem value="2">Semester 2</SelectItem>
-                <SelectItem value="3">Semester 3</SelectItem>
-                <SelectItem value="4">Semester 4</SelectItem>
-                <SelectItem value="5">Semester 5</SelectItem>
-                <SelectItem value="6">Semester 6</SelectItem>
-                <SelectItem value="7">Semester 7</SelectItem>
-                <SelectItem value="8">Semester 8</SelectItem>
-              </SelectContent>
-            </Select>
+              onValueChange={handleSemesterChange}
+              options={SEMESTER_OPTIONS}
+              placeholder="Semester"
+              className="w-full md:w-40"
+            />
 
-            <Select
-              value={filters.isActive === undefined ? 'all' : filters.isActive.toString()}
-              onValueChange={(value) =>
-                handleFilterChange('isActive', value === 'all' ? undefined : value === 'true')
-              }
-            >
-              <SelectTrigger className="w-full md:w-40">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Semua Status</SelectItem>
-                <SelectItem value="true">Aktif</SelectItem>
-                <SelectItem value="false">Nonaktif</SelectItem>
-              </SelectContent>
-            </Select>
+            <FilterSelect
+              value={activeStatusValue}
+              onValueChange={handleStatusChange}
+              options={STATUS_OPTIONS}
+              placeholder="Status"
+              className="w-full md:w-40"
+            />
 
-            <Select
+            <FilterSelect
               value={filters.limit?.toString() || '10'}
-              onValueChange={(value) =>
-                handleFilterChange('limit', parseInt(value))
-              }
-            >
-              <SelectTrigger className="w-full md:w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="10">10 / hal</SelectItem>
-                <SelectItem value="25">25 / hal</SelectItem>
-                <SelectItem value="50">50 / hal</SelectItem>
-              </SelectContent>
-            </Select>
+              onValueChange={handleLimitChange}
+              options={LIMIT_OPTIONS}
+              className="w-full md:w-32"
+            />
           </div>
         </CardContent>
       </Card>
@@ -373,47 +495,18 @@ export default function MataKuliahListPage() {
                           {mk.semesterIdeal}
                         </TableCell>
                         <TableCell className="text-center">
-                          {mk.isLintasProdi ? (
-                            <Badge variant="secondary">Ya</Badge>
-                          ) : (
-                            <Badge variant="outline">Tidak</Badge>
-                          )}
+                          <LintasProdiaBadge isLintasProdi={mk.isLintasProdi} />
                         </TableCell>
                         <TableCell className="text-center">
-                          {mk.isActive ? (
-                            <Badge variant="default" className="bg-green-600">Aktif</Badge>
-                          ) : (
-                            <Badge variant="secondary">Nonaktif</Badge>
-                          )}
+                          <ActiveStatusBadge isActive={mk.isActive} />
                         </TableCell>
                         <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuLabel>Aksi</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => handleView(mk.id)}>
-                                <Eye className="mr-2 h-4 w-4" />
-                                Lihat Detail
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleEdit(mk.id)}>
-                                <Edit className="mr-2 h-4 w-4" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => handleDeleteClick(mk)}
-                                className="text-red-600"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Hapus
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <MataKuliahActions
+                            mk={mk}
+                            onView={() => handleView(mk.id)}
+                            onEdit={() => handleEdit(mk.id)}
+                            onDelete={() => handleDeleteClick(mk)}
+                          />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -424,22 +517,22 @@ export default function MataKuliahListPage() {
               {totalPages > 1 && (
                 <div className="flex items-center justify-between border-t px-6 py-4">
                   <div className="text-sm text-muted-foreground">
-                    Halaman {filters.page} dari {totalPages} • Total {totalItems} data
+                    Halaman {paginationInfo.current} dari {paginationInfo.total} • Total {paginationInfo.items} data
                   </div>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handlePageChange((filters.page || 1) - 1)}
-                      disabled={filters.page === 1}
+                      onClick={() => handlePageChange(paginationInfo.current - 1)}
+                      disabled={paginationInfo.current === 1}
                     >
                       Sebelumnya
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handlePageChange((filters.page || 1) + 1)}
-                      disabled={filters.page === totalPages}
+                      onClick={() => handlePageChange(paginationInfo.current + 1)}
+                      disabled={paginationInfo.current === totalPages}
                     >
                       Selanjutnya
                     </Button>

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
 import PageHeader from '@/components/shared/PageHeader';
@@ -12,30 +12,113 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { User, FileText, Award, Phone, Mail, MapPin, Calendar, ArrowLeft } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { User, FileText, Award, Mail, Calendar, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { toast } from 'sonner';
 
 import { mahasiswaAPI } from '@/lib/api';
 import { Mahasiswa, KRS, KHS } from '@/types/model';
 
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+const formatDate = (dateString: string, formatStr = 'dd MMM yyyy'): string => {
+  return format(new Date(dateString), formatStr, { locale: id });
+};
+
+const calculateIPKTrend = (current: number, previous: number): { trend: number; isPositive: boolean } => {
+  const trend = current - previous;
+  return { trend, isPositive: trend > 0 };
+};
+
+// ============================================
+// SUMMARY CARD COMPONENT
+// ============================================
+const SummaryCard = ({
+  title,
+  icon: Icon,
+  value,
+  description,
+}: {
+  title: string;
+  icon?: any;
+  value: string | React.ReactNode;
+  description?: string;
+}) => (
+  <Card>
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <CardTitle className="text-sm font-medium">{title}</CardTitle>
+      {Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
+    </CardHeader>
+    <CardContent>
+      {typeof value === 'string' ? (
+        <div className="text-2xl font-bold">{value}</div>
+      ) : (
+        value
+      )}
+      {description && (
+        <p className="text-xs text-muted-foreground">{description}</p>
+      )}
+    </CardContent>
+  </Card>
+);
+
+// ============================================
+// BIODATA ROW COMPONENT
+// ============================================
+const BiodataRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
+  <div>
+    <p className="text-sm text-muted-foreground mb-1">{label}</p>
+    {typeof value === 'string' ? <p className="font-medium">{value}</p> : value}
+  </div>
+);
+
+// ============================================
+// IPK TREND ROW COMPONENT
+// ============================================
+const IPKTrendRow = ({ khs, prevKHS }: { khs: KHS; prevKHS?: KHS }) => {
+  const currentIPK = Number(khs.ipk);
+  const prevIPK = prevKHS ? Number(prevKHS.ipk) : 0;
+  const { trend, isPositive } = prevKHS
+    ? calculateIPKTrend(currentIPK, prevIPK)
+    : { trend: 0, isPositive: false };
+
+  return (
+    <div className="flex items-center justify-between border-b pb-2">
+      <span className="text-sm">
+        {khs.semester?.tahunAkademik} {khs.semester?.periode}
+      </span>
+      <div className="flex items-center gap-2">
+        <span className="font-medium">{currentIPK.toFixed(2)}</span>
+        {trend !== 0 && (
+          <span className={`text-xs ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+            {isPositive ? '↑' : '↓'} {Math.abs(trend).toFixed(2)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ============================================
+// EMPTY STATE COMPONENT
+// ============================================
+const EmptyHistoryState = ({ icon: Icon, message }: { icon: any; message: string }) => (
+  <div className="py-12 text-center text-muted-foreground">
+    <Icon className="h-12 w-12 mx-auto mb-2 opacity-50" />
+    <p>{message}</p>
+  </div>
+);
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 export default function MahasiswaBimbinganDetailPage() {
   const params = useParams();
   const router = useRouter();
   const mahasiswaId = Number(params.id);
 
-  // ============================================
-  // STATE MANAGEMENT
-  // ============================================
   const [mahasiswa, setMahasiswa] = useState<Mahasiswa | null>(null);
   const [krsHistory, setKrsHistory] = useState<KRS[]>([]);
   const [khsHistory, setKhsHistory] = useState<KHS[]>([]);
@@ -51,51 +134,42 @@ export default function MahasiswaBimbinganDetailPage() {
         setIsLoading(true);
         setError(null);
 
-        // 1. Fetch mahasiswa detail
         const mhsResponse = await mahasiswaAPI.getById(mahasiswaId);
         if (!mhsResponse.success || !mhsResponse.data) {
           throw new Error('Mahasiswa tidak ditemukan');
         }
         setMahasiswa(mhsResponse.data);
 
-        // 2. Fetch KRS history
         try {
           const krsResponse = await mahasiswaAPI.getKRS(mahasiswaId);
           if (krsResponse.success && krsResponse.data) {
-            // Sort by semester (newest first)
-            const sortedKRS = krsResponse.data.sort((a, b) => {
-              const semesterA = `${a.semester?.tahunAkademik}-${a.semester?.periode}`;
-              const semesterB = `${b.semester?.tahunAkademik}-${b.semester?.periode}`;
-              return semesterB.localeCompare(semesterA);
+            const sorted = krsResponse.data.sort((a, b) => {
+              const semA = `${a.semester?.tahunAkademik}-${a.semester?.periode}`;
+              const semB = `${b.semester?.tahunAkademik}-${b.semester?.periode}`;
+              return semB.localeCompare(semA);
             });
-            setKrsHistory(sortedKRS);
+            setKrsHistory(sorted);
           }
         } catch (krsError) {
           console.warn('Failed to fetch KRS:', krsError);
         }
 
-        // 3. Fetch KHS history
         try {
           const khsResponse = await mahasiswaAPI.getKHS(mahasiswaId);
           if (khsResponse.success && khsResponse.data) {
-            // Sort by semester (newest first)
-            const sortedKHS = khsResponse.data.sort((a, b) => {
-              const semesterA = `${a.semester?.tahunAkademik}-${a.semester?.periode}`;
-              const semesterB = `${b.semester?.tahunAkademik}-${b.semester?.periode}`;
-              return semesterB.localeCompare(semesterA);
+            const sorted = khsResponse.data.sort((a, b) => {
+              const semA = `${a.semester?.tahunAkademik}-${a.semester?.periode}`;
+              const semB = `${b.semester?.tahunAkademik}-${b.semester?.periode}`;
+              return semB.localeCompare(semA);
             });
-            setKhsHistory(sortedKHS);
+            setKhsHistory(sorted);
           }
         } catch (khsError) {
           console.warn('Failed to fetch KHS:', khsError);
         }
       } catch (err: any) {
         console.error('Fetch data error:', err);
-        setError(
-          err.response?.data?.message ||
-            err.message ||
-            'Terjadi kesalahan saat memuat data mahasiswa'
-        );
+        setError(err.response?.data?.message || err.message || 'Terjadi kesalahan');
       } finally {
         setIsLoading(false);
       }
@@ -107,25 +181,41 @@ export default function MahasiswaBimbinganDetailPage() {
   }, [mahasiswaId]);
 
   // ============================================
-  // COMPUTED VALUES
+  // MEMOIZED VALUES
   // ============================================
-  const latestKHS = khsHistory.length > 0 ? khsHistory[0] : null;
-  const currentYear = new Date().getFullYear();
-  const currentSemester = mahasiswa ? currentYear - mahasiswa.angkatan + 1 : 0;
+  const latestKHS = useMemo(() => (khsHistory.length > 0 ? khsHistory[0] : null), [khsHistory]);
+
+  const currentSemester = useMemo(() => {
+    if (!mahasiswa) return 0;
+    const currentYear = new Date().getFullYear();
+    return currentYear - mahasiswa.angkatan + 1;
+  }, [mahasiswa]);
+
+  const emailAddress = useMemo(
+    () => (mahasiswa ? `${mahasiswa.nim}@student.university.ac.id` : ''),
+    [mahasiswa]
+  );
 
   // ============================================
   // HANDLERS
   // ============================================
-  const handleRetry = () => {
+  const handleRetry = useCallback(() => {
     window.location.reload();
-  };
+  }, []);
 
-  const handleViewKRS = (krsId: number) => {
-    router.push(`/dosen/krs-approval/${krsId}`);
-  };
+  const handleViewKRS = useCallback(
+    (krsId: number) => {
+      router.push(`/dosen/krs-approval/${krsId}`);
+    },
+    [router]
+  );
+
+  const handleBack = useCallback(() => {
+    router.push('/dosen/mahasiswa-bimbingan');
+  }, [router]);
 
   // ============================================
-  // LOADING STATE
+  // LOADING & ERROR
   // ============================================
   if (isLoading) {
     return (
@@ -135,9 +225,6 @@ export default function MahasiswaBimbinganDetailPage() {
     );
   }
 
-  // ============================================
-  // ERROR STATE
-  // ============================================
   if (error || !mahasiswa) {
     return (
       <ErrorState
@@ -153,7 +240,6 @@ export default function MahasiswaBimbinganDetailPage() {
   // ============================================
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <PageHeader
         title={mahasiswa.namaLengkap}
         description={`NIM: ${mahasiswa.nim} • ${mahasiswa.prodi?.nama || 'N/A'} • Angkatan ${mahasiswa.angkatan}`}
@@ -163,10 +249,7 @@ export default function MahasiswaBimbinganDetailPage() {
           { label: mahasiswa.namaLengkap },
         ]}
         actions={
-          <Button
-            variant="outline"
-            onClick={() => router.push('/dosen/mahasiswa-bimbingan')}
-          >
+          <Button variant="outline" onClick={handleBack}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Kembali
           </Button>
@@ -175,57 +258,30 @@ export default function MahasiswaBimbinganDetailPage() {
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Status Mahasiswa</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <StatusBadge status={mahasiswa.status} showIcon />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">IPK</CardTitle>
-            <Award className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {latestKHS?.ipk ? Number(latestKHS.ipk).toFixed(2) : '-'}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              IPS: {latestKHS?.ips ? Number(latestKHS.ips).toFixed(2) : '-'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total SKS</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {latestKHS?.totalSKSKumulatif || 0}
-            </div>
-            <p className="text-xs text-muted-foreground">SKS kumulatif</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Semester</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{currentSemester}</div>
-            <p className="text-xs text-muted-foreground">
-              Angkatan {mahasiswa.angkatan}
-            </p>
-          </CardContent>
-        </Card>
+        <SummaryCard
+          title="Status Mahasiswa"
+          value={<StatusBadge status={mahasiswa.status} showIcon />}
+        />
+        <SummaryCard
+          title="IPK"
+          icon={Award}
+          value={latestKHS?.ipk ? Number(latestKHS.ipk).toFixed(2) : '-'}
+          description={`IPS: ${latestKHS?.ips ? Number(latestKHS.ips).toFixed(2) : '-'}`}
+        />
+        <SummaryCard
+          title="Total SKS"
+          value={latestKHS?.totalSKSKumulatif || 0}
+          description="SKS kumulatif"
+        />
+        <SummaryCard
+          title="Semester"
+          icon={Calendar}
+          value={currentSemester}
+          description={`Angkatan ${mahasiswa.angkatan}`}
+        />
       </div>
 
-      {/* Biodata Section */}
+      {/* Biodata */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
@@ -235,54 +291,37 @@ export default function MahasiswaBimbinganDetailPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-6 md:grid-cols-2">
-            {/* Left Column */}
             <div className="space-y-4">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">NIM</p>
-                <p className="font-mono font-medium">{mahasiswa.nim}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Nama Lengkap</p>
-                <p className="font-medium">{mahasiswa.namaLengkap}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Program Studi</p>
-                <p className="font-medium">{mahasiswa.prodi?.nama || '-'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Angkatan</p>
-                <Badge variant="outline">{mahasiswa.angkatan}</Badge>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Status</p>
-                <StatusBadge status={mahasiswa.status} showIcon />
-              </div>
+              <BiodataRow label="NIM" value={<p className="font-mono font-medium">{mahasiswa.nim}</p>} />
+              <BiodataRow label="Nama Lengkap" value={mahasiswa.namaLengkap} />
+              <BiodataRow label="Program Studi" value={mahasiswa.prodi?.nama || '-'} />
+              <BiodataRow label="Angkatan" value={<Badge variant="outline">{mahasiswa.angkatan}</Badge>} />
+              <BiodataRow label="Status" value={<StatusBadge status={mahasiswa.status} showIcon />} />
             </div>
 
-            {/* Right Column */}
             <div className="space-y-4">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Dosen Wali</p>
-                <p className="font-medium">
-                  {mahasiswa.dosenWali?.namaLengkap || 'Anda'}
-                </p>
-                {mahasiswa.dosenWali?.nidn && (
-                  <p className="text-sm text-muted-foreground">
-                    NIDN: {mahasiswa.dosenWali.nidn}
-                  </p>
-                )}
-              </div>
+              <BiodataRow
+                label="Dosen Wali"
+                value={
+                  <>
+                    <p className="font-medium">{mahasiswa.dosenWali?.namaLengkap || 'Anda'}</p>
+                    {mahasiswa.dosenWali?.nidn && (
+                      <p className="text-sm text-muted-foreground">NIDN: {mahasiswa.dosenWali.nidn}</p>
+                    )}
+                  </>
+                }
+              />
 
-              {/* Contact Info - These fields might not exist in base schema */}
-              <div className="space-y-3 pt-2">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Mail className="h-4 w-4" />
-                  <div>
-                    <p className="text-sm">Email</p>
-                    <p className="text-sm font-medium text-foreground">
-                      {mahasiswa.nim}@student.university.ac.id
-                    </p>
-                  </div>
+              <div className="flex items-center gap-2 text-muted-foreground pt-2">
+                <Mail className="h-4 w-4" />
+                <div>
+                  <p className="text-sm">Email</p>
+                  <a
+                    href={`mailto:${emailAddress}`}
+                    className="text-sm font-medium text-foreground hover:underline"
+                  >
+                    {emailAddress}
+                  </a>
                 </div>
               </div>
             </div>
@@ -290,7 +329,7 @@ export default function MahasiswaBimbinganDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Tabs: KRS & KHS History */}
+      {/* Tabs */}
       <Tabs defaultValue="krs" className="space-y-4">
         <TabsList>
           <TabsTrigger value="krs">
@@ -311,7 +350,7 @@ export default function MahasiswaBimbinganDetailPage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* KRS History Tab */}
+        {/* KRS History */}
         <TabsContent value="krs" className="space-y-4">
           <Card>
             <CardHeader>
@@ -339,9 +378,7 @@ export default function MahasiswaBimbinganDetailPage() {
                         <TableRow key={krs.id}>
                           <TableCell>
                             <div>
-                              <p className="font-medium">
-                                {krs.semester?.tahunAkademik || '-'}
-                              </p>
+                              <p className="font-medium">{krs.semester?.tahunAkademik || '-'}</p>
                               <p className="text-sm text-muted-foreground">
                                 {krs.semester?.periode || '-'}
                               </p>
@@ -354,27 +391,13 @@ export default function MahasiswaBimbinganDetailPage() {
                             <StatusBadge status={krs.status} showIcon />
                           </TableCell>
                           <TableCell>
-                            {krs.tanggalSubmit
-                              ? format(new Date(krs.tanggalSubmit), 'dd MMM yyyy', {
-                                  locale: id,
-                                })
-                              : '-'}
+                            {krs.tanggalSubmit ? formatDate(krs.tanggalSubmit) : '-'}
                           </TableCell>
                           <TableCell>
-                            {krs.tanggalApproval
-                              ? format(
-                                  new Date(krs.tanggalApproval),
-                                  'dd MMM yyyy',
-                                  { locale: id }
-                                )
-                              : '-'}
+                            {krs.tanggalApproval ? formatDate(krs.tanggalApproval) : '-'}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleViewKRS(krs.id)}
-                            >
+                            <Button variant="ghost" size="sm" onClick={() => handleViewKRS(krs.id)}>
                               Detail
                             </Button>
                           </TableCell>
@@ -384,16 +407,13 @@ export default function MahasiswaBimbinganDetailPage() {
                   </Table>
                 </div>
               ) : (
-                <div className="py-12 text-center text-muted-foreground">
-                  <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>Belum ada riwayat KRS</p>
-                </div>
+                <EmptyHistoryState icon={FileText} message="Belum ada riwayat KRS" />
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* KHS History Tab */}
+        {/* KHS History */}
         <TabsContent value="khs" className="space-y-4">
           <Card>
             <CardHeader>
@@ -421,54 +441,37 @@ export default function MahasiswaBimbinganDetailPage() {
                         <TableRow key={khs.id}>
                           <TableCell>
                             <div>
-                              <p className="font-medium">
-                                {khs.semester?.tahunAkademik || '-'}
-                              </p>
+                              <p className="font-medium">{khs.semester?.tahunAkademik || '-'}</p>
                               <p className="text-sm text-muted-foreground">
                                 {khs.semester?.periode || '-'}
                               </p>
                             </div>
                           </TableCell>
                           <TableCell>
-                            <span className="font-medium text-lg">
-                              {Number(khs.ips).toFixed(2)}
-                            </span>
+                            <span className="font-medium text-lg">{Number(khs.ips).toFixed(2)}</span>
                           </TableCell>
                           <TableCell>
-                            <span className="font-medium text-lg">
-                              {Number(khs.ipk).toFixed(2)}
-                            </span>
+                            <span className="font-medium text-lg">{Number(khs.ipk).toFixed(2)}</span>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline">
-                              {khs.totalSKSSemester} SKS
-                            </Badge>
+                            <Badge variant="outline">{khs.totalSKSSemester} SKS</Badge>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="secondary">
-                              {khs.totalSKSKumulatif} SKS
-                            </Badge>
+                            <Badge variant="secondary">{khs.totalSKSKumulatif} SKS</Badge>
                           </TableCell>
-                          <TableCell>
-                            {format(new Date(khs.tanggalGenerate), 'dd MMM yyyy', {
-                              locale: id,
-                            })}
-                          </TableCell>
+                          <TableCell>{formatDate(khs.tanggalGenerate)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
               ) : (
-                <div className="py-12 text-center text-muted-foreground">
-                  <Award className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>Belum ada riwayat KHS</p>
-                </div>
+                <EmptyHistoryState icon={Award} message="Belum ada riwayat KHS" />
               )}
             </CardContent>
           </Card>
 
-          {/* IPK Trend Chart - Optional */}
+          {/* IPK Trend */}
           {khsHistory.length > 1 && (
             <Card>
               <CardHeader>
@@ -476,35 +479,9 @@ export default function MahasiswaBimbinganDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {khsHistory.map((khs, index) => {
-                    const prevKHS = khsHistory[index + 1];
-                    const currentIPK = Number(khs.ipk);
-                    const prevIPK = prevKHS ? Number(prevKHS.ipk) : 0;
-                    const trend = prevKHS ? currentIPK - prevIPK : 0;
-                    
-                    return (
-                      <div
-                        key={khs.id}
-                        className="flex items-center justify-between border-b pb-2"
-                      >
-                        <span className="text-sm">
-                          {khs.semester?.tahunAkademik} {khs.semester?.periode}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{currentIPK.toFixed(2)}</span>
-                          {trend !== 0 && (
-                            <span
-                              className={`text-xs ${
-                                trend > 0 ? 'text-green-600' : 'text-red-600'
-                              }`}
-                            >
-                              {trend > 0 ? '↑' : '↓'} {Math.abs(trend).toFixed(2)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {khsHistory.map((khs, index) => (
+                    <IPKTrendRow key={khs.id} khs={khs} prevKHS={khsHistory[index + 1]} />
+                  ))}
                 </div>
               </CardContent>
             </Card>

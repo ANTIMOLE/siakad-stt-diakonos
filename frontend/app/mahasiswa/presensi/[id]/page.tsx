@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Calendar, TrendingUp, CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
@@ -111,7 +111,6 @@ export default function MahasiswaPresensiDetailPage() {
         if (response.success && response.data) {
           setStats(response.data);
 
-          // Get kelas info from first detail if available
           if (response.data.detail && response.data.detail.length > 0) {
             const firstPresensi = response.data.detail[0].presensi;
             if (firstPresensi) {
@@ -136,6 +135,50 @@ export default function MahasiswaPresensiDetailPage() {
   }, [mahasiswaId, kelasMKId]);
 
   // ============================================
+  // MEMOIZED COMPUTED VALUES
+  // ============================================
+  const persentase = useMemo(() => stats?.persentaseKehadiran || 0, [stats]);
+
+  const statusColor = useMemo(() => {
+    if (persentase >= 80) return 'text-green-600';
+    if (persentase >= 60) return 'text-yellow-600';
+    return 'text-red-600';
+  }, [persentase]);
+
+  const progressColor = useMemo(() => {
+    if (persentase >= 80) return 'bg-green-500';
+    if (persentase >= 60) return 'bg-yellow-500';
+    return 'bg-red-500';
+  }, [persentase]);
+
+  const statusMessage = useMemo(() => {
+    if (persentase >= 80) return '✅ Kehadiran Anda sangat baik!';
+    if (persentase >= 60) return '⚠️ Tingkatkan kehadiran Anda';
+    return '❌ Kehadiran Anda kurang, segera konsultasi dengan dosen';
+  }, [persentase]);
+
+  const tidakHadirTotal = useMemo(() => {
+    if (!stats) return 0;
+    return stats.alpha + stats.tidakHadir;
+  }, [stats]);
+
+  const izinSakitTotal = useMemo(() => {
+    if (!stats) return 0;
+    return stats.izin + stats.sakit;
+  }, [stats]);
+
+  // ============================================
+  // MEMOIZED HANDLERS
+  // ============================================
+  const handleBack = useCallback(() => {
+    router.back();
+  }, [router]);
+
+  const handleRetry = useCallback(() => {
+    window.location.reload();
+  }, []);
+
+  // ============================================
   // LOADING STATE
   // ============================================
   if (isLoading) {
@@ -154,7 +197,7 @@ export default function MahasiswaPresensiDetailPage() {
       <ErrorState
         title="Gagal Memuat Data"
         message={error}
-        onRetry={() => window.location.reload()}
+        onRetry={handleRetry}
       />
     );
   }
@@ -174,21 +217,6 @@ export default function MahasiswaPresensiDetailPage() {
   // ============================================
   // RENDER
   // ============================================
-  const persentase = stats.persentaseKehadiran;
-  const statusColor =
-    persentase >= 80
-      ? 'text-green-600'
-      : persentase >= 60
-      ? 'text-yellow-600'
-      : 'text-red-600';
-
-  const progressColor =
-    persentase >= 80
-      ? 'bg-green-500'
-      : persentase >= 60
-      ? 'bg-yellow-500'
-      : 'bg-red-500';
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -200,7 +228,7 @@ export default function MahasiswaPresensiDetailPage() {
           { label: 'Detail' },
         ]}
         actions={
-          <Button variant="outline" onClick={() => router.back()}>
+          <Button variant="outline" onClick={handleBack}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Kembali
           </Button>
@@ -243,7 +271,7 @@ export default function MahasiswaPresensiDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-red-600">
-              {stats.alpha + stats.tidakHadir}
+              {tidakHadirTotal}
             </div>
             <p className="text-xs text-red-700 mt-1">
               {stats.alpha} Alpha, {stats.tidakHadir} Tidak Hadir
@@ -259,7 +287,7 @@ export default function MahasiswaPresensiDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-blue-600">
-              {stats.izin + stats.sakit}
+              {izinSakitTotal}
             </div>
             <p className="text-xs text-blue-700 mt-1">
               {stats.izin} Izin, {stats.sakit} Sakit
@@ -290,11 +318,7 @@ export default function MahasiswaPresensiDetailPage() {
                 className={`mt-3 h-3 [&>div]:${progressColor}`}
               />
               <p className="text-xs text-muted-foreground mt-2">
-                {persentase >= 80
-                  ? '✅ Kehadiran Anda sangat baik!'
-                  : persentase >= 60
-                  ? '⚠️ Tingkatkan kehadiran Anda'
-                  : '❌ Kehadiran Anda kurang, segera konsultasi dengan dosen'}
+                {statusMessage}
               </p>
             </div>
           </div>

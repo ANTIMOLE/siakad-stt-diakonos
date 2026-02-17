@@ -1,12 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import ErrorState from '@/components/shared/ErrorState';
-import EmptyState from '@/components/shared/EmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,7 +18,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Award, Download, FileText, TrendingUp, Info, BookOpen } from 'lucide-react';
+import { Award, Download, TrendingUp, Info, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { khsAPI } from '@/lib/api';
@@ -41,30 +40,66 @@ interface TranskripData {
   };
 }
 
+// ✅ Helper functions outside component
+const toNumber = (value: any): number | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'object' && 'toNumber' in value) {
+    return value.toNumber();
+  }
+  const num = Number(value);
+  return isNaN(num) ? null : num;
+};
+
+const formatScore = (value: any, decimals: number = 2): string => {
+  const num = toNumber(value);
+  return num !== null ? num.toFixed(decimals) : '-';
+};
+
+const getGradeColor = (huruf: string | null): string => {
+  if (!huruf) return 'bg-gray-100 text-gray-700';
+  if (['A', 'AB'].includes(huruf)) return 'bg-green-100 text-green-700 border-green-300';
+  if (['B', 'BC'].includes(huruf)) return 'bg-blue-100 text-blue-700 border-blue-300';
+  if (['C', 'CD'].includes(huruf)) return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+  if (['D', 'DE'].includes(huruf)) return 'bg-orange-100 text-orange-700 border-orange-300';
+  return 'bg-red-100 text-red-700 border-red-300';
+};
+
+const sortSemesters = (grouped: Record<string, Nilai[]>): [string, Nilai[]][] => {
+  return Object.entries(grouped).sort(([a], [b]) => {
+    const parseKey = (key: string) => {
+      const parts = key.split(' ');
+      return {
+        tahunAkademik: parts[0],
+        periode: parts[1],
+      };
+    };
+    
+    const semA = parseKey(a);
+    const semB = parseKey(b);
+    
+    const yearCompare = semB.tahunAkademik.localeCompare(semA.tahunAkademik);
+    if (yearCompare !== 0) return yearCompare;
+    
+    if (semA.periode === 'Ganjil' && semB.periode === 'Genap') return 1;
+    if (semA.periode === 'Genap' && semB.periode === 'Ganjil') return -1;
+    
+    return 0;
+  });
+};
+
+const GRADE_LEGEND = [
+  { huruf: 'A', bobot: '4.00', desc: 'Sangat Baik' },
+  { huruf: 'AB', bobot: '3.50', desc: 'Baik Sekali' },
+  { huruf: 'B', bobot: '3.00', desc: 'Baik' },
+  { huruf: 'BC', bobot: '2.50', desc: 'Cukup Baik' },
+  { huruf: 'C', bobot: '2.00', desc: 'Cukup' },
+  { huruf: 'CD', bobot: '1.50', desc: 'Kurang' },
+  { huruf: 'D', bobot: '1.00', desc: 'Kurang Sekali' },
+  { huruf: 'E', bobot: '0.00', desc: 'Gagal' },
+] as const;
+
 export default function TranskripPage() {
-  // ============================================
-  // HELPERS - Convert Decimal to Number
-  // ============================================
-  const toNumber = (value: any): number | null => {
-    if (value === null || value === undefined) return null;
-    if (typeof value === 'number') return value;
-    // Handle Prisma Decimal
-    if (typeof value === 'object' && 'toNumber' in value) {
-      return value.toNumber();
-    }
-    // Try to convert to number
-    const num = Number(value);
-    return isNaN(num) ? null : num;
-  };
-
-  const formatScore = (value: any, decimals: number = 2): string => {
-    const num = toNumber(value);
-    return num !== null ? num.toFixed(decimals) : '-';
-  };
-
-  // ============================================
-  // AMBIL USER DARI LOCALSTORAGE
-  // ============================================
   const [user, setUser] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
@@ -82,11 +117,7 @@ export default function TranskripPage() {
     setIsAuthLoading(false);
   }, []);
 
-  // ============================================
-  // STATE MANAGEMENT
-  // ============================================
   const [transkrip, setTranskrip] = useState<TranskripData | null>(null);
-  const [groupedNilai, setGroupedNilai] = useState<Record<string, Nilai[]>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -109,55 +140,9 @@ export default function TranskripPage() {
         const response = await khsAPI.getTranskrip(user.mahasiswa.id);
 
         if (response.success && response.data) {
-          const data = response.data as TranskripData;
-
-          // Group nilai by semester (tahunAkademik + periode)
-          const grouped: Record<string, Nilai[]> = {};
-          data.nilai.forEach((n) => {
-            if (!n.kelasMK?.semester) return;
-            const key = `${n.kelasMK.semester.tahunAkademik} ${n.kelasMK.semester.periode === 'GANJIL' ? 'Ganjil' : 'Genap'}`;
-            if (!grouped[key]) grouped[key] = [];
-            grouped[key].push(n);
-          });
-
-          // ✅ FIXED: Sort groups by semester (newest first) with proper academic calendar logic
-          const sortedGroups = Object.entries(grouped).sort(([a], [b]) => {
-            // Parse semester strings
-            // Format: "2024/2025 Ganjil" or "2024/2025 Genap"
-            const parseKey = (key: string) => {
-              const parts = key.split(' ');
-              return {
-                tahunAkademik: parts[0],      // "2024/2025"
-                periode: parts[1],             // "Ganjil" or "Genap"
-              };
-            };
-            
-            const semA = parseKey(a);
-            const semB = parseKey(b);
-            
-            // 1. Compare academic year (descending - newest first)
-            const yearCompare = semB.tahunAkademik.localeCompare(semA.tahunAkademik);
-            if (yearCompare !== 0) return yearCompare;
-            
-            // 2. If same year, sort by periode
-            // Academic calendar: Ganjil (Aug-Dec) → Genap (Jan-Jun)
-            // For descending (newest first): Genap > Ganjil
-            // Because Genap happens AFTER Ganjil in the same academic year
-            if (semA.periode === 'Ganjil' && semB.periode === 'Genap') {
-              return 1;  // B (Genap) comes before A (Ganjil)
-            }
-            if (semA.periode === 'Genap' && semB.periode === 'Ganjil') {
-              return -1;  // A (Genap) comes before B (Ganjil)
-            }
-            
-            return 0;  // Same semester
-          });
-
-          setTranskrip(data);
-          setGroupedNilai(Object.fromEntries(sortedGroups));
+          setTranskrip(response.data as TranskripData);
         } else {
           setTranskrip(null);
-          setGroupedNilai({});
         }
       } catch (err: any) {
         console.error('Fetch transkrip error:', err);
@@ -174,9 +159,26 @@ export default function TranskripPage() {
   }, [user, isAuthLoading]);
 
   // ============================================
-  // DOWNLOAD PDF TRANSKRIP
+  // MEMOIZED GROUPED DATA
   // ============================================
-  const handleDownloadTranskrip = async () => {
+  const groupedNilai = useMemo(() => {
+    if (!transkrip?.nilai) return [];
+
+    const grouped: Record<string, Nilai[]> = {};
+    transkrip.nilai.forEach((n) => {
+      if (!n.kelasMK?.semester) return;
+      const key = `${n.kelasMK.semester.tahunAkademik} ${n.kelasMK.semester.periode === 'GANJIL' ? 'Ganjil' : 'Genap'}`;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(n);
+    });
+
+    return sortSemesters(grouped);
+  }, [transkrip?.nilai]);
+
+  // ============================================
+  // HANDLERS
+  // ============================================
+  const handleDownloadTranskrip = useCallback(async () => {
     if (!user?.mahasiswa?.id) return;
 
     try {
@@ -198,19 +200,15 @@ export default function TranskripPage() {
     } finally {
       setIsDownloading(false);
     }
-  };
+  }, [user?.mahasiswa?.id, user?.mahasiswa?.nim]);
 
-  // ============================================
-  // GRADE COLOR
-  // ============================================
-  const getGradeColor = (huruf: string | null) => {
-    if (!huruf) return 'bg-gray-100 text-gray-700';
-    if (['A', 'AB'].includes(huruf)) return 'bg-green-100 text-green-700 border-green-300';
-    if (['B', 'BC'].includes(huruf)) return 'bg-blue-100 text-blue-700 border-blue-300';
-    if (['C', 'CD'].includes(huruf)) return 'bg-yellow-100 text-yellow-700 border-yellow-300';
-    if (['D', 'DE'].includes(huruf)) return 'bg-orange-100 text-orange-700 border-orange-300';
-    return 'bg-red-100 text-red-700 border-red-300';
-  };
+  const handleRetry = useCallback(() => {
+    window.location.reload();
+  }, []);
+
+  const handleLoginRedirect = useCallback(() => {
+    window.location.href = '/login';
+  }, []);
 
   // ============================================
   // RENDER
@@ -224,7 +222,7 @@ export default function TranskripPage() {
       <ErrorState
         title="Akses Ditolak"
         message="Silakan login kembali"
-        onRetry={() => (window.location.href = '/login')}
+        onRetry={handleLoginRedirect}
       />
     );
   }
@@ -234,7 +232,7 @@ export default function TranskripPage() {
   }
 
   if (error) {
-    return <ErrorState title="Error" message={error} onRetry={() => window.location.reload()} />;
+    return <ErrorState title="Error" message={error} onRetry={handleRetry} />;
   }
 
   if (!transkrip || transkrip.nilai.length === 0) {
@@ -265,78 +263,73 @@ export default function TranskripPage() {
         }
       />
 
-      {/* Summary Stats */}
+      {/* Summary Stats - Compact */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+        <Card className="bg-blue-50 border-blue-200">
           <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="rounded-full bg-blue-100 p-3">
-                <BookOpen className="h-5 w-5 text-blue-600" />
-              </div>
+            <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Semester</p>
-                <p className="text-2xl font-bold">{transkrip.summary.totalSemester}</p>
+                <p className="text-3xl font-bold text-blue-600">
+                  {transkrip.summary.totalSemester}
+                </p>
               </div>
+              <BookOpen className="h-8 w-8 text-blue-600 opacity-50" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-green-200">
+        <Card className="bg-green-50 border-green-200">
           <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="rounded-full bg-green-100 p-3">
-                <Award className="h-5 w-5 text-green-600" />
-              </div>
+            <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">IPK Akhir</p>
-                <p className="text-2xl font-bold text-green-600">
+                <p className="text-3xl font-bold text-green-600">
                   {formatScore(transkrip.summary.finalIPK)}
                 </p>
               </div>
+              <Award className="h-8 w-8 text-green-600 opacity-50" />
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-purple-50 border-purple-200">
           <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="rounded-full bg-purple-100 p-3">
-                <TrendingUp className="h-5 w-5 text-purple-600" />
-              </div>
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total SKS Lulus</p>
-                <p className="text-2xl font-bold">{transkrip.summary.totalSKS}</p>
+                <p className="text-sm text-muted-foreground">Total SKS</p>
+                <p className="text-3xl font-bold text-purple-600">
+                  {transkrip.summary.totalSKS}
+                </p>
               </div>
+              <TrendingUp className="h-8 w-8 text-purple-600 opacity-50" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-yellow-200">
+        <Card className="bg-yellow-50 border-yellow-200">
           <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="rounded-full bg-yellow-100 p-3">
-                <Award className="h-5 w-5 text-yellow-600" />
-              </div>
+            <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Predikat</p>
                 <p className="text-2xl font-bold text-yellow-700">
-                  {transkrip.summary.predikat || 'Belum tersedia'}
+                  {transkrip.summary.predikat || '-'}
                 </p>
               </div>
+              <Award className="h-8 w-8 text-yellow-600 opacity-50" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Daftar Nilai per Semester */}
-      {Object.entries(groupedNilai).map(([semesterKey, nilaiList]) => (
+      {/* Nilai per Semester */}
+      {groupedNilai.map(([semesterKey, nilaiList]) => (
         <Card key={semesterKey}>
           <CardHeader>
-            <CardTitle className="flex items-center justify-between">
+            <CardTitle className="flex items-center justify-between text-lg">
               <span>{semesterKey}</span>
               <span className="text-sm font-normal text-muted-foreground">
-                {nilaiList.length} mata kuliah •{' '}
-                {nilaiList.reduce((sum, n) => sum + (n.kelasMK?.mataKuliah?.sks || 0), 0)} SKS
+                {nilaiList.length} MK • {nilaiList.reduce((sum, n) => sum + (n.kelasMK?.mataKuliah?.sks || 0), 0)} SKS
               </span>
             </CardTitle>
           </CardHeader>
@@ -350,7 +343,7 @@ export default function TranskripPage() {
                     <TableHead>Mata Kuliah</TableHead>
                     <TableHead>Dosen</TableHead>
                     <TableHead className="text-center">SKS</TableHead>
-                    <TableHead className="text-center">Nilai Angka</TableHead>
+                    <TableHead className="text-center">Angka</TableHead>
                     <TableHead className="text-center">Huruf</TableHead>
                     <TableHead className="text-center">Bobot</TableHead>
                   </TableRow>
@@ -358,24 +351,26 @@ export default function TranskripPage() {
                 <TableBody>
                   {nilaiList.map((nilai, idx) => (
                     <TableRow key={nilai.id}>
-                      <TableCell>{idx + 1}</TableCell>
-                      <TableCell className="font-mono">
+                      <TableCell className="text-center">{idx + 1}</TableCell>
+                      <TableCell className="font-mono text-sm">
                         {nilai.kelasMK?.mataKuliah?.kodeMK || '-'}
                       </TableCell>
                       <TableCell className="font-medium">
                         {nilai.kelasMK?.mataKuliah?.namaMK || '-'}
                       </TableCell>
-                      <TableCell>{nilai.kelasMK?.dosen?.namaLengkap || '-'}</TableCell>
+                      <TableCell className="text-sm">
+                        {nilai.kelasMK?.dosen?.namaLengkap || '-'}
+                      </TableCell>
                       <TableCell className="text-center">
-                        <Badge variant="outline">
+                        <Badge variant="outline" className="text-xs">
                           {nilai.kelasMK?.mataKuliah?.sks || 0}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center font-medium">
                         {formatScore(nilai.nilaiAngka)}
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge className={`font-bold ${getGradeColor(nilai.nilaiHuruf)}`}>
+                        <Badge className={`font-bold text-xs ${getGradeColor(nilai.nilaiHuruf)}`}>
                           {nilai.nilaiHuruf || '-'}
                         </Badge>
                       </TableCell>
@@ -391,31 +386,22 @@ export default function TranskripPage() {
         </Card>
       ))}
 
-      {/* Legend Nilai */}
+      {/* Legend - Compact */}
       <Card className="border-blue-200 bg-blue-50">
         <CardContent className="pt-6">
           <p className="text-sm font-medium text-blue-900 mb-4 flex items-center gap-2">
             <Info className="h-4 w-4" />
-            Legenda Nilai Huruf
+            Legenda Nilai
           </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { huruf: 'A', bobot: '4.00', desc: 'Sangat Baik' },
-              { huruf: 'AB', bobot: '3.50', desc: 'Baik Sekali' },
-              { huruf: 'B', bobot: '3.00', desc: 'Baik' },
-              { huruf: 'BC', bobot: '2.50', desc: 'Cukup Baik' },
-              { huruf: 'C', bobot: '2.00', desc: 'Cukup' },
-              { huruf: 'CD', bobot: '1.50', desc: 'Kurang' },
-              { huruf: 'D', bobot: '1.00', desc: 'Kurang Sekali' },
-              { huruf: 'E', bobot: '0.00', desc: 'Gagal' },
-            ].map((item) => (
-              <div key={item.huruf} className="flex items-center gap-3">
-                <Badge className={`font-bold ${getGradeColor(item.huruf)}`}>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {GRADE_LEGEND.map((item) => (
+              <div key={item.huruf} className="flex items-center gap-2">
+                <Badge className={`font-bold text-xs ${getGradeColor(item.huruf)}`}>
                   {item.huruf}
                 </Badge>
-                <div className="text-sm text-blue-700">
-                  <span className="font-medium">{item.bobot}</span> - {item.desc}
-                </div>
+                <span className="text-xs text-blue-700">
+                  {item.bobot} - {item.desc}
+                </span>
               </div>
             ))}
           </div>

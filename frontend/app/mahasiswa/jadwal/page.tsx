@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
@@ -28,12 +28,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Calendar, Clock, MapPin, Info, BookOpen, Download } from 'lucide-react';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 
 import { kelasMKAPI, mahasiswaAPI, semesterAPI } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { KRS, KelasMK, Semester } from '@/types/model';
-import { fi } from 'date-fns/locale';
-import { Button } from '@/components/ui/button';
 
 const HARI_ORDER: Record<string, number> = {
   Senin: 1,
@@ -69,13 +68,13 @@ export default function JadwalPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentDay, setCurrentDay] = useState<string>('');
   const [semesters, setSemesters] = useState<Semester[]>([]);
-  const [selectedSemesterId, setSelectedSemesterId] = useState<string>(''); // ✅ NEW
+  const [selectedSemesterId, setSelectedSemesterId] = useState<string>('');
   const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
+
   // ============================================
   // FETCH DATA
   // ============================================
   useEffect(() => {
-    // Get current day
     const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     const today = new Date().getDay();
     setCurrentDay(days[today]);
@@ -93,7 +92,6 @@ export default function JadwalPage() {
         setIsLoading(true);
         setError(null);
 
-        // Fetch all semesters
         const semestersResponse = await semesterAPI.getAll();
         if (semestersResponse.success && semestersResponse.data) {
           const sorted = semestersResponse.data.sort((a, b) => {
@@ -102,7 +100,6 @@ export default function JadwalPage() {
           });
           setSemesters(sorted);
           
-          // ✅ Auto-select active semester
           const active = sorted.find(s => s.isActive);
           if (active) {
             setSelectedSemesterId(active.id.toString());
@@ -111,7 +108,6 @@ export default function JadwalPage() {
           throw new Error('Gagal memuat data semester');
         }
 
-        // Fetch all KRS for current mahasiswa
         const krsResponse = await mahasiswaAPI.getKRS(mahasiswaId);
 
         if (krsResponse.success && krsResponse.data) {
@@ -135,7 +131,6 @@ export default function JadwalPage() {
     fetchData();
   }, [authLoading, user]);
 
-  // ✅ NEW: Update KRS when semester changes
   useEffect(() => {
     if (!selectedSemesterId || krsList.length === 0) {
       setKrs(null);
@@ -151,109 +146,89 @@ export default function JadwalPage() {
   }, [selectedSemesterId, krsList]);
 
   // ============================================
-  // COMPUTED VALUES
+  // COMPUTED VALUES (MEMOIZED)
   // ============================================
-  const selectedSemester = semesters.find(s => s.id === parseInt(selectedSemesterId));
+  const selectedSemester = useMemo(
+    () => semesters.find(s => s.id === parseInt(selectedSemesterId)),
+    [semesters, selectedSemesterId]
+  );
   
-  const jadwalList: KelasMK[] = (krs?.detail
-    ?.map((d) => d.kelasMK)
-    .filter((kelasMK): kelasMK is KelasMK => kelasMK !== undefined) || []);
+  const jadwalList = useMemo<KelasMK[]>(() => 
+    (krs?.detail
+      ?.map((d) => d.kelasMK)
+      .filter((kelasMK): kelasMK is KelasMK => kelasMK !== undefined) || []
+    ), [krs?.detail]
+  );
 
-  // Sort by day and time
-  const sortedJadwal = [...jadwalList].sort((a, b) => {
-    const hariCompare = HARI_ORDER[a.hari] - HARI_ORDER[b.hari];
-    if (hariCompare !== 0) return hariCompare;
-    return a.jamMulai.localeCompare(b.jamMulai);
-  });
+  const sortedJadwal = useMemo(() => 
+    [...jadwalList].sort((a, b) => {
+      const hariCompare = HARI_ORDER[a.hari] - HARI_ORDER[b.hari];
+      if (hariCompare !== 0) return hariCompare;
+      return a.jamMulai.localeCompare(b.jamMulai);
+    }), [jadwalList]
+  );
 
-  // Group by day
-  const jadwalByHari: JadwalByHari[] = HARI_OPTIONS.map((hari) => ({
-    hari: hari.value,
-    jadwal: sortedJadwal.filter((j) => j.hari === hari.value),
-  })).filter((group) => group.jadwal.length > 0);
+  const jadwalByHari = useMemo<JadwalByHari[]>(() => 
+    HARI_OPTIONS.map((hari) => ({
+      hari: hari.value,
+      jadwal: sortedJadwal.filter((j) => j.hari === hari.value),
+    })).filter((group) => group.jadwal.length > 0),
+    [sortedJadwal]
+  );
 
-  const totalKelas = jadwalList.length;
-  const totalSKS = jadwalList.reduce((sum, j) => sum + (j.mataKuliah?.sks || 0), 0);
-  const uniqueDays = new Set(jadwalList.map((j) => j.hari)).size;
+  const stats = useMemo(() => {
+    const totalKelas = jadwalList.length;
+    const totalSKS = jadwalList.reduce((sum, j) => sum + (j.mataKuliah?.sks || 0), 0);
+    const uniqueDays = new Set(jadwalList.map((j) => j.hari)).size;
+    
+    return { totalKelas, totalSKS, uniqueDays };
+  }, [jadwalList]);
 
-  // Get today's schedule
-  const jadwalHariIni = sortedJadwal.filter((j) => j.hari === currentDay);
+  const jadwalHariIni = useMemo(() => 
+    sortedJadwal.filter((j) => j.hari === currentDay),
+    [sortedJadwal, currentDay]
+  );
 
   // ============================================
-  // HANDLERS
+  // HANDLERS (MEMOIZED)
   // ============================================
-  const handleRetry = () => {
+  const handleRetry = useCallback(() => {
     window.location.reload();
-  };
+  }, []);
 
-  // const handleExportExcel = async () => {
-  //   if (!selectedSemester || !selectedSemester.id || !user?.mahasiswa?.id) {
-  //     toast.error('Pilih semester terlebih dahulu');
-  //     return;
-  //   }
+  const handleDownloadPDF = useCallback(async () => {
+    if (!selectedSemester || !user?.mahasiswa?.id) {
+      toast.error('Data tidak lengkap');
+      return;
+    }
 
-  //   setIsExportingExcel(true);
-  //   try{
-  //     const blob = await kelasMKAPI.exportToExcel({
-  //       semester_id: selectedSemester.id,
-  //       mahasiswaId: user.mahasiswa.id,
-  //     });
+    setIsDownloadingPDF(true);
+    try {
+      const blob = await kelasMKAPI.exportJadwalMahasiswaPDF({
+        mahasiswaId: user.mahasiswa.id,
+        semesterId: selectedSemester.id,
+      });
 
-  //     const url = window.URL.createObjectURL(blob);
-  //     const a = document.createElement('a');
-
-  //     const semester = semesters.find(s => s.id === selectedSemester.id);
-  //     const timestamp = new Date().toISOString().split('T')[0];
-  //     const filename = `jadwal_kuliah-${user.mahasiswa?.nim || 'mahasiswa'}-${semester ? semester.tahunAkademik + '-' + semester.periode.toLowerCase() : 'semester'}-${timestamp}.xlsx`;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
       
-  //     a.download = filename;
-  //     document.body.appendChild(a);
-  //     a.click();
-  //     document.body.removeChild(a);
-  //     window.URL.revokeObjectURL(url);
+      const filename = `Jadwal-${user.mahasiswa.nim}-${selectedSemester.periode}-${selectedSemester.tahunAkademik}.pdf`;
+      a.download = filename;
+      
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
 
-  //     toast.success('Jadwal Berhasil di export ke Excel');
-  //   }catch(error){
-  //     console.error('Error exporting to Excel:', error);
-  //     toast.error('Gagal export ke Excel');
-  //   } finally {
-  //     setIsExportingExcel(false);
-  //   }
-  // }
-
-  const handleDownloadPDF = async () => {
-  if (!selectedSemester || !user?.mahasiswa?.id) {
-    toast.error('Data tidak lengkap');
-    return;
-  }
-
-  setIsDownloadingPDF(true);
-  try {
-    const blob = await kelasMKAPI.exportJadwalMahasiswaPDF({
-      mahasiswaId: user.mahasiswa.id,
-      semesterId: selectedSemester.id,
-    });
-
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    
-    const filename = `Jadwal-${user.mahasiswa.nim}-${selectedSemester.periode}-${selectedSemester.tahunAkademik}.pdf`;
-    a.download = filename;
-    
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-
-    toast.success('Jadwal berhasil didownload');
-  } catch (error) {
-    console.error('Error downloading PDF:', error);
-    toast.error('Gagal download jadwal');
-  } finally {
-    setIsDownloadingPDF(false);
-  }
-};
+      toast.success('Jadwal berhasil didownload');
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      toast.error('Gagal download jadwal');
+    } finally {
+      setIsDownloadingPDF(false);
+    }
+  }, [selectedSemester, user?.mahasiswa]);
 
   // ============================================
   // LOADING STATE
@@ -288,31 +263,19 @@ export default function JadwalPage() {
       <PageHeader
         title="Jadwal Kuliah"
         description="Jadwal kuliah Anda per semester"
-       actions={
-          <>
-
-            {/* <Button
-              variant="outline"
-              onClick={handleExportExcel}
-              disabled={isExportingExcel || !selectedSemester}
-              className="gap-2"
-            >
-              <Download className="h-4 w-4" />
-              {isExportingExcel ? 'Exporting...' : 'Export'}
-            </Button> */}
-
-            <Button
-              onClick={handleDownloadPDF}
-              disabled={isDownloadingPDF || !selectedSemester}
-              className="gap-2"
-            >
-              <Download className="h-4 w-4" />
-              {isDownloadingPDF ? 'Downloading...' : 'Download PDF'}
-            </Button>
-          </>
+        actions={
+          <Button
+            onClick={handleDownloadPDF}
+            disabled={isDownloadingPDF || !selectedSemester}
+            className="gap-2"
+          >
+            <Download className="h-4 w-4" />
+            {isDownloadingPDF ? 'Downloading...' : 'Download PDF'}
+          </Button>
         }
       />
 
+      {/* Semester Selector */}
       <Card>
         <CardContent className="pt-6">
           <div className="max-w-sm">
@@ -403,7 +366,7 @@ export default function JadwalPage() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Total Kelas</p>
-                    <p className="text-2xl font-bold">{totalKelas}</p>
+                    <p className="text-2xl font-bold">{stats.totalKelas}</p>
                   </div>
                 </div>
               </CardContent>
@@ -417,7 +380,7 @@ export default function JadwalPage() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Total SKS</p>
-                    <p className="text-2xl font-bold">{totalSKS}</p>
+                    <p className="text-2xl font-bold">{stats.totalSKS}</p>
                   </div>
                 </div>
               </CardContent>
@@ -431,7 +394,7 @@ export default function JadwalPage() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Hari Kuliah</p>
-                    <p className="text-2xl font-bold">{uniqueDays}</p>
+                    <p className="text-2xl font-bold">{stats.uniqueDays}</p>
                   </div>
                 </div>
               </CardContent>
@@ -577,7 +540,7 @@ export default function JadwalPage() {
                           Total Jam Kuliah per Minggu
                         </p>
                         <p className="text-2xl font-bold text-blue-600">
-                          {Math.floor((totalSKS * 50) / 60)} jam {(totalSKS * 50) % 60} menit
+                          {Math.floor((stats.totalSKS * 50) / 60)} jam {(stats.totalSKS * 50) % 60} menit
                         </p>
                       </div>
                       <div className="text-center p-4 rounded-lg bg-green-50">
@@ -585,7 +548,7 @@ export default function JadwalPage() {
                           Rata-rata Kelas per Hari
                         </p>
                         <p className="text-2xl font-bold text-green-600">
-                          {uniqueDays > 0 ? (totalKelas / uniqueDays).toFixed(1) : 0} kelas
+                          {stats.uniqueDays > 0 ? (stats.totalKelas / stats.uniqueDays).toFixed(1) : 0} kelas
                         </p>
                       </div>
                     </div>
@@ -607,7 +570,7 @@ export default function JadwalPage() {
                     <li>Pastikan Anda hadir tepat waktu sesuai jadwal</li>
                     <li>Jika ada perubahan jadwal, akan diinformasikan oleh dosen</li>
                     <li>
-                      Total beban kuliah: {totalSKS} SKS = {totalSKS * 50} menit per minggu
+                      Total beban kuliah: {stats.totalSKS} SKS = {stats.totalSKS * 50} menit per minggu
                     </li>
                     <li>Toleransi keterlambatan maksimal 15 menit</li>
                   </ul>

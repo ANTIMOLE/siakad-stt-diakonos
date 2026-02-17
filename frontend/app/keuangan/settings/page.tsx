@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 import PageHeader from '@/components/shared/PageHeader';
@@ -18,6 +18,118 @@ import { toast } from 'sonner';
 
 import { authAPI } from '@/lib/api';
 
+// ✅ Helper functions outside component
+const validatePassword = (form: {
+  oldPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}): string | null => {
+  if (!form.oldPassword || !form.newPassword || !form.confirmPassword) {
+    return 'Semua field password harus diisi';
+  }
+  if (form.newPassword.length < 6) {
+    return 'Password baru minimal 6 karakter';
+  }
+  if (form.newPassword !== form.confirmPassword) {
+    return 'Password baru dan konfirmasi tidak cocok';
+  }
+  if (form.oldPassword === form.newPassword) {
+    return 'Password baru harus berbeda dengan password lama';
+  }
+  return null;
+};
+
+const validateUsername = (newUsername: string, currentUsername: string): string | null => {
+  if (!newUsername) {
+    return 'Username baru harus diisi';
+  }
+  if (newUsername === currentUsername) {
+    return 'Username baru harus berbeda dengan username saat ini';
+  }
+  if (newUsername.length < 3) {
+    return 'Username minimal 3 karakter';
+  }
+  if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(newUsername)) {
+    return 'Username harus diawali huruf dan hanya boleh berisi huruf, angka, underscore, atau hyphen';
+  }
+  return null;
+};
+
+const getRoleDashboard = (role: string): string => {
+  const dashboards: Record<string, string> = {
+    ADMIN: '/admin/dashboard',
+    DOSEN: '/dosen/dashboard',
+    MAHASISWA: '/mahasiswa/dashboard',
+    KEUANGAN: '/keuangan/dashboard',
+  };
+  return dashboards[role] || '/';
+};
+
+const getLoginIdentity = (user: any): string => {
+  return user?.mahasiswa?.nim || user?.dosen?.nidn || user?.admin?.nik || '-';
+};
+
+const getLoginLabel = (role: string): string => {
+  if (role === 'MAHASISWA') return 'Gunakan NIM untuk login';
+  if (role === 'DOSEN') return 'Gunakan NIDN untuk login';
+  return '-';
+};
+
+const getAccountNote = (role: string): string => {
+  if (role === 'MAHASISWA') {
+    return 'Mahasiswa tidak dapat mengubah NIM. Jika ada kesalahan data, hubungi bagian akademik.';
+  }
+  if (role === 'DOSEN') {
+    return 'Dosen tidak dapat mengubah NIDN. Jika ada kesalahan data, hubungi bagian akademik.';
+  }
+  return '';
+};
+
+// ✅ Password visibility toggle component
+const PasswordInput = ({
+  id,
+  value,
+  onChange,
+  placeholder,
+  disabled,
+  show,
+  onToggle,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  disabled: boolean;
+  show: boolean;
+  onToggle: () => void;
+}) => (
+  <div className="relative">
+    <Input
+      id={id}
+      type={show ? 'text' : 'password'}
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      className="pr-10"
+    />
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+      onClick={onToggle}
+      disabled={disabled}
+    >
+      {show ? (
+        <EyeOff className="h-4 w-4 text-muted-foreground" />
+      ) : (
+        <Eye className="h-4 w-4 text-muted-foreground" />
+      )}
+    </Button>
+  </div>
+);
+
 export default function SettingsPage() {
   const router = useRouter();
 
@@ -28,8 +140,7 @@ export default function SettingsPage() {
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       try {
-        const parsed = JSON.parse(storedUser);
-        setUser(parsed);
+        setUser(JSON.parse(storedUser));
       } catch (err) {
         console.error('Gagal parse user dari localStorage');
         localStorage.removeItem('user');
@@ -37,8 +148,6 @@ export default function SettingsPage() {
     }
     setIsAuthLoading(false);
   }, []);
-
-  const canChangeUsername = user?.role === 'ADMIN' || user?.role === 'KEUANGAN';
 
   const [passwordForm, setPasswordForm] = useState({
     oldPassword: '',
@@ -57,6 +166,37 @@ export default function SettingsPage() {
   });
   const [isChangingUsername, setIsChangingUsername] = useState(false);
 
+  // ============================================
+  // MEMOIZED VALUES
+  // ============================================
+  const canChangeUsername = useMemo(
+    () => user?.role === 'ADMIN' || user?.role === 'KEUANGAN',
+    [user?.role]
+  );
+
+  const dashboardLink = useMemo(
+    () => getRoleDashboard(user?.role),
+    [user?.role]
+  );
+
+  const loginIdentity = useMemo(
+    () => getLoginIdentity(user),
+    [user]
+  );
+
+  const loginLabel = useMemo(
+    () => getLoginLabel(user?.role),
+    [user?.role]
+  );
+
+  const accountNote = useMemo(
+    () => getAccountNote(user?.role),
+    [user?.role]
+  );
+
+  // ============================================
+  // EFFECTS
+  // ============================================
   useEffect(() => {
     if (user && canChangeUsername) {
       setUsernameForm({
@@ -66,26 +206,15 @@ export default function SettingsPage() {
     }
   }, [user, canChangeUsername]);
 
-  const handlePasswordChange = async (e: React.FormEvent) => {
+  // ============================================
+  // HANDLERS
+  // ============================================
+  const handlePasswordChange = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!passwordForm.oldPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
-      toast.error('Semua field password harus diisi');
-      return;
-    }
-
-    if (passwordForm.newPassword.length < 6) {
-      toast.error('Password baru minimal 6 karakter');
-      return;
-    }
-
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      toast.error('Password baru dan konfirmasi tidak cocok');
-      return;
-    }
-
-    if (passwordForm.oldPassword === passwordForm.newPassword) {
-      toast.error('Password baru harus berbeda dengan password lama');
+    const error = validatePassword(passwordForm);
+    if (error) {
+      toast.error(error);
       return;
     }
 
@@ -100,13 +229,11 @@ export default function SettingsPage() {
 
       if (response.success) {
         toast.success('Password berhasil diubah');
-        
         setPasswordForm({
           oldPassword: '',
           newPassword: '',
           confirmPassword: '',
         });
-        
         setShowOldPassword(false);
         setShowNewPassword(false);
         setShowConfirmPassword(false);
@@ -115,55 +242,39 @@ export default function SettingsPage() {
       }
     } catch (err: any) {
       console.error('Change password error:', err);
-      toast.error(
-        err.response?.data?.message ||
-        err.message ||
-        'Terjadi kesalahan saat mengubah password'
-      );
+      toast.error(err.response?.data?.message || 'Terjadi kesalahan');
     } finally {
       setIsChangingPassword(false);
     }
-  };
+  }, [passwordForm]);
 
-  const handleUsernameChange = async (e: React.FormEvent) => {
+  const handleUsernameChange = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!usernameForm.newUsername) {
-      toast.error('Username baru harus diisi');
-      return;
-    }
-
-    if (usernameForm.newUsername === usernameForm.currentUsername) {
-      toast.error('Username baru harus berbeda dengan username saat ini');
-      return;
-    }
-
-    if (usernameForm.newUsername.length < 3) {
-      toast.error('Username minimal 3 karakter');
-      return;
-    }
-
-    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(usernameForm.newUsername)) {
-      toast.error('Username harus diawali huruf dan hanya boleh berisi huruf, angka, underscore, atau hyphen');
+    const error = validateUsername(usernameForm.newUsername, usernameForm.currentUsername);
+    if (error) {
+      toast.error(error);
       return;
     }
 
     try {
       setIsChangingUsername(true);
-
       toast.error('Fitur ganti username akan segera tersedia');
     } catch (err: any) {
       console.error('Change username error:', err);
-      toast.error(
-        err.response?.data?.message ||
-        err.message ||
-        'Terjadi kesalahan saat mengubah username'
-      );
+      toast.error(err.response?.data?.message || 'Terjadi kesalahan');
     } finally {
       setIsChangingUsername(false);
     }
-  };
+  }, [usernameForm]);
 
+  const handleLoginRedirect = useCallback(() => {
+    router.push('/login');
+  }, [router]);
+
+  // ============================================
+  // LOADING & ERROR
+  // ============================================
   if (isAuthLoading) {
     return <LoadingSpinner size="lg" text="Memuat pengaturan..." />;
   }
@@ -173,48 +284,37 @@ export default function SettingsPage() {
       <ErrorState
         title="Akses Ditolak"
         message="Silakan login kembali"
-        onRetry={() => router.push('/login')}
+        onRetry={handleLoginRedirect}
       />
     );
   }
 
-  const getRoleDashboard = () => {
-    switch (user.role) {
-      case 'ADMIN':
-        return '/admin/dashboard';
-      case 'DOSEN':
-        return '/dosen/dashboard';
-      case 'MAHASISWA':
-        return '/mahasiswa/dashboard';
-      case 'KEUANGAN':
-        return '/keuangan/dashboard';
-      default:
-        return '/';
-    }
-  };
-
+  // ============================================
+  // RENDER
+  // ============================================
   return (
     <div className="space-y-6">
       <PageHeader
         title="Pengaturan Akun"
         description="Kelola keamanan dan informasi akun Anda"
         breadcrumbs={[
-          { label: 'Dashboard', href: getRoleDashboard() },
+          { label: 'Dashboard', href: dashboardLink },
           { label: 'Pengaturan' },
         ]}
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
+        {/* Ganti Password */}
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <div className="rounded-full bg-primary/10 p-2">
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-primary/10 p-2.5">
                 <KeyRound className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <CardTitle>Ganti Password</CardTitle>
-                <CardDescription>
-                  Ubah password Anda untuk meningkatkan keamanan akun
+                <CardTitle className="text-lg">Ganti Password</CardTitle>
+                <CardDescription className="text-xs">
+                  Ubah password untuk meningkatkan keamanan
                 </CardDescription>
               </div>
             </div>
@@ -222,107 +322,56 @@ export default function SettingsPage() {
           <CardContent>
             <form onSubmit={handlePasswordChange} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="oldPassword">Password Lama</Label>
-                <div className="relative">
-                  <Input
-                    id="oldPassword"
-                    type={showOldPassword ? 'text' : 'password'}
-                    placeholder="Masukkan password lama"
-                    value={passwordForm.oldPassword}
-                    onChange={(e) =>
-                      setPasswordForm({ ...passwordForm, oldPassword: e.target.value })
-                    }
-                    disabled={isChangingPassword}
-                    className="pr-10"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowOldPassword(!showOldPassword)}
-                    disabled={isChangingPassword}
-                  >
-                    {showOldPassword ? (
-                      <EyeOff className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </Button>
-                </div>
+                <Label htmlFor="oldPassword" className="text-sm">Password Lama</Label>
+                <PasswordInput
+                  id="oldPassword"
+                  value={passwordForm.oldPassword}
+                  onChange={(value) =>
+                    setPasswordForm({ ...passwordForm, oldPassword: value })
+                  }
+                  placeholder="Masukkan password lama"
+                  disabled={isChangingPassword}
+                  show={showOldPassword}
+                  onToggle={() => setShowOldPassword(!showOldPassword)}
+                />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="newPassword">Password Baru</Label>
-                <div className="relative">
-                  <Input
-                    id="newPassword"
-                    type={showNewPassword ? 'text' : 'password'}
-                    placeholder="Masukkan password baru (min. 6 karakter)"
-                    value={passwordForm.newPassword}
-                    onChange={(e) =>
-                      setPasswordForm({ ...passwordForm, newPassword: e.target.value })
-                    }
-                    disabled={isChangingPassword}
-                    className="pr-10"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    disabled={isChangingPassword}
-                  >
-                    {showNewPassword ? (
-                      <EyeOff className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </Button>
-                </div>
+                <Label htmlFor="newPassword" className="text-sm">Password Baru</Label>
+                <PasswordInput
+                  id="newPassword"
+                  value={passwordForm.newPassword}
+                  onChange={(value) =>
+                    setPasswordForm({ ...passwordForm, newPassword: value })
+                  }
+                  placeholder="Min. 6 karakter"
+                  disabled={isChangingPassword}
+                  show={showNewPassword}
+                  onToggle={() => setShowNewPassword(!showNewPassword)}
+                />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Konfirmasi Password Baru</Label>
-                <div className="relative">
-                  <Input
-                    id="confirmPassword"
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    placeholder="Ulangi password baru"
-                    value={passwordForm.confirmPassword}
-                    onChange={(e) =>
-                      setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })
-                    }
-                    disabled={isChangingPassword}
-                    className="pr-10"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    disabled={isChangingPassword}
-                  >
-                    {showConfirmPassword ? (
-                      <EyeOff className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </Button>
-                </div>
+                <Label htmlFor="confirmPassword" className="text-sm">
+                  Konfirmasi Password
+                </Label>
+                <PasswordInput
+                  id="confirmPassword"
+                  value={passwordForm.confirmPassword}
+                  onChange={(value) =>
+                    setPasswordForm({ ...passwordForm, confirmPassword: value })
+                  }
+                  placeholder="Ulangi password baru"
+                  disabled={isChangingPassword}
+                  show={showConfirmPassword}
+                  onToggle={() => setShowConfirmPassword(!showConfirmPassword)}
+                />
               </div>
 
               <Alert className="border-blue-200 bg-blue-50">
                 <AlertCircle className="h-4 w-4 text-blue-600" />
-                <AlertDescription className="text-sm text-blue-900">
-                  <strong>Tips Keamanan:</strong>
-                  <ul className="mt-1 list-inside list-disc space-y-1 text-xs">
-                    <li>Gunakan minimal 6 karakter</li>
-                    <li>Kombinasi huruf besar, kecil, dan angka</li>
-                    <li>Jangan gunakan password yang mudah ditebak</li>
-                  </ul>
+                <AlertDescription className="text-xs text-blue-900">
+                  <strong>Tips:</strong> Gunakan min. 6 karakter dengan kombinasi huruf besar, kecil, dan angka
                 </AlertDescription>
               </Alert>
 
@@ -330,7 +379,7 @@ export default function SettingsPage() {
                 {isChangingPassword ? (
                   <>
                     <LoadingSpinner className="mr-2" size="sm" />
-                    Mengubah Password...
+                    Mengubah...
                   </>
                 ) : (
                   'Ubah Password'
@@ -340,17 +389,18 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
+        {/* Ganti Username (Admin/Keuangan) */}
         {canChangeUsername && (
           <Card>
             <CardHeader>
-              <div className="flex items-center gap-2">
-                <div className="rounded-full bg-green-100 p-2">
+              <div className="flex items-center gap-3">
+                <div className="rounded-full bg-green-100 p-2.5">
                   <User className="h-5 w-5 text-green-600" />
                 </div>
                 <div>
-                  <CardTitle>Ganti Username</CardTitle>
-                  <CardDescription>
-                    Ubah username untuk login (khusus Admin & Keuangan)
+                  <CardTitle className="text-lg">Ganti Username</CardTitle>
+                  <CardDescription className="text-xs">
+                    Ubah username untuk login
                   </CardDescription>
                 </div>
               </div>
@@ -358,10 +408,11 @@ export default function SettingsPage() {
             <CardContent>
               <form onSubmit={handleUsernameChange} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="currentUsername">Username Saat Ini</Label>
+                  <Label htmlFor="currentUsername" className="text-sm">
+                    Username Saat Ini
+                  </Label>
                   <Input
                     id="currentUsername"
-                    type="text"
                     value={usernameForm.currentUsername}
                     disabled
                     className="bg-gray-50"
@@ -369,10 +420,9 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="newUsername">Username Baru</Label>
+                  <Label htmlFor="newUsername" className="text-sm">Username Baru</Label>
                   <Input
                     id="newUsername"
-                    type="text"
                     placeholder="Masukkan username baru"
                     value={usernameForm.newUsername}
                     onChange={(e) =>
@@ -381,14 +431,14 @@ export default function SettingsPage() {
                     disabled={isChangingUsername}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Harus diawali huruf, boleh berisi huruf, angka, underscore, atau hyphen
+                    Harus diawali huruf, boleh berisi huruf, angka, _ atau -
                   </p>
                 </div>
 
                 <Alert className="border-yellow-200 bg-yellow-50">
                   <AlertCircle className="h-4 w-4 text-yellow-600" />
-                  <AlertDescription className="text-sm text-yellow-900">
-                    <strong>Perhatian:</strong> Setelah mengubah username, Anda harus login menggunakan username yang baru.
+                  <AlertDescription className="text-xs text-yellow-900">
+                    Setelah mengubah username, login menggunakan username baru
                   </AlertDescription>
                 </Alert>
 
@@ -401,7 +451,7 @@ export default function SettingsPage() {
                   {isChangingUsername ? (
                     <>
                       <LoadingSpinner className="mr-2" size="sm" />
-                      Mengubah Username...
+                      Mengubah...
                     </>
                   ) : (
                     'Ubah Username'
@@ -412,60 +462,46 @@ export default function SettingsPage() {
           </Card>
         )}
 
+        {/* Informasi Akun (Mahasiswa/Dosen) */}
         {!canChangeUsername && (
-          <Card className="border-gray-200">
+          <Card>
             <CardHeader>
-              <div className="flex items-center gap-2">
-                <div className="rounded-full bg-gray-100 p-2">
+              <div className="flex items-center gap-3">
+                <div className="rounded-full bg-gray-100 p-2.5">
                   <CheckCircle2 className="h-5 w-5 text-gray-600" />
                 </div>
                 <div>
-                  <CardTitle>Informasi Akun</CardTitle>
-                  <CardDescription>
-                    Detail identitas login Anda
-                  </CardDescription>
+                  <CardTitle className="text-lg">Informasi Akun</CardTitle>
+                  <CardDescription className="text-xs">Detail identitas login</CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Identitas Login</Label>
+                <Label className="text-sm">Identitas Login</Label>
                 <Input
-                  type="text"
-                  value={
-                    user?.mahasiswa?.nim ||
-                    user?.dosen?.nidn ||
-                    user?.admin?.nik ||
-                    '-'
-                  }
+                  value={loginIdentity}
                   disabled
                   className="bg-gray-50 font-mono"
                 />
-                <p className="text-xs text-muted-foreground">
-                  {user?.role === 'MAHASISWA' && 'Gunakan NIM untuk login'}
-                  {user?.role === 'DOSEN' && 'Gunakan NIDN untuk login'}
-                </p>
+                <p className="text-xs text-muted-foreground">{loginLabel}</p>
               </div>
 
               <Separator />
 
               <Alert className="border-gray-200 bg-gray-50">
                 <AlertCircle className="h-4 w-4 text-gray-600" />
-                <AlertDescription className="text-sm text-gray-700">
-                  <p className="font-medium mb-1">Catatan:</p>
-                  <p>
-                    {user?.role === 'MAHASISWA' && 'Mahasiswa tidak dapat mengubah NIM. Jika ada kesalahan data, hubungi bagian akademik.'}
-                    {user?.role === 'DOSEN' && 'Dosen tidak dapat mengubah NIDN. Jika ada kesalahan data, hubungi bagian akademik.'}
-                  </p>
+                <AlertDescription className="text-xs text-gray-700">
+                  {accountNote}
                 </AlertDescription>
               </Alert>
 
-              <div className="rounded-lg bg-primary/5 p-4">
-                <p className="text-sm font-medium text-primary mb-2">
-                  Keamanan Akun Anda
+              <div className="rounded-lg bg-primary/5 p-3">
+                <p className="text-xs font-medium text-primary mb-1">
+                  Keamanan Akun
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Untuk menjaga keamanan akun, pastikan Anda mengubah password secara berkala dan jangan membagikan password Anda kepada siapapun.
+                  Ubah password secara berkala dan jangan bagikan ke siapapun
                 </p>
               </div>
             </CardContent>

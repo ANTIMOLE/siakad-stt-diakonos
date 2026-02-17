@@ -1,28 +1,77 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Download, Eye, Edit, Trash2, Calendar, Clock, Users, MapPin } from 'lucide-react';
+import { Plus, Download, Eye, Edit, Trash2, Calendar, Clock, Users, MapPin, BookOpen } from 'lucide-react';
 
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import ErrorState from '@/components/shared/ErrorState';
 import EmptyState from '@/components/shared/EmptyState';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 
 import { kelasMKAPI, semesterAPI } from '@/lib/api';
 import { KelasMK, Semester } from '@/types/model';
 
+// ============================================
+// CONSTANTS
+// ============================================
+const DAYS = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+const filterKelas = (kelasList: KelasMK[], search: string): KelasMK[] => {
+  if (!search) return kelasList;
+  const searchLower = search.toLowerCase();
+  return kelasList.filter(
+    (kelas) =>
+      kelas.mataKuliah?.namaMK.toLowerCase().includes(searchLower) ||
+      kelas.mataKuliah?.kodeMK.toLowerCase().includes(searchLower) ||
+      kelas.dosen?.namaLengkap.toLowerCase().includes(searchLower)
+  );
+};
+
+const calculateStats = (kelasList: KelasMK[]) => ({
+  total: kelasList.length,
+  senin: kelasList.filter((k) => k.hari === 'Senin').length,
+  totalMahasiswa: kelasList.reduce((sum, k) => sum + (k._count?.krsDetail || 0), 0),
+  uniqueDosen: new Set(kelasList.map((k) => k.dosenId)).size,
+});
+
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+// ============================================
+// STAT CARD COMPONENT
+// ============================================
+const StatCard = ({ value, label, color }: { value: number; label: string; color?: string }) => (
+  <Card className={color || 'bg-muted/50'}>
+    <CardContent className="pt-6">
+      <div className="text-2xl font-bold">{value}</div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+    </CardContent>
+  </Card>
+);
+
 export default function KelasMKListPage() {
   const router = useRouter();
 
-  // STATE MANAGEMENT
   const [kelasList, setKelasList] = useState<KelasMK[]>([]);
   const [semesterList, setSemesterList] = useState<Semester[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -35,7 +84,9 @@ export default function KelasMKListPage() {
     hari: 'ALL',
   });
 
+  // ============================================
   // FETCH SEMESTER LIST
+  // ============================================
   useEffect(() => {
     const fetchSemesters = async () => {
       try {
@@ -45,7 +96,6 @@ export default function KelasMKListPage() {
         if (response.success && response.data) {
           setSemesterList(response.data);
           
-          // Auto-select active semester
           const activeSemester = response.data.find((s) => s.isActive);
           if (activeSemester) {
             setFilters((prev) => ({ ...prev, semester_id: activeSemester.id.toString() }));
@@ -61,7 +111,9 @@ export default function KelasMKListPage() {
     fetchSemesters();
   }, []);
 
+  // ============================================
   // FETCH KELAS MK DATA
+  // ============================================
   const fetchKelasMK = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -80,34 +132,17 @@ export default function KelasMKListPage() {
       const response = await kelasMKAPI.getAll(params);
 
       if (response.success) {
-        let data = response.data || [];
-
-        // Client-side search filter
-        if (filters.search) {
-          const searchLower = filters.search.toLowerCase();
-          data = data.filter(
-            (kelas) =>
-              kelas.mataKuliah?.namaMK.toLowerCase().includes(searchLower) ||
-              kelas.mataKuliah?.kodeMK.toLowerCase().includes(searchLower) ||
-              kelas.dosen?.namaLengkap.toLowerCase().includes(searchLower)
-          );
-        }
-
-        setKelasList(data);
+        setKelasList(response.data || []);
       } else {
         setError(response.message || 'Gagal memuat data kelas');
       }
     } catch (err: any) {
       console.error('Fetch kelas MK error:', err);
-      setError(
-        err.response?.data?.message ||
-        err.message ||
-        'Terjadi kesalahan saat memuat data kelas'
-      );
+      setError(err.response?.data?.message || err.message || 'Terjadi kesalahan');
     } finally {
       setIsLoading(false);
     }
-  }, [filters]);
+  }, [filters.semester_id, filters.hari]);
 
   useEffect(() => {
     if (!isSemesterLoading) {
@@ -115,20 +150,41 @@ export default function KelasMKListPage() {
     }
   }, [fetchKelasMK, isSemesterLoading]);
 
+  // ============================================
+  // MEMOIZED VALUES
+  // ============================================
+  const filteredKelas = useMemo(
+    () => filterKelas(kelasList, filters.search),
+    [kelasList, filters.search]
+  );
+
+  const stats = useMemo(() => calculateStats(filteredKelas), [filteredKelas]);
+
+  const semesterName = useMemo(() => {
+    const activeSemester = semesterList.find(
+      (s) => s.id.toString() === filters.semester_id
+    );
+    return activeSemester
+      ? `${activeSemester.tahunAkademik} ${activeSemester.periode}`
+      : 'Semua Semester';
+  }, [semesterList, filters.semester_id]);
+
+  // ============================================
   // HANDLERS
-  const handleFilterChange = (key: string, value: string) => {
+  // ============================================
+  const handleFilterChange = useCallback((key: string, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
-  };
+  }, []);
 
-  const handleView = (id: number) => {
+  const handleView = useCallback((id: number) => {
     router.push(`/admin/kelas-mk/${id}`);
-  };
+  }, [router]);
 
-  const handleEdit = (id: number) => {
+  const handleEdit = useCallback((id: number) => {
     router.push(`/admin/kelas-mk/${id}/edit`);
-  };
+  }, [router]);
 
-  const handleDelete = async (id: number, namaMK: string) => {
+  const handleDelete = useCallback(async (id: number, namaMK: string) => {
     if (!confirm(`Apakah Anda yakin ingin menghapus kelas "${namaMK}"?`)) {
       return;
     }
@@ -144,49 +200,38 @@ export default function KelasMKListPage() {
       }
     } catch (err: any) {
       console.error('Delete error:', err);
-      toast.error(
-        err.response?.data?.message ||
-        err.message ||
-        'Terjadi kesalahan saat menghapus kelas'
-      );
+      toast.error(err.response?.data?.message || 'Terjadi kesalahan');
     }
-  };
+  }, [fetchKelasMK]);
 
-  const handleCreate = () => {
+  const handleCreate = useCallback(() => {
     router.push('/admin/kelas-mk/tambah');
-  };
+  }, [router]);
 
-  // ✅ EXPORT HANDLER
-  const handleExport = async () => {
+  const handleExport = useCallback(async () => {
     try {
       const response = await kelasMKAPI.exportToExcel({
         semester_id: filters.semester_id !== 'ALL' ? parseInt(filters.semester_id) : undefined,
         hari: filters.hari !== 'ALL' ? filters.hari : undefined,
       });
 
-      const url = window.URL.createObjectURL(new Blob([response]));
-      const link = document.createElement('a');
-      link.href = url;
-      
       const timestamp = new Date().toISOString().split('T')[0];
-      link.setAttribute('download', `KelasMK_${timestamp}.xlsx`);
-      
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      downloadBlob(response, `KelasMK_${timestamp}.xlsx`);
       
       toast.success('Data Kelas MK berhasil di-export');
     } catch (err: any) {
       console.error('Export error:', err);
       toast.error('Gagal export data Kelas MK');
     }
-  };
+  }, [filters.semester_id, filters.hari]);
 
-  const handleRetry = () => {
+  const handleRetry = useCallback(() => {
     fetchKelasMK();
-  };
+  }, [fetchKelasMK]);
 
+  // ============================================
   // LOADING STATE
+  // ============================================
   if (isLoading && kelasList.length === 0) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -195,7 +240,9 @@ export default function KelasMKListPage() {
     );
   }
 
+  // ============================================
   // ERROR STATE
+  // ============================================
   if (error && kelasList.length === 0) {
     return (
       <ErrorState
@@ -206,15 +253,9 @@ export default function KelasMKListPage() {
     );
   }
 
-  // Get active semester name
-  const activeSemester = semesterList.find(
-    (s) => s.id.toString() === filters.semester_id
-  );
-  const semesterName = activeSemester
-    ? `${activeSemester.tahunAkademik} ${activeSemester.periode}`
-    : 'Semua Semester';
-
+  // ============================================
   // RENDER
+  // ============================================
   return (
     <div className="space-y-6">
       <PageHeader
@@ -242,7 +283,6 @@ export default function KelasMKListPage() {
       <Card>
         <CardContent className="pt-6">
           <div className="grid gap-4 md:grid-cols-3">
-            {/* Search */}
             <div>
               <label className="text-sm font-medium mb-2 block">Cari Kelas</label>
               <Input
@@ -252,7 +292,6 @@ export default function KelasMKListPage() {
               />
             </div>
 
-            {/* Filter Semester */}
             <div>
               <label className="text-sm font-medium mb-2 block">Semester</label>
               <Select
@@ -275,7 +314,6 @@ export default function KelasMKListPage() {
               </Select>
             </div>
 
-            {/* Filter Hari */}
             <div>
               <label className="text-sm font-medium mb-2 block">Hari</label>
               <Select
@@ -287,12 +325,11 @@ export default function KelasMKListPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">Semua Hari</SelectItem>
-                  <SelectItem value="Senin">Senin</SelectItem>
-                  <SelectItem value="Selasa">Selasa</SelectItem>
-                  <SelectItem value="Rabu">Rabu</SelectItem>
-                  <SelectItem value="Kamis">Kamis</SelectItem>
-                  <SelectItem value="Jumat">Jumat</SelectItem>
-                  <SelectItem value="Sabtu">Sabtu</SelectItem>
+                  {DAYS.map((day) => (
+                    <SelectItem key={day} value={day}>
+                      {day}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -302,138 +339,155 @@ export default function KelasMKListPage() {
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{kelasList.length}</div>
-            <p className="text-xs text-muted-foreground">Total Kelas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">
-              {kelasList.filter((k) => k.hari === 'Senin').length}
-            </div>
-            <p className="text-xs text-muted-foreground">Kelas Senin</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">
-              {kelasList.reduce((sum, k) => sum + (k._count?.krsDetail || 0), 0)}
-            </div>
-            <p className="text-xs text-muted-foreground">Total Mahasiswa</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">
-              {new Set(kelasList.map((k) => k.dosenId)).size}
-            </div>
-            <p className="text-xs text-muted-foreground">Dosen Mengajar</p>
-          </CardContent>
-        </Card>
+        <StatCard value={stats.total} label="Total Kelas" color="bg-blue-50 border-blue-200" />
+        <StatCard value={stats.senin} label="Kelas Senin" color="bg-green-50 border-green-200" />
+        <StatCard value={stats.totalMahasiswa} label="Total Mahasiswa" color="bg-purple-50 border-purple-200" />
+        <StatCard value={stats.uniqueDosen} label="Dosen Mengajar" color="bg-orange-50 border-orange-200" />
       </div>
 
-      {/* Kelas Cards */}
-      {kelasList.length === 0 ? (
-        <EmptyState
-          title="Tidak ada kelas"
-          description="Tidak ada kelas yang sesuai dengan filter yang dipilih"
-          action={{
-            label: 'Tambah Kelas',
-            onClick: handleCreate,
-            icon: Plus,
-          }}
-        />
+      {/* Table View */}
+      {filteredKelas.length === 0 ? (
+        <Card>
+          <CardContent className="py-12">
+            <EmptyState
+              title="Tidak ada kelas"
+              description="Tidak ada kelas yang sesuai dengan filter yang dipilih"
+              action={{
+                label: 'Tambah Kelas',
+                onClick: handleCreate,
+                icon: Plus,
+              }}
+              className="border-0"
+            />
+          </CardContent>
+        </Card>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {kelasList.map((kelas) => (
-            <Card key={kelas.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-lg line-clamp-2">
-                      {kelas.mataKuliah?.namaMK || 'N/A'}
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {kelas.mataKuliah?.kodeMK || 'N/A'}
-                    </p>
-                  </div>
-                  <Badge>{kelas.mataKuliah?.sks || 0} SKS</Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {/* Dosen */}
-                <div className="flex items-center gap-2 text-sm">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <span className="line-clamp-1">
-                    {kelas.dosen?.namaLengkap || 'N/A'}
-                  </span>
-                </div>
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">No</TableHead>
+                    <TableHead>Mata Kuliah</TableHead>
+                    <TableHead className="text-center">SKS</TableHead>
+                    <TableHead>Dosen</TableHead>
+                    <TableHead>Jadwal</TableHead>
+                    <TableHead>Ruangan</TableHead>
+                    <TableHead className="text-center">Mahasiswa</TableHead>
+                    <TableHead className="text-center w-32">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredKelas.map((kelas, index) => (
+                    <TableRow
+                      key={kelas.id}
+                      className="hover:bg-muted/50 cursor-pointer"
+                      onClick={() => handleView(kelas.id)}
+                    >
+                      <TableCell className="text-center font-medium text-muted-foreground">
+                        {index + 1}
+                      </TableCell>
 
-                {/* Jadwal */}
-                <div className="flex items-center gap-2 text-sm">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span>{kelas.hari}</span>
-                </div>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{kelas.mataKuliah?.namaMK || 'N/A'}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {kelas.mataKuliah?.kodeMK || '-'}
+                          </p>
+                        </div>
+                      </TableCell>
 
-                {/* Waktu */}
-                <div className="flex items-center gap-2 text-sm">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span>
-                    {kelas.jamMulai} - {kelas.jamSelesai}
-                  </span>
-                </div>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className="text-xs">
+                          {kelas.mataKuliah?.sks || 0}
+                        </Badge>
+                      </TableCell>
 
-                {/* Ruangan */}
-                <div className="flex items-center gap-2 text-sm">
-                  <MapPin className="h-4 w-4 text-muted-foreground" />
-                  <span>{kelas.ruangan?.nama || 'N/A'}</span>
-                </div>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Users className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-sm line-clamp-1">
+                            {kelas.dosen?.namaLengkap || 'N/A'}
+                          </span>
+                        </div>
+                      </TableCell>
 
-                {/* Kuota */}
-                <div className="pt-2 border-t">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Mahasiswa:</span>
-                    <span className="font-medium">
-                      {kelas._count?.krsDetail || 0} / {kelas.kuotaMax}
-                    </span>
-                  </div>
-                </div>
+                      <TableCell>
+                        <div className="text-sm">
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3 text-muted-foreground" />
+                            <span>{kelas.hari}</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Clock className="h-3 w-3" />
+                            <span>{kelas.jamMulai} - {kelas.jamSelesai}</span>
+                          </div>
+                        </div>
+                      </TableCell>
 
-                {/* Actions */}
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => handleView(kelas.id)}
-                  >
-                    <Eye className="mr-2 h-4 w-4" />
-                    Detail
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleEdit(kelas.id)}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-red-600"
-                    onClick={() =>
-                      handleDelete(kelas.id, kelas.mataKuliah?.namaMK || 'N/A')
-                    }
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                      <TableCell>
+                        <div className="flex items-center gap-1 text-sm">
+                          <MapPin className="h-3 w-3 text-muted-foreground" />
+                          <span>{kelas.ruangan?.nama || '-'}</span>
+                        </div>
+                      </TableCell>
+
+                      <TableCell className="text-center">
+                        <div className="flex flex-col items-center">
+                          <span className="font-medium text-sm">
+                            {kelas._count?.krsDetail || 0}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            / {kelas.kuotaMax}
+                          </span>
+                        </div>
+                      </TableCell>
+
+                      <TableCell className="text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleView(kelas.id);
+                            }}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEdit(kelas.id);
+                            }}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(kelas.id, kelas.mataKuliah?.namaMK || 'N/A');
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

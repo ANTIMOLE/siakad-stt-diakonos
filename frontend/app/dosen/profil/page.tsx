@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 import PageHeader from '@/components/shared/PageHeader';
@@ -14,8 +14,6 @@ import {
   User, 
   IdCard, 
   GraduationCap, 
-  Building2, 
-  Calendar,
   Shield,
   CheckCircle2,
   XCircle
@@ -23,12 +21,26 @@ import {
 
 import { dosenAPI } from '@/lib/api';
 
+// ✅ Helper functions outside
+const formatDate = (dateString: string | null): string => {
+  if (!dateString) return '-';
+  return new Date(dateString).toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+};
+
+const getStatusConfig = (status: string) => {
+  if (status === 'AKTIF') {
+    return { className: 'bg-green-100 text-green-700 border-green-300', label: 'Aktif' };
+  }
+  return { className: '', label: 'Tidak Aktif' };
+};
+
 export default function ProfilDosenPage() {
   const router = useRouter();
 
-  // ============================================
-  // GET USER FROM LOCALSTORAGE
-  // ============================================
   const [user, setUser] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
@@ -36,8 +48,7 @@ export default function ProfilDosenPage() {
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       try {
-        const parsed = JSON.parse(storedUser);
-        setUser(parsed);
+        setUser(JSON.parse(storedUser));
       } catch (err) {
         console.error('Gagal parse user dari localStorage');
         localStorage.removeItem('user');
@@ -46,9 +57,6 @@ export default function ProfilDosenPage() {
     setIsAuthLoading(false);
   }, []);
 
-  // ============================================
-  // STATE MANAGEMENT
-  // ============================================
   const [dosen, setDosen] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,11 +85,7 @@ export default function ProfilDosenPage() {
         }
       } catch (err: any) {
         console.error('Fetch dosen error:', err);
-        setError(
-          err.response?.data?.message ||
-          err.message ||
-          'Terjadi kesalahan saat memuat data'
-        );
+        setError(err.response?.data?.message || 'Terjadi kesalahan');
       } finally {
         setIsLoading(false);
       }
@@ -93,40 +97,50 @@ export default function ProfilDosenPage() {
   }, [user, isAuthLoading]);
 
   // ============================================
-  // HELPERS
+  // MEMOIZED VALUES
   // ============================================
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('id-ID', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  };
+  const statusBadge = useMemo(() => {
+    if (!dosen?.status) return null;
+    const config = getStatusConfig(dosen.status);
+    return <Badge className={config.className}>{config.label}</Badge>;
+  }, [dosen?.status]);
 
-  const getStatusBadge = (status: string) => {
-    if (status === 'AKTIF') {
-      return <Badge className="bg-green-100 text-green-700 border-green-300">Aktif</Badge>;
-    }
-    return <Badge variant="outline">Tidak Aktif</Badge>;
-  };
+  const accountStatus = useMemo(
+    () => ({
+      isActive: dosen?.user?.isActive,
+      createdAt: formatDate(dosen?.user?.createdAt),
+    }),
+    [dosen?.user]
+  );
+
+  const counts = useMemo(
+    () => ({
+      mahasiswaBimbingan: dosen?._count?.mahasiswaBimbingan || 0,
+      kelasDiampu: dosen?._count?.kelasMataKuliah || 0,
+    }),
+    [dosen?._count]
+  );
 
   // ============================================
-  // LOADING STATE
+  // HANDLERS
+  // ============================================
+  const handleRetry = useCallback(() => {
+    window.location.reload();
+  }, []);
+
+  // ============================================
+  // LOADING & ERROR
   // ============================================
   if (isAuthLoading || isLoading) {
     return <LoadingSpinner size="lg" text="Memuat profil..." />;
   }
 
-  // ============================================
-  // ERROR STATE
-  // ============================================
   if (error || !dosen) {
     return (
       <ErrorState
         title="Gagal Memuat Profil"
         message={error || 'Data dosen tidak ditemukan'}
-        onRetry={() => window.location.reload()}
+        onRetry={handleRetry}
       />
     );
   }
@@ -149,45 +163,41 @@ export default function ProfilDosenPage() {
         {/* Informasi Utama */}
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <div className="rounded-full bg-primary/10 p-2">
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-primary/10 p-2.5">
                 <User className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <CardTitle>Informasi Utama</CardTitle>
-                <CardDescription>Data identitas dosen</CardDescription>
+                <CardTitle className="text-lg">Informasi Utama</CardTitle>
+                <CardDescription className="text-xs">Data identitas dosen</CardDescription>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* NIDN */}
+          <CardContent className="space-y-3">
             <div>
-              <p className="text-sm text-muted-foreground">NIDN</p>
+              <p className="text-xs text-muted-foreground">NIDN</p>
               <p className="text-base font-mono font-semibold">{dosen.nidn}</p>
             </div>
 
             <Separator />
 
-            {/* NUPTK */}
             <div>
-              <p className="text-sm text-muted-foreground">NUPTK</p>
+              <p className="text-xs text-muted-foreground">NUPTK</p>
               <p className="text-base font-mono font-semibold">{dosen.nuptk}</p>
             </div>
 
             <Separator />
 
-            {/* Nama Lengkap */}
             <div>
-              <p className="text-sm text-muted-foreground">Nama Lengkap</p>
+              <p className="text-xs text-muted-foreground">Nama Lengkap</p>
               <p className="text-base font-semibold">{dosen.namaLengkap}</p>
             </div>
 
             <Separator />
 
-            {/* Status */}
             <div>
-              <p className="text-sm text-muted-foreground">Status</p>
-              {getStatusBadge(dosen.status)}
+              <p className="text-xs text-muted-foreground">Status</p>
+              {statusBadge}
             </div>
           </CardContent>
         </Card>
@@ -195,54 +205,50 @@ export default function ProfilDosenPage() {
         {/* Informasi Akademik */}
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <div className="rounded-full bg-blue-100 p-2">
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-blue-100 p-2.5">
                 <GraduationCap className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <CardTitle>Informasi Akademik</CardTitle>
-                <CardDescription>Data akademik dan jabatan</CardDescription>
+                <CardTitle className="text-lg">Informasi Akademik</CardTitle>
+                <CardDescription className="text-xs">Data akademik dan jabatan</CardDescription>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Program Studi */}
+          <CardContent className="space-y-3">
             <div>
-              <p className="text-sm text-muted-foreground">Program Studi</p>
+              <p className="text-xs text-muted-foreground">Program Studi</p>
               {dosen.prodi ? (
-                <div>
+                <div className="mt-1">
                   <p className="text-base font-semibold">{dosen.prodi.nama}</p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {dosen.prodi.kode} • {dosen.prodi.jenjang}
                   </p>
                 </div>
               ) : (
-                <p className="text-sm">Belum ditentukan</p>
+                <p className="text-sm">-</p>
               )}
             </div>
 
             <Separator />
 
-            {/* Posisi */}
             <div>
-              <p className="text-sm text-muted-foreground">Posisi</p>
-              <p className="text-base">{dosen.posisi || '-'}</p>
+              <p className="text-xs text-muted-foreground">Posisi</p>
+              <p className="text-sm">{dosen.posisi || '-'}</p>
             </div>
 
             <Separator />
 
-            {/* Jabatan Fungsional */}
             <div>
-              <p className="text-sm text-muted-foreground">Jabatan Fungsional</p>
-              <p className="text-base">{dosen.jafung || '-'}</p>
+              <p className="text-xs text-muted-foreground">Jabatan Fungsional</p>
+              <p className="text-sm">{dosen.jafung || '-'}</p>
             </div>
 
             <Separator />
 
-            {/* Lama Mengajar */}
             <div>
-              <p className="text-sm text-muted-foreground">Lama Mengajar</p>
-              <p className="text-base">{dosen.lamaMengajar || '-'}</p>
+              <p className="text-xs text-muted-foreground">Lama Mengajar</p>
+              <p className="text-sm">{dosen.lamaMengajar || '-'}</p>
             </div>
           </CardContent>
         </Card>
@@ -250,37 +256,34 @@ export default function ProfilDosenPage() {
         {/* Informasi Pribadi */}
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <div className="rounded-full bg-purple-100 p-2">
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-purple-100 p-2.5">
                 <IdCard className="h-5 w-5 text-purple-600" />
               </div>
               <div>
-                <CardTitle>Informasi Pribadi</CardTitle>
-                <CardDescription>Data personal dosen</CardDescription>
+                <CardTitle className="text-lg">Informasi Pribadi</CardTitle>
+                <CardDescription className="text-xs">Data personal dosen</CardDescription>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Tempat Lahir */}
+          <CardContent className="space-y-3">
             <div>
-              <p className="text-sm text-muted-foreground">Tempat Lahir</p>
-              <p className="text-base">{dosen.tempatLahir || '-'}</p>
+              <p className="text-xs text-muted-foreground">Tempat Lahir</p>
+              <p className="text-sm">{dosen.tempatLahir || '-'}</p>
             </div>
 
             <Separator />
 
-            {/* Tanggal Lahir */}
             <div>
-              <p className="text-sm text-muted-foreground">Tanggal Lahir</p>
-              <p className="text-base">{formatDate(dosen.tanggalLahir)}</p>
+              <p className="text-xs text-muted-foreground">Tanggal Lahir</p>
+              <p className="text-sm">{formatDate(dosen.tanggalLahir)}</p>
             </div>
 
             <Separator />
 
-            {/* Alumni */}
             <div>
-              <p className="text-sm text-muted-foreground">Riwayat Pendidikan</p>
-              <p className="text-base">{dosen.alumni || '-'}</p>
+              <p className="text-xs text-muted-foreground">Riwayat Pendidikan</p>
+              <p className="text-sm">{dosen.alumni || '-'}</p>
             </div>
           </CardContent>
         </Card>
@@ -288,22 +291,21 @@ export default function ProfilDosenPage() {
         {/* Informasi Akun */}
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <div className="rounded-full bg-green-100 p-2">
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-green-100 p-2.5">
                 <Shield className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <CardTitle>Informasi Akun</CardTitle>
-                <CardDescription>Status akun sistem</CardDescription>
+                <CardTitle className="text-lg">Informasi Akun</CardTitle>
+                <CardDescription className="text-xs">Status akun sistem</CardDescription>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Status Akun */}
+          <CardContent className="space-y-3">
             <div>
-              <p className="text-sm text-muted-foreground">Status Akun</p>
+              <p className="text-xs text-muted-foreground">Status Akun</p>
               <div className="flex items-center gap-2 mt-1">
-                {dosen.user?.isActive ? (
+                {accountStatus.isActive ? (
                   <>
                     <CheckCircle2 className="h-4 w-4 text-green-600" />
                     <span className="text-sm font-medium text-green-600">Aktif</span>
@@ -319,26 +321,23 @@ export default function ProfilDosenPage() {
 
             <Separator />
 
-            {/* Tanggal Bergabung */}
             <div>
-              <p className="text-sm text-muted-foreground">Tanggal Bergabung</p>
-              <p className="text-base">{formatDate(dosen.user?.createdAt)}</p>
+              <p className="text-xs text-muted-foreground">Tanggal Bergabung</p>
+              <p className="text-sm">{accountStatus.createdAt}</p>
             </div>
 
             <Separator />
 
-            {/* Jumlah Mahasiswa Bimbingan */}
             <div>
-              <p className="text-sm text-muted-foreground">Mahasiswa Bimbingan</p>
-              <p className="text-base font-semibold">{dosen._count?.mahasiswaBimbingan || 0} mahasiswa</p>
+              <p className="text-xs text-muted-foreground">Mahasiswa Bimbingan</p>
+              <p className="text-sm font-semibold">{counts.mahasiswaBimbingan} mahasiswa</p>
             </div>
 
             <Separator />
 
-            {/* Jumlah Kelas Diampu */}
             <div>
-              <p className="text-sm text-muted-foreground">Kelas Diampu</p>
-              <p className="text-base font-semibold">{dosen._count?.kelasMataKuliah || 0} kelas</p>
+              <p className="text-xs text-muted-foreground">Kelas Diampu</p>
+              <p className="text-sm font-semibold">{counts.kelasDiampu} kelas</p>
             </div>
           </CardContent>
         </Card>

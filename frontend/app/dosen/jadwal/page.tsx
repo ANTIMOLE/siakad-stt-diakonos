@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { kelasMKAPI, semesterAPI } from '@/lib/api';
 import { KelasMK, Semester } from '@/types/model';
@@ -23,6 +23,41 @@ import PageHeader from '@/components/shared/PageHeader';
 import EmptyState from '@/components/shared/EmptyState';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 
+// ✅ Constants outside
+const DAYS_ORDER = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+// ✅ Helper functions outside
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+};
+
+const generateFilename = (
+  type: 'excel' | 'pdf',
+  nidn: string,
+  semester: Semester | undefined,
+  timestamp?: string
+): string => {
+  const base = `Jadwal-Dosen-${nidn}-${semester?.periode}-${semester?.tahunAkademik}`;
+  const ext = type === 'excel' ? 'xlsx' : 'pdf';
+  return timestamp ? `${base}-${timestamp}.${ext}` : `${base}.${ext}`;
+};
+
+const groupJadwalByDay = (jadwal: KelasMK[]): Record<string, KelasMK[]> => {
+  return jadwal.reduce((acc, kelas) => {
+    const day = kelas.hari || 'Tidak ada jadwal';
+    if (!acc[day]) acc[day] = [];
+    acc[day].push(kelas);
+    return acc;
+  }, {} as Record<string, KelasMK[]>);
+};
+
 export default function JadwalDosenPage() {
   const { user } = useAuth();
   const [jadwal, setJadwal] = useState<KelasMK[]>([]);
@@ -32,7 +67,9 @@ export default function JadwalDosenPage() {
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
 
-  // Fetch semesters
+  // ============================================
+  // FETCH SEMESTERS
+  // ============================================
   useEffect(() => {
     const fetchSemesters = async () => {
       try {
@@ -54,7 +91,9 @@ export default function JadwalDosenPage() {
     fetchSemesters();
   }, []);
 
-  // Fetch jadwal
+  // ============================================
+  // FETCH JADWAL
+  // ============================================
   useEffect(() => {
     if (!selectedSemester || !user?.dosen?.id) return;
 
@@ -80,20 +119,31 @@ export default function JadwalDosenPage() {
     fetchJadwal();
   }, [selectedSemester, user?.dosen?.id]);
 
-  // Group jadwal by day
-  const groupedJadwal = jadwal.reduce((acc, kelas) => {
-    const day = kelas.hari || 'Tidak ada jadwal';
-    if (!acc[day]) acc[day] = [];
-    acc[day].push(kelas);
-    return acc;
-  }, {} as Record<string, KelasMK[]>);
+  // ============================================
+  // MEMOIZED VALUES
+  // ============================================
+  const groupedJadwal = useMemo(() => groupJadwalByDay(jadwal), [jadwal]);
 
-  const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-  const sortedDays = days.filter(day => groupedJadwal[day]);
+  const sortedDays = useMemo(
+    () => DAYS_ORDER.filter(day => groupedJadwal[day]),
+    [groupedJadwal]
+  );
 
+  const selectedSemesterData = useMemo(
+    () => semesters.find(s => s.id === selectedSemester),
+    [semesters, selectedSemester]
+  );
 
-  const handleExportExcel = async () => {
-    if (!selectedSemester || !user?.dosen?.id) {
+  const totalStats = useMemo(() => ({
+    totalKelas: jadwal.length,
+    totalMahasiswa: jadwal.reduce((sum, k) => sum + (k._count?.krsDetail || 0), 0),
+  }), [jadwal]);
+
+  // ============================================
+  // HANDLERS
+  // ============================================
+  const handleExportExcel = useCallback(async () => {
+    if (!selectedSemester || !user?.dosen?.id || !user?.dosen?.nidn) {
       toast.error('Pilih semester terlebih dahulu');
       return;
     }
@@ -105,20 +155,10 @@ export default function JadwalDosenPage() {
         dosenId: user.dosen.id,
       });
 
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      
-      const semester = semesters.find(s => s.id === selectedSemester);
       const timestamp = new Date().toISOString().split('T')[0];
-      const filename = `Jadwal-Dosen-${user.dosen.nidn}-${semester?.periode}-${semester?.tahunAkademik}-${timestamp}.xlsx`;
+      const filename = generateFilename('excel', user.dosen.nidn, selectedSemesterData, timestamp);
       
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-
+      downloadBlob(blob, filename);
       toast.success('Jadwal berhasil diexport ke Excel');
     } catch (error) {
       console.error('Error exporting to Excel:', error);
@@ -126,10 +166,10 @@ export default function JadwalDosenPage() {
     } finally {
       setIsExportingExcel(false);
     }
-  };
+  }, [selectedSemester, user?.dosen?.id, user?.dosen?.nidn, selectedSemesterData]);
 
-  const handleExportPDF = async () => {
-    if (!selectedSemester || !user?.dosen?.id) {
+  const handleExportPDF = useCallback(async () => {
+    if (!selectedSemester || !user?.dosen?.id || !user?.dosen?.nidn) {
       toast.error('Pilih semester terlebih dahulu');
       return;
     }
@@ -141,19 +181,9 @@ export default function JadwalDosenPage() {
         semesterId: selectedSemester,
       });
 
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
+      const filename = generateFilename('pdf', user.dosen.nidn, selectedSemesterData);
       
-      const semester = semesters.find(s => s.id === selectedSemester);
-      const filename = `Jadwal-Dosen-${user.dosen.nidn}-${semester?.periode}-${semester?.tahunAkademik}.pdf`;
-      
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-
+      downloadBlob(blob, filename);
       toast.success('Jadwal berhasil didownload');
     } catch (error) {
       console.error('Error downloading PDF:', error);
@@ -161,7 +191,15 @@ export default function JadwalDosenPage() {
     } finally {
       setIsExportingPDF(false);
     }
-  };
+  }, [selectedSemester, user?.dosen?.id, user?.dosen?.nidn, selectedSemesterData]);
+
+  const handleSemesterChange = useCallback((value: string) => {
+    setSelectedSemester(parseInt(value));
+  }, []);
+
+  const navigateToPresensi = useCallback((kelasId: number) => {
+    window.location.href = `/dosen/presensi?kelasId=${kelasId}`;
+  }, []);
 
   // ============================================
   // LOADING STATE
@@ -174,9 +212,11 @@ export default function JadwalDosenPage() {
     );
   }
 
+  // ============================================
+  // RENDER
+  // ============================================
   return (
     <div className="space-y-6">
-      {/* Page Header with Actions */}
       <PageHeader
         title="Jadwal Mengajar"
         description="Lihat jadwal mengajar Anda untuk semester ini"
@@ -186,7 +226,6 @@ export default function JadwalDosenPage() {
         ]}
         actions={
           <>
-
             <Button
               variant="outline"
               onClick={handleExportExcel}
@@ -196,7 +235,6 @@ export default function JadwalDosenPage() {
               <Download className="h-4 w-4" />
               {isExportingExcel ? 'Exporting...' : 'Export'}
             </Button>
-
             <Button
               onClick={handleExportPDF}
               disabled={isExportingPDF || !selectedSemester}
@@ -209,7 +247,7 @@ export default function JadwalDosenPage() {
         }
       />
 
-      {/* Semester Filter */}
+      {/* Filter & Stats */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
@@ -219,7 +257,7 @@ export default function JadwalDosenPage() {
               </label>
               <Select
                 value={selectedSemester?.toString() || ''}
-                onValueChange={(value) => setSelectedSemester(parseInt(value))}
+                onValueChange={handleSemesterChange}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Pilih Semester" />
@@ -241,18 +279,15 @@ export default function JadwalDosenPage() {
               </Select>
             </div>
 
-            {/* Stats */}
-            {jadwal.length > 0 && (
+            {totalStats.totalKelas > 0 && (
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
                 <div className="flex items-center gap-2">
                   <BookOpen className="h-4 w-4" />
-                  <span>{jadwal.length} Kelas</span>
+                  <span>{totalStats.totalKelas} Kelas</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
-                  <span>
-                    {jadwal.reduce((sum, k) => sum + (k._count?.krsDetail || 0), 0)} Mahasiswa
-                  </span>
+                  <span>{totalStats.totalMahasiswa} Mahasiswa</span>
                 </div>
               </div>
             )}
@@ -287,11 +322,11 @@ export default function JadwalDosenPage() {
           {sortedDays.map((day) => (
             <Card key={day}>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-lg">
                   <Calendar className="h-5 w-5" />
                   {day}
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-xs">
                   {groupedJadwal[day].length} kelas pada hari ini
                 </CardDescription>
               </CardHeader>
@@ -309,7 +344,7 @@ export default function JadwalDosenPage() {
                     </TableHeader>
                     <TableBody>
                       {groupedJadwal[day]
-                        .sort((a, b) => (a.jamMulai || '').localeCompare(b.jamSelesai || ''))
+                        .sort((a, b) => (a.jamMulai || '').localeCompare(b.jamMulai || ''))
                         .map((kelas) => (
                           <TableRow key={kelas.id}>
                             <TableCell>
@@ -346,7 +381,7 @@ export default function JadwalDosenPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => window.location.href = `/dosen/presensi?kelasId=${kelas.id}`}
+                                onClick={() => navigateToPresensi(kelas.id)}
                               >
                                 Presensi
                               </Button>

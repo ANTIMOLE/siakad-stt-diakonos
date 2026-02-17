@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Edit, Trash2, BookOpen, Users, Calendar, TrendingUp } from 'lucide-react';
 
@@ -26,6 +26,112 @@ import { toast } from 'sonner';
 
 import { mataKuliahAPI } from '@/lib/api';
 
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+const formatDateTime = (dateString: string): string => {
+  return new Date(dateString).toLocaleString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+// ============================================
+// INFO ROW COMPONENT
+// ============================================
+const InfoRow = ({
+  icon: Icon,
+  label,
+  value,
+  badge,
+}: {
+  icon?: any;
+  label: string;
+  value?: string | number;
+  badge?: React.ReactNode;
+}) => (
+  <div className="space-y-1">
+    <p className="text-sm text-muted-foreground">{label}</p>
+    <div className="flex items-center gap-2">
+      {Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
+      {value && <p className="text-lg font-semibold">{value}</p>}
+      {badge}
+    </div>
+  </div>
+);
+
+// ============================================
+// STAT CARD COMPONENT
+// ============================================
+const StatCard = ({
+  title,
+  icon: Icon,
+  children,
+}: {
+  title: string;
+  icon: any;
+  children: React.ReactNode;
+}) => (
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center gap-2">
+        <Icon className="h-5 w-5" />
+        {title}
+      </CardTitle>
+    </CardHeader>
+    <CardContent className="space-y-4">{children}</CardContent>
+  </Card>
+);
+
+// ============================================
+// STAT ROW COMPONENT
+// ============================================
+const StatRow = ({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon?: any;
+  label: string;
+  value: string | number;
+}) => (
+  <div className="flex items-center justify-between">
+    <div className="flex items-center gap-2">
+      {Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
+      <span className="text-sm text-muted-foreground">{label}</span>
+    </div>
+    <span className="font-semibold">{value}</span>
+  </div>
+);
+
+// ============================================
+// KELAS CARD COMPONENT
+// ============================================
+const KelasCard = ({ kelas }: { kelas: any }) => (
+  <div className="flex items-center justify-between p-4 rounded-lg border">
+    <div>
+      <p className="font-medium">
+        {kelas.semester?.tahunAkademik} {kelas.semester?.periode}
+      </p>
+      <p className="text-sm text-muted-foreground">
+        {kelas.dosen?.namaLengkap} • {kelas.hari} {kelas.jamMulai}-{kelas.jamSelesai}
+      </p>
+      {kelas.ruangan && (
+        <p className="text-xs text-muted-foreground mt-1">
+          📍 {kelas.ruangan.nama}
+        </p>
+      )}
+    </div>
+    <Badge variant="outline">{kelas._count?.krsDetail || 0} mahasiswa</Badge>
+  </div>
+);
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 export default function MataKuliahDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -37,6 +143,9 @@ export default function MataKuliahDetailPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // ============================================
+  // FETCH DATA
+  // ============================================
   useEffect(() => {
     const fetchMataKuliah = async () => {
       try {
@@ -52,11 +161,7 @@ export default function MataKuliahDetailPage() {
         }
       } catch (err: any) {
         console.error('Fetch error:', err);
-        setError(
-          err.response?.data?.message ||
-          err.message ||
-          'Terjadi kesalahan saat memuat data'
-        );
+        setError(err.response?.data?.message || err.message || 'Terjadi kesalahan');
       } finally {
         setIsLoading(false);
       }
@@ -65,15 +170,45 @@ export default function MataKuliahDetailPage() {
     fetchMataKuliah();
   }, [id]);
 
-  const handleBack = () => {
+  // ============================================
+  // MEMOIZED VALUES
+  // ============================================
+  const activeStats = useMemo(
+    () =>
+      mataKuliah?.statistics?.active || {
+        classes: 0,
+        students: 0,
+        semester: null,
+      },
+    [mataKuliah]
+  );
+
+  const totalStats = useMemo(
+    () =>
+      mataKuliah?.statistics?.total || {
+        classes: 0,
+        students: 0,
+      },
+    [mataKuliah]
+  );
+
+  const hasActiveClasses = useMemo(
+    () => mataKuliah?.kelasMataKuliah && mataKuliah.kelasMataKuliah.length > 0,
+    [mataKuliah]
+  );
+
+  // ============================================
+  // HANDLERS
+  // ============================================
+  const handleBack = useCallback(() => {
     router.back();
-  };
+  }, [router]);
 
-  const handleEdit = () => {
+  const handleEdit = useCallback(() => {
     router.push(`/admin/mata-kuliah/${id}/edit`);
-  };
+  }, [router, id]);
 
-  const handleDeleteConfirm = async () => {
+  const handleDeleteConfirm = useCallback(async () => {
     try {
       setIsDeleting(true);
 
@@ -87,21 +222,20 @@ export default function MataKuliahDetailPage() {
       }
     } catch (err: any) {
       console.error('Delete error:', err);
-      toast.error(
-        err.response?.data?.message ||
-        err.message ||
-        'Terjadi kesalahan saat menghapus mata kuliah'
-      );
+      toast.error(err.response?.data?.message || 'Terjadi kesalahan');
     } finally {
       setIsDeleting(false);
       setShowDeleteDialog(false);
     }
-  };
+  }, [id, router]);
 
-  const handleRetry = () => {
+  const handleRetry = useCallback(() => {
     window.location.reload();
-  };
+  }, []);
 
+  // ============================================
+  // LOADING & ERROR
+  // ============================================
   if (isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -120,18 +254,9 @@ export default function MataKuliahDetailPage() {
     );
   }
 
-  // ✅ Extract dual statistics
-  const activeStats = mataKuliah.statistics?.active || {
-    classes: 0,
-    students: 0,
-    semester: null,
-  };
-
-  const totalStats = mataKuliah.statistics?.total || {
-    classes: 0,
-    students: 0,
-  };
-
+  // ============================================
+  // RENDER
+  // ============================================
   return (
     <div className="space-y-6">
       <PageHeader
@@ -152,10 +277,7 @@ export default function MataKuliahDetailPage() {
               <Edit className="mr-2 h-4 w-4" />
               Edit
             </Button>
-            <Button
-              variant="destructive"
-              onClick={() => setShowDeleteDialog(true)}
-            >
+            <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>
               <Trash2 className="mr-2 h-4 w-4" />
               Hapus
             </Button>
@@ -184,45 +306,38 @@ export default function MataKuliahDetailPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">SKS</p>
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-lg font-semibold">{mataKuliah.sks} SKS</p>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Semester Ideal</p>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-lg font-semibold">Semester {mataKuliah.semesterIdeal}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Lintas Prodi</p>
-                  <div>
-                    {mataKuliah.isLintasProdi ? (
+                <InfoRow
+                  icon={BookOpen}
+                  label="SKS"
+                  value={`${mataKuliah.sks} SKS`}
+                />
+                <InfoRow
+                  icon={Calendar}
+                  label="Semester Ideal"
+                  value={`Semester ${mataKuliah.semesterIdeal}`}
+                />
+                <InfoRow
+                  label="Lintas Prodi"
+                  badge={
+                    mataKuliah.isLintasProdi ? (
                       <Badge variant="secondary" className="bg-blue-50 text-blue-700">
                         Ya
                       </Badge>
                     ) : (
                       <Badge variant="outline">Tidak</Badge>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Status</p>
-                  <div>
-                    {mataKuliah.isActive ? (
+                    )
+                  }
+                />
+                <InfoRow
+                  label="Status"
+                  badge={
+                    mataKuliah.isActive ? (
                       <Badge className="bg-green-600">Aktif</Badge>
                     ) : (
                       <Badge variant="secondary">Nonaktif</Badge>
-                    )}
-                  </div>
-                </div>
+                    )
+                  }
+                />
               </div>
 
               {mataKuliah.deskripsi && (
@@ -240,7 +355,7 @@ export default function MataKuliahDetailPage() {
           </Card>
 
           {/* Kelas Aktif */}
-          {mataKuliah.kelasMataKuliah && mataKuliah.kelasMataKuliah.length > 0 && (
+          {hasActiveClasses && (
             <Card>
               <CardHeader>
                 <CardTitle>Kelas Aktif Semester Ini</CardTitle>
@@ -248,28 +363,7 @@ export default function MataKuliahDetailPage() {
               <CardContent>
                 <div className="space-y-3">
                   {mataKuliah.kelasMataKuliah.map((kelas: any) => (
-                    <div
-                      key={kelas.id}
-                      className="flex items-center justify-between p-4 rounded-lg border"
-                    >
-                      <div>
-                        <p className="font-medium">
-                          {kelas.semester?.tahunAkademik} {kelas.semester?.periode}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {kelas.dosen?.namaLengkap} • {kelas.hari} {kelas.jamMulai}-
-                          {kelas.jamSelesai}
-                        </p>
-                        {kelas.ruangan && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            📍 {kelas.ruangan.nama}
-                          </p>
-                        )}
-                      </div>
-                      <Badge variant="outline">
-                        {kelas._count?.krsDetail || 0} mahasiswa
-                      </Badge>
-                    </div>
+                    <KelasCard key={kelas.id} kelas={kelas} />
                   ))}
                 </div>
               </CardContent>
@@ -279,78 +373,44 @@ export default function MataKuliahDetailPage() {
 
         {/* Sidebar */}
         <div className="space-y-6">
-          {/* ✅ Statistik Semester Aktif */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Semester Aktif
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {activeStats.semester ? (
-                <>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Semester</span>
-                    <Badge variant="default">
-                      {activeStats.semester.tahunAkademik} {activeStats.semester.periode}
-                    </Badge>
-                  </div>
-
-                  <Separator />
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Kelas</span>
-                    <span className="text-2xl font-bold text-blue-600">
-                      {activeStats.classes}
-                    </span>
-                  </div>
-
-                  <Separator />
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Mahasiswa</span>
-                    <span className="text-2xl font-bold text-green-600">
-                      {activeStats.students}
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Tidak ada kelas aktif di semester ini
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* ✅ Statistik Total (All Time) */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
-                Total (Semua Semester)
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <BookOpen className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Total Kelas</span>
+          {/* Statistik Semester Aktif */}
+          <StatCard title="Semester Aktif" icon={Calendar}>
+            {activeStats.semester ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Semester</span>
+                  <Badge variant="default">
+                    {activeStats.semester.tahunAkademik} {activeStats.semester.periode}
+                  </Badge>
                 </div>
-                <span className="font-semibold">{totalStats.classes}</span>
-              </div>
-
-              <Separator />
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Total Mahasiswa</span>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Kelas</span>
+                  <span className="text-2xl font-bold text-blue-600">
+                    {activeStats.classes}
+                  </span>
                 </div>
-                <span className="font-semibold">{totalStats.students}</span>
-              </div>
-            </CardContent>
-          </Card>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Mahasiswa</span>
+                  <span className="text-2xl font-bold text-green-600">
+                    {activeStats.students}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Tidak ada kelas aktif di semester ini
+              </p>
+            )}
+          </StatCard>
+
+          {/* Statistik Total */}
+          <StatCard title="Total (Semua Semester)" icon={TrendingUp}>
+            <StatRow icon={BookOpen} label="Total Kelas" value={totalStats.classes} />
+            <Separator />
+            <StatRow icon={Users} label="Total Mahasiswa" value={totalStats.students} />
+          </StatCard>
 
           {/* Metadata */}
           <Card>
@@ -362,35 +422,15 @@ export default function MataKuliahDetailPage() {
                 <p className="text-muted-foreground">ID</p>
                 <p className="font-mono">{mataKuliah.id}</p>
               </div>
-
               <Separator />
-
               <div>
                 <p className="text-muted-foreground">Dibuat</p>
-                <p className="font-medium">
-                  {new Date(mataKuliah.createdAt).toLocaleString('id-ID', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </p>
+                <p className="font-medium">{formatDateTime(mataKuliah.createdAt)}</p>
               </div>
-
               <Separator />
-
               <div>
                 <p className="text-muted-foreground">Terakhir Diupdate</p>
-                <p className="font-medium">
-                  {new Date(mataKuliah.updatedAt).toLocaleString('id-ID', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </p>
+                <p className="font-medium">{formatDateTime(mataKuliah.updatedAt)}</p>
               </div>
             </CardContent>
           </Card>
@@ -398,15 +438,10 @@ export default function MataKuliahDetailPage() {
           {/* Actions */}
           <Card>
             <CardContent className="pt-6 space-y-3">
-              <Button
-                variant="default"
-                className="w-full"
-                onClick={handleEdit}
-              >
+              <Button variant="default" className="w-full" onClick={handleEdit}>
                 <Edit className="mr-2 h-4 w-4" />
                 Edit Mata Kuliah
               </Button>
-
               <Button
                 variant="destructive"
                 className="w-full"
@@ -420,7 +455,7 @@ export default function MataKuliahDetailPage() {
         </div>
       </div>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>

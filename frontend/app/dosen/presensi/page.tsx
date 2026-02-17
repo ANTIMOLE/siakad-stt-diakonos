@@ -1,16 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Calendar, Users, CheckCircle, Filter } from 'lucide-react';
-import { toast } from 'sonner';
+import { Calendar, Users, CheckCircle, Filter, ExternalLink, BookOpen } from 'lucide-react';
 
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import ErrorState from '@/components/shared/ErrorState';
 import EmptyState from '@/components/shared/EmptyState';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,9 +19,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Progress } from '@/components/ui/progress';
 
 import { presensiAPI, semesterAPI } from '@/lib/api';
 import { KelasMK, Semester } from '@/types/model';
+
+// ✅ Helper functions di luar component
+const calculateProgress = (pertemuan: number, total = 16): number => {
+  return pertemuan > 0 ? Math.round((pertemuan / total) * 100) : 0;
+};
+
+const getProgressColor = (progress: number): string => {
+  if (progress >= 75) return 'text-green-600';
+  if (progress >= 50) return 'text-blue-600';
+  if (progress >= 25) return 'text-yellow-600';
+  return 'text-gray-600';
+};
 
 export default function DosenPresensiDashboard() {
   const router = useRouter();
@@ -45,18 +65,15 @@ export default function DosenPresensiDashboard() {
           const semesters = response.data || [];
           setSemesterList(semesters);
           
-          // ✅ Auto-select active semester
           const activeSemester = semesters.find((s) => s.isActive);
           if (activeSemester) {
             setSelectedSemesterId(activeSemester.id);
           } else if (semesters.length > 0) {
-            // Fallback to most recent
             setSelectedSemesterId(semesters[0].id);
           }
         }
       } catch (err: any) {
         console.error('Fetch semesters error:', err);
-        // Don't show error toast, just log it
       }
     };
 
@@ -74,7 +91,6 @@ export default function DosenPresensiDashboard() {
         setIsLoading(true);
         setError(null);
         
-        // ✅ Pass semesterId as query param
         const response = await presensiAPI.getDosenClasses({
           semesterId: selectedSemesterId,
         });
@@ -96,15 +112,50 @@ export default function DosenPresensiDashboard() {
   }, [selectedSemesterId]);
 
   // ============================================
-  // HANDLERS
+  // MEMOIZED COMPUTED VALUES
   // ============================================
-  const handleOpenKelas = (kelasMKId: number) => {
-    router.push(`/dosen/presensi/${kelasMKId}`);
-  };
+  const selectedSemester = useMemo(
+    () => semesterList.find((s) => s.id === selectedSemesterId),
+    [semesterList, selectedSemesterId]
+  );
 
-  const handleSemesterChange = (value: string) => {
+  const totalStats = useMemo(() => {
+    return kelasList.reduce(
+      (acc, kelas) => {
+        acc.totalKelas += 1;
+        acc.totalMahasiswa += kelas._count?.krsDetail || 0;
+        acc.totalPertemuan += kelas._count?.presensi || 0;
+        return acc;
+      },
+      { totalKelas: 0, totalMahasiswa: 0, totalPertemuan: 0 }
+    );
+  }, [kelasList]);
+
+  const averageProgress = useMemo(() => {
+    if (kelasList.length === 0) return 0;
+    const totalProgress = kelasList.reduce((acc, kelas) => {
+      return acc + calculateProgress(kelas._count?.presensi || 0);
+    }, 0);
+    return Math.round(totalProgress / kelasList.length);
+  }, [kelasList]);
+
+  // ============================================
+  // MEMOIZED HANDLERS
+  // ============================================
+  const handleOpenKelas = useCallback(
+    (kelasMKId: number) => {
+      router.push(`/dosen/presensi/${kelasMKId}`);
+    },
+    [router]
+  );
+
+  const handleSemesterChange = useCallback((value: string) => {
     setSelectedSemesterId(parseInt(value));
-  };
+  }, []);
+
+  const handleRetry = useCallback(() => {
+    window.location.reload();
+  }, []);
 
   // ============================================
   // LOADING STATE
@@ -125,7 +176,7 @@ export default function DosenPresensiDashboard() {
       <ErrorState
         title="Gagal Memuat Data"
         message={error}
-        onRetry={() => window.location.reload()}
+        onRetry={handleRetry}
       />
     );
   }
@@ -133,8 +184,6 @@ export default function DosenPresensiDashboard() {
   // ============================================
   // RENDER
   // ============================================
-  const selectedSemester = semesterList.find((s) => s.id === selectedSemesterId);
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -177,113 +226,211 @@ export default function DosenPresensiDashboard() {
         }
       />
 
-      {/* Semester Info */}
-      {selectedSemester && (
-        <Card className="bg-muted/50">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">
-                  Menampilkan kelas untuk semester
-                </p>
-                <p className="text-lg font-semibold">
-                  {selectedSemester.tahunAkademik} - {selectedSemester.periode}
-                </p>
+      {/* Stats Cards */}
+      {selectedSemester && kelasList.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="bg-muted/50">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Semester</p>
+                  <p className="text-lg font-semibold">
+                    {selectedSemester.tahunAkademik}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedSemester.periode}
+                  </p>
+                </div>
+                {selectedSemester.isActive && (
+                  <CheckCircle className="h-8 w-8 text-green-600" />
+                )}
               </div>
-              {selectedSemester.isActive && (
-                <Badge variant="default" className="gap-1">
-                  <CheckCircle className="h-3 w-3" />
-                  Semester Aktif
-                </Badge>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-blue-50 border-blue-200">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Kelas</p>
+                  <p className="text-3xl font-bold text-blue-600">
+                    {totalStats.totalKelas}
+                  </p>
+                </div>
+                <BookOpen className="h-8 w-8 text-blue-600 opacity-50" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-green-50 border-green-200">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Mahasiswa</p>
+                  <p className="text-3xl font-bold text-green-600">
+                    {totalStats.totalMahasiswa}
+                  </p>
+                </div>
+                <Users className="h-8 w-8 text-green-600 opacity-50" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-purple-50 border-purple-200">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Rata-rata Progress</p>
+                  <p className="text-3xl font-bold text-purple-600">
+                    {averageProgress}%
+                  </p>
+                </div>
+                <Calendar className="h-8 w-8 text-purple-600 opacity-50" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* EMPTY STATE */}
       {kelasList.length === 0 ? (
-        <EmptyState
-          title="Tidak Ada Kelas"
-          description={`Anda tidak mengajar kelas di semester ${selectedSemester?.tahunAkademik} ${selectedSemester?.periode}`}
-        />
+        <Card>
+          <CardContent className="py-12">
+            <EmptyState
+              title="Tidak Ada Kelas"
+              description={`Anda tidak mengajar kelas di semester ${selectedSemester?.tahunAkademik} ${selectedSemester?.periode}`}
+              className="border-0"
+            />
+          </CardContent>
+        </Card>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {kelasList.map((kelas) => (
-            <Card
-              key={kelas.id}
-              className="hover:shadow-lg transition-shadow cursor-pointer"
-              onClick={() => handleOpenKelas(kelas.id)}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-lg line-clamp-2">
-                      {kelas.mataKuliah?.namaMK}
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {kelas.mataKuliah?.kodeMK} • {kelas.mataKuliah?.sks} SKS
-                    </p>
-                  </div>
-                  <Badge variant="outline" className="shrink-0 ml-2">
-                    {kelas.semester?.periode}
-                  </Badge>
-                </div>
-              </CardHeader>
+        /* ✅ TABLE VIEW - Lebih optimal */
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">No</TableHead>
+                    <TableHead>Mata Kuliah</TableHead>
+                    <TableHead className="text-center">SKS</TableHead>
+                    <TableHead>Jadwal</TableHead>
+                    <TableHead>Ruangan</TableHead>
+                    <TableHead className="text-center">Mahasiswa</TableHead>
+                    <TableHead className="text-center">Pertemuan</TableHead>
+                    <TableHead className="text-center w-48">Progress</TableHead>
+                    <TableHead className="text-center w-32">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {kelasList.map((kelas, index) => {
+                    const pertemuanCount = kelas._count?.presensi || 0;
+                    const progress = calculateProgress(pertemuanCount);
+                    const progressColor = getProgressColor(progress);
 
-              <CardContent className="space-y-4">
-                {/* Class Info */}
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
-                    <span>
-                      {kelas.hari}, {kelas.jamMulai} - {kelas.jamSelesai}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Users className="h-4 w-4" />
-                    <span>
-                      {kelas._count?.krsDetail || 0} Mahasiswa
-                    </span>
-                  </div>
-                  {kelas.ruangan && (
-                    <div className="text-muted-foreground">
-                      📍 {kelas.ruangan.nama}
-                    </div>
-                  )}
-                </div>
+                    return (
+                      <TableRow
+                        key={kelas.id}
+                        className="hover:bg-muted/50 cursor-pointer"
+                        onClick={() => handleOpenKelas(kelas.id)}
+                      >
+                        <TableCell className="text-center font-medium">
+                          {index + 1}
+                        </TableCell>
 
-                {/* Stats */}
-                <div className="grid grid-cols-2 gap-4 pt-3 border-t">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold">
-                      {kelas._count?.presensi || 0}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Pertemuan
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">
-                      {kelas._count?.presensi
-                        ? Math.round(((kelas._count.presensi || 0) / 16) * 100)
-                        : 0}%
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Progress
-                    </div>
-                  </div>
-                </div>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{kelas.mataKuliah?.namaMK}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {kelas.mataKuliah?.kodeMK}
+                            </p>
+                          </div>
+                        </TableCell>
 
-                {/* Action */}
-                <Button className="w-full gap-2" variant="outline">
-                  <CheckCircle className="h-4 w-4" />
-                  Kelola Presensi
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                        <TableCell className="text-center">
+                          <Badge variant="outline">
+                            {kelas.mataKuliah?.sks} SKS
+                          </Badge>
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="flex items-center gap-2 text-sm">
+                            <Calendar className="h-3 w-3 text-muted-foreground" />
+                            <div>
+                              <p>{kelas.hari}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {kelas.jamMulai} - {kelas.jamSelesai}
+                              </p>
+                            </div>
+                          </div>
+                        </TableCell>
+
+                        <TableCell className="text-sm">
+                          {kelas.ruangan?.nama || '-'}
+                        </TableCell>
+
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <Users className="h-3 w-3 text-muted-foreground" />
+                            <span className="font-medium">
+                              {kelas._count?.krsDetail || 0}
+                            </span>
+                          </div>
+                        </TableCell>
+
+                        <TableCell className="text-center">
+                          <Badge variant="secondary">
+                            {pertemuanCount}/16
+                          </Badge>
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className={`font-medium ${progressColor}`}>
+                                {progress}%
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {pertemuanCount} pertemuan
+                              </span>
+                            </div>
+                            <Progress
+                              value={progress}
+                              className={`h-2 ${
+                                progress >= 75
+                                  ? '[&>div]:bg-green-500'
+                                  : progress >= 50
+                                  ? '[&>div]:bg-blue-500'
+                                  : progress >= 25
+                                  ? '[&>div]:bg-yellow-500'
+                                  : '[&>div]:bg-gray-400'
+                              }`}
+                            />
+                          </div>
+                        </TableCell>
+
+                        <TableCell className="text-center">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="gap-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenKelas(kelas.id);
+                            }}
+                          >
+                            Kelola
+                            <ExternalLink className="h-3 w-3" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

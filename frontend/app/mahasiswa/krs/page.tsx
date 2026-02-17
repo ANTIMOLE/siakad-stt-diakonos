@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import PageHeader from '@/components/shared/PageHeader';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { mahasiswaAPI, krsAPI } from '@/lib/api';
 import { KRS } from '@/types/model';
 
+// ✅ Konstanta di luar component
 const HARI_ORDER: Record<string, number> = {
   Senin: 1,
   Selasa: 2,
@@ -124,71 +125,108 @@ export default function MahasiswaKRSPage() {
       }
     };
 
-    // Hanya jalankan fetch setelah auth loading selesai
     if (!isAuthLoading) {
       fetchKRS();
     }
   }, [user, isAuthLoading]);
 
   // ============================================
-  // HANDLERS
+  // MEMOIZED COMPUTED VALUES
   // ============================================
-  const handleSemesterChange = (krsId: string) => {
+  const sortedDetail = useMemo(() => {
+    if (!selectedKRS?.detail) return [];
+    
+    return [...selectedKRS.detail].sort((a, b) => {
+      const hariA = a.kelasMK?.hari || '';
+      const hariB = b.kelasMK?.hari || '';
+      const hariCompare = HARI_ORDER[hariA] - HARI_ORDER[hariB];
+      if (hariCompare !== 0) return hariCompare;
+      return (a.kelasMK?.jamMulai || '').localeCompare(b.kelasMK?.jamMulai || '');
+    });
+  }, [selectedKRS?.detail]);
+
+  const krsStatus = useMemo(() => selectedKRS?.status, [selectedKRS]);
+  
+  const krsSemester = useMemo(() => selectedKRS?.semester, [selectedKRS]);
+
+  const approvalDate = useMemo(() => {
+    if (!selectedKRS?.tanggalApproval) return null;
+    return format(new Date(selectedKRS.tanggalApproval), 'dd MMMM yyyy HH:mm', {
+      locale: id,
+    });
+  }, [selectedKRS?.tanggalApproval]);
+
+  const submitDate = useMemo(() => {
+    if (!selectedKRS?.tanggalSubmit) return '-';
+    return format(new Date(selectedKRS.tanggalSubmit), 'dd MMM yyyy', {
+      locale: id,
+    });
+  }, [selectedKRS?.tanggalSubmit]);
+
+  const semesterPeriod = useMemo(() => {
+    if (!krsSemester) return null;
+    return {
+      start: format(new Date(krsSemester.tanggalMulai), 'dd MMMM yyyy', { locale: id }),
+      end: format(new Date(krsSemester.tanggalSelesai), 'dd MMMM yyyy', { locale: id }),
+    };
+  }, [krsSemester]);
+
+  const krsPeriod = useMemo(() => {
+    if (!krsSemester) return null;
+    return {
+      start: format(new Date(krsSemester.periodeKRSMulai), 'dd MMMM yyyy', { locale: id }),
+      end: format(new Date(krsSemester.periodeKRSSelesai), 'dd MMMM yyyy', { locale: id }),
+    };
+  }, [krsSemester]);
+
+  // ============================================
+  // MEMOIZED HANDLERS
+  // ============================================
+  const handleSemesterChange = useCallback((krsId: string) => {
     const krs = krsList.find((k) => k.id.toString() === krsId);
     if (krs) {
       setSelectedKRS(krs);
     }
-  };
+  }, [krsList]);
 
-const handleDownloadPDF = async () => {
-  if (!selectedKRS) return;
+  const handleDownloadPDF = useCallback(async () => {
+    if (!selectedKRS) return;
 
-  try {
-    setIsDownloading(true);
+    try {
+      setIsDownloading(true);
 
-    const blob = await krsAPI.downloadPDF(selectedKRS.id);
+      const blob = await krsAPI.downloadPDF(selectedKRS.id);
 
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    
-    // ✅ FIX: Backend already sets proper filename in Content-Disposition header
-    // Just use a safe default based on available data
-    const nim = user?.mahasiswa?.nim || 'KRS';
-    const tahun = selectedKRS.semester?.tahunAkademik?.replace('/', '-') || '';
-    const periode = selectedKRS.semester?.periode || '';
-    link.download = `KRS_${nim}_${tahun}_${periode}.pdf`;
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const nim = user?.mahasiswa?.nim || 'KRS';
+      const tahun = selectedKRS.semester?.tahunAkademik?.replace('/', '-') || '';
+      const periode = selectedKRS.semester?.periode || '';
+      link.download = `KRS_${nim}_${tahun}_${periode}.pdf`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
 
-    toast.success('KRS berhasil didownload');
-  } catch (err: any) {
-    console.error('Download error:', err);
-    toast.error('Gagal mendownload KRS');
-  } finally {
-    setIsDownloading(false);
-  }
-};
+      toast.success('KRS berhasil didownload');
+    } catch (err: any) {
+      console.error('Download error:', err);
+      toast.error('Gagal mendownload KRS');
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [selectedKRS, user?.mahasiswa?.nim]);
 
-  const handleRetry = () => {
+  const handleRetry = useCallback(() => {
     window.location.reload();
-  };
+  }, []);
 
-  // ============================================
-  // COMPUTED VALUES
-  // ============================================
-  const sortedDetail = selectedKRS?.detail
-    ? [...selectedKRS.detail].sort((a, b) => {
-        const hariA = a.kelasMK?.hari || '';
-        const hariB = b.kelasMK?.hari || '';
-        const hariCompare = HARI_ORDER[hariA] - HARI_ORDER[hariB];
-        if (hariCompare !== 0) return hariCompare;
-        return (a.kelasMK?.jamMulai || '').localeCompare(b.kelasMK?.jamMulai || '');
-      })
-    : [];
+  const handleLoginRedirect = useCallback(() => {
+    window.location.href = '/login';
+  }, []);
 
   // ============================================
   // LOADING AUTH / USER BELUM ADA
@@ -206,7 +244,7 @@ const handleDownloadPDF = async () => {
       <ErrorState
         title="Akses Ditolak"
         message="Anda belum login atau session telah berakhir. Silakan login kembali."
-        onRetry={() => (window.location.href = '/login')}
+        onRetry={handleLoginRedirect}
       />
     );
   }
@@ -260,7 +298,6 @@ const handleDownloadPDF = async () => {
   // ============================================
   const krs = selectedKRS!;
 
-  // ... (sisa return JSX sama persis seperti kode asli kamu)
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -304,7 +341,7 @@ const handleDownloadPDF = async () => {
               </Select>
             </div>
 
-            {krs.status === 'APPROVED' && (
+            {krsStatus === 'APPROVED' && (
               <Button onClick={handleDownloadPDF} disabled={isDownloading}>
                 <Download className="mr-2 h-4 w-4" />
                 {isDownloading ? 'Downloading...' : 'Download PDF'}
@@ -315,7 +352,7 @@ const handleDownloadPDF = async () => {
       </Card>
 
       {/* Status Alerts */}
-      {krs.status === 'DRAFT' && (
+      {krsStatus === 'DRAFT' && (
         <Alert className="border-gray-200 bg-gray-50">
           <AlertCircle className="h-4 w-4 text-gray-600" />
           <AlertDescription className="text-gray-900">
@@ -327,7 +364,7 @@ const handleDownloadPDF = async () => {
         </Alert>
       )}
 
-      {krs.status === 'SUBMITTED' && (
+      {krsStatus === 'SUBMITTED' && (
         <Alert className="border-yellow-200 bg-yellow-50">
           <Clock className="h-4 w-4 text-yellow-600" />
           <AlertDescription className="text-yellow-900">
@@ -339,23 +376,18 @@ const handleDownloadPDF = async () => {
         </Alert>
       )}
 
-      {krs.status === 'APPROVED' && (
+      {krsStatus === 'APPROVED' && (
         <Alert className="border-green-200 bg-green-50">
           <CheckCircle className="h-4 w-4 text-green-600" />
           <AlertDescription className="text-green-900">
             <strong>Status: Disetujui</strong>
             <br />
-            KRS telah disetujui pada{' '}
-            {krs.tanggalApproval &&
-              format(new Date(krs.tanggalApproval), 'dd MMMM yyyy HH:mm', {
-                locale: id,
-              })}{' '}
-            oleh {krs.approvedBy?.dosen?.namaLengkap || 'Dosen Wali'}
+            KRS telah disetujui pada {approvalDate} oleh {krs.approvedBy?.dosen?.namaLengkap || 'Dosen Wali'}
           </AlertDescription>
         </Alert>
       )}
 
-      {krs.status === 'REJECTED' && (
+      {krsStatus === 'REJECTED' && (
         <Alert className="border-red-200 bg-red-50">
           <AlertCircle className="h-4 w-4 text-red-600" />
           <AlertDescription className="text-red-900">
@@ -377,7 +409,7 @@ const handleDownloadPDF = async () => {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Informasi KRS</CardTitle>
-            <StatusBadge status={krs.status} showIcon />
+            {krsStatus && <StatusBadge status={krsStatus} showIcon />}
           </div>
         </CardHeader>
         <CardContent>
@@ -385,7 +417,7 @@ const handleDownloadPDF = async () => {
             <div>
               <p className="text-sm text-muted-foreground mb-1">Semester</p>
               <Badge variant="outline" className="font-medium">
-                {krs.semester?.tahunAkademik} {krs.semester?.periode}
+                {krsSemester?.tahunAkademik} {krsSemester?.periode}
               </Badge>
             </div>
             <div>
@@ -402,13 +434,7 @@ const handleDownloadPDF = async () => {
             </div>
             <div>
               <p className="text-sm text-muted-foreground mb-1">Tanggal Submit</p>
-              <p className="font-medium">
-                {krs.tanggalSubmit
-                  ? format(new Date(krs.tanggalSubmit), 'dd MMM yyyy', {
-                      locale: id,
-                    })
-                  : '-'}
-              </p>
+              <p className="font-medium">{submitDate}</p>
             </div>
           </div>
 
@@ -512,7 +538,7 @@ const handleDownloadPDF = async () => {
       </Card>
 
       {/* Academic Calendar Info */}
-      {krs.semester && (
+      {krsSemester && semesterPeriod && krsPeriod && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
@@ -527,33 +553,13 @@ const handleDownloadPDF = async () => {
                   Periode Semester
                 </p>
                 <p className="text-sm font-medium">
-                  {format(new Date(krs.semester.tanggalMulai), 'dd MMMM yyyy', {
-                    locale: id,
-                  })}{' '}
-                  -{' '}
-                  {format(new Date(krs.semester.tanggalSelesai), 'dd MMMM yyyy', {
-                    locale: id,
-                  })}
+                  {semesterPeriod.start} - {semesterPeriod.end}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Periode KRS</p>
                 <p className="text-sm font-medium">
-                  {format(
-                    new Date(krs.semester.periodeKRSMulai),
-                    'dd MMMM yyyy',
-                    {
-                      locale: id,
-                    }
-                  )}{' '}
-                  -{' '}
-                  {format(
-                    new Date(krs.semester.periodeKRSSelesai),
-                    'dd MMMM yyyy',
-                    {
-                      locale: id,
-                    }
-                  )}
+                  {krsPeriod.start} - {krsPeriod.end}
                 </p>
               </div>
             </div>
@@ -572,19 +578,17 @@ const handleDownloadPDF = async () => {
               </p>
               <ul className="text-sm text-blue-700 space-y-1.5 list-disc list-inside">
                 <li>
-                  KRS ini untuk semester {krs.semester?.tahunAkademik}{' '}
-                  {krs.semester?.periode}
+                  KRS ini untuk semester {krsSemester?.tahunAkademik}{' '}
+                  {krsSemester?.periode}
                 </li>
                 <li>Total SKS yang diambil: {krs.totalSKS} SKS</li>
                 <li>Jumlah mata kuliah: {krs.detail?.length || 0} mata kuliah</li>
                 <li>
                   Status:{' '}
-                  {krs.status === 'DRAFT' && 'Masih draft, belum disubmit'}
-                  {krs.status === 'SUBMITTED' &&
-                    'Menunggu approval dosen wali'}
-                  {krs.status === 'APPROVED' && 'Telah disetujui'}
-                  {krs.status === 'REJECTED' &&
-                    'Ditolak, perlu perbaikan'}
+                  {krsStatus === 'DRAFT' && 'Masih draft, belum disubmit'}
+                  {krsStatus === 'SUBMITTED' && 'Menunggu approval dosen wali'}
+                  {krsStatus === 'APPROVED' && 'Telah disetujui'}
+                  {krsStatus === 'REJECTED' && 'Ditolak, perlu perbaikan'}
                 </li>
                 {krs.approvedBy && (
                   <li>
@@ -592,13 +596,13 @@ const handleDownloadPDF = async () => {
                     {krs.approvedBy.dosen?.namaLengkap || 'Dosen Wali'}
                   </li>
                 )}
-                {krs.status === 'APPROVED' && (
+                {krsStatus === 'APPROVED' && (
                   <li className="font-medium">
                     Anda dapat mengunduh KRS dalam format PDF menggunakan tombol
                     di atas
                   </li>
                 )}
-                {krs.status === 'REJECTED' && krs.catatanAdmin && (
+                {krsStatus === 'REJECTED' && krs.catatanAdmin && (
                   <li className="font-medium text-red-700">
                     Catatan: {krs.catatanAdmin}
                   </li>

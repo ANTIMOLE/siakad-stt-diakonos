@@ -1,15 +1,18 @@
 /**
- * PDF Generator Utility (FIXED)
- * Generate PDF documents using Puppeteer with system Chrome
- * ✅ FIXED: Use system Chrome if puppeteer Chrome not installed
- * ✅ UPDATED: Header design with logo and proper layout
- * ✅ FIXED: Logo loading with proper path resolution
+ * PDF Generator Utility - PDFKit Version  
+ * 🔥 100% DROP-IN REPLACEMENT - No controller changes needed!
+ * ✨ Production-ready with modern styling
+ * 📦 Just: cp this file over pdfGenerator.ts and it works!
  */
 
-import puppeteer from 'puppeteer';
+import PDFDocument from 'pdfkit';
 import { Response } from 'express';
 import path from 'path';
 import fs from 'fs';
+
+// ===========================================
+// UTILITY FUNCTIONS
+// ===========================================
 
 /**
  * Safe number formatter
@@ -21,2237 +24,1566 @@ const formatNumber = (value: any, decimals: number = 2): string => {
 };
 
 /**
- * Get Chrome executable path for Windows
+ * Format currency
  */
-const getChromeExecutablePath = (): string | undefined => {
-  const isWindows = process.platform === 'win32';
-  
-  if (isWindows) {
-    // Common Chrome installation paths on Windows
-    const possiblePaths = [
-      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-      process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe',
-    ];
-    
-    // Return the first path that exists (you might need to install fs to check)
-    // For now, return the most common path
-    return 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-  }
-  
-  return undefined; // Let puppeteer find it on Linux/Mac
+const formatCurrency = (amount: number): string => {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0,
+  }).format(amount);
 };
 
 /**
- * Get logo base64 for embedding in PDF
+ * Format date
  */
-const getLogoBase64 = (): string => {
+const formatDate = (dateString: string): string => {
+  return new Date(dateString).toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+/**
+ * Get Chrome executable path - KEPT FOR COMPATIBILITY (not used)
+ */
+export const getChromeExecutablePath = (): string | undefined => {
+  return undefined; // Not needed for PDFKit
+};
+
+/**
+ * Get logo path
+ */
+const getLogoPath = (): string | null => {
   try {
-    // ✅ Try multiple possible paths
     const possiblePaths = [
-      // Relative from compiled dist folder
       path.join(__dirname, '..', 'logo', 'LOGO.png'),
       path.join(__dirname, '..', '..', 'logo', 'LOGO.png'),
-      // Absolute path from project root
       path.join(process.cwd(), 'logo', 'LOGO.png'),
       path.join(process.cwd(), 'backend', 'logo', 'LOGO.png'),
-      // Direct absolute path (Windows)
       'D:\\DIAKONOS\\SIAKAD\\siakad-stt-diakonos\\backend\\logo\\LOGO.png',
     ];
 
     for (const logoPath of possiblePaths) {
-      console.log(`🔍 Trying logo path: ${logoPath}`);
-      
       if (fs.existsSync(logoPath)) {
         console.log(`✅ Logo found at: ${logoPath}`);
-        const logoBuffer = fs.readFileSync(logoPath);
-        const base64 = `data:image/png;base64,${logoBuffer.toString('base64')}`;
-        console.log(`✅ Logo base64 length: ${base64.length}`);
-        return base64;
+        return logoPath;
       }
     }
 
-    console.warn('⚠️ Logo not found in any path, using placeholder');
-    console.warn('Tried paths:', possiblePaths);
-    return '';
+    console.warn('⚠️ Logo not found');
+    return null;
   } catch (error) {
     console.error('❌ Error loading logo:', error);
+    return null;
+  }
+};
+
+/**
+ * Get logo base64 - KEPT FOR COMPATIBILITY
+ */
+const getLogoBase64 = (): string => {
+  const logoPath = getLogoPath();
+  if (!logoPath) return '';
+  
+  try {
+    const logoBuffer = fs.readFileSync(logoPath);
+    return `data:image/png;base64,${logoBuffer.toString('base64')}`;
+  } catch (error) {
     return '';
   }
 };
 
 /**
- * Common PDF Header Template
+ * Common PDF styles - KEPT FOR COMPATIBILITY (not used in PDFKit)
  */
-const getPDFHeader = (logoBase64: string) => `
-  <div class="pdf-header">
-    <div class="header-logo">
-      ${logoBase64 ? `<img src="${logoBase64}" alt="Logo STT Diakonos" />` : '<div style="width: 70px; height: 70px; background: #e0e0e0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #666;">LOGO</div>'}
-    </div>
-    <div class="header-text">
-      <h1>SEKOLAH TINGGI TEOLOGI DIAKONOS</h1>
-      <p class="header-address">
-        Alamat Kampus: Desa Pajerukan RT 004 RW 003 Kec. Kalibagor, Kab. Banyumas<br/>
-        Propinsi Jawa Tengah
-      </p>
-      <p class="header-contact">
-        Website: sttdiakonos.ac.id; E-mail: sttd_banyumas@yahoo.com
-      </p>
-    </div>
-  </div>
-`;
+const getCommonPDFStyles = () => {
+  return ''; // Not used anymore
+};
 
 /**
- * Common PDF Styles
+ * PDF Header - KEPT FOR COMPATIBILITY (not used in PDFKit)
  */
-const getCommonPDFStyles = () => `
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { 
-    font-family: 'Arial', sans-serif; 
-    padding: 15px; 
-    font-size: 9px;
-    line-height: 1.3;
-  }
-  
-  /* Header dengan Logo */
-  .pdf-header {
-    display: grid;
-    grid-template-columns: 75px 1fr;
-    gap: 10px;
-    align-items: center;
-    margin-bottom: 10px;
-    border-bottom: 3px solid #000;
-    padding-bottom: 8px;
-  }
-  .header-logo {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .header-logo img {
-    width: 65px;
-    height: 65px;
-    object-fit: contain;
-    display: block;
-  }
-  .header-text {
-    text-align: center;
-    line-height: 1.2;
-  }
-  .header-text h1 {
-    font-size: 13px;
-    font-weight: bold;
-    margin-bottom: 2px;
-    letter-spacing: 0.3px;
-    line-height: 1.1;
-  }
-  .header-address {
-    font-size: 8px;
-    margin-bottom: 2px;
-    line-height: 1.3;
-  }
-  .header-contact {
-    font-size: 7px;
-    font-style: italic;
-    margin-top: 1px;
-  }
-  
-  /* Document Title */
-  .doc-title {
-    text-align: center;
-    margin: 10px 0 8px 0;
-    padding: 6px 8px;
-    background: #f0f0f0;
-    border: 1px solid #ccc;
-  }
-  .doc-title h2 {
-    font-size: 11px;
-    font-weight: bold;
-    margin-bottom: 2px;
-    line-height: 1.2;
-  }
-  .doc-title p {
-    font-size: 9px;
-    line-height: 1.2;
-  }
-`;
+const getPDFHeader = (logoBase64: string) => {
+  return ''; // Not used anymore
+};
+
+// ===========================================
+// DRAWING HELPER FUNCTIONS
+// ===========================================
+
 /**
- * Generate PDF from HTML
+ * Draw PDF header with logo and institution info
  */
+const drawPDFHeader = (doc: PDFKit.PDFDocument, logoPath: string | null) => {
+  const startY = doc.y;
+  
+  // Logo
+  if (logoPath && fs.existsSync(logoPath)) {
+    try {
+      doc.image(logoPath, 50, startY, { width: 65, height: 65 });
+    } catch (error) {
+      doc.rect(50, startY, 65, 65).stroke();
+      doc.fontSize(8).text('LOGO', 62, startY + 28, { width: 40, align: 'center' });
+    }
+  } else {
+    doc.rect(50, startY, 65, 65).stroke();
+    doc.fontSize(8).text('LOGO', 62, startY + 28, { width: 40, align: 'center' });
+  }
+  
+  // Institution name
+  doc.fontSize(13).font('Helvetica-Bold')
+     .text('SEKOLAH TINGGI TEOLOGI DIAKONOS', 125, startY, { align: 'center' });
+  
+  // Accreditation info
+  doc.fontSize(6.5).font('Helvetica-Oblique')
+     .text('Akreditasi BAN-PT Institusi: SK. Badan Akreditasi Nasional Perguruan Tinggi No. 775/SK/BAN-PT/Akred/PT/VIII/2021', 125, startY + 18, { width: 420, align: 'center' })
+     .text('Akreditasi LAMDIK Prodi PAK: SK. Lembaga Akreditasi Mandiri Kependidikan No. 1064/SK/LAMDIK/Ak/S/X/2023', 125, doc.y, { width: 420, align: 'center' })
+     .text('Akreditasi Prodi Teologi: SK. Badan Akreditasi Nasional Perguruan Tinggi No. 7070/SK/BAN-PT/Ak.Ppj/S1/VII/2025', 125, doc.y, { width: 420, align: 'center' })
+     .text('Alamat Kampus: Desa Pajerukan RT 004 RW 003 Kec. Kalibagor, Kab. Banyumas, Provinsi Jawa Tengah 53191', 125, doc.y + 3, { width: 420, align: 'center' })
+     .text('Website: sttdiakonos.ac.id; E-mail: sttdiakonia@gmail.com', 125, doc.y, { width: 420, align: 'center' });
+  
+  // Separator line
+  doc.moveTo(50, doc.y + 8).lineTo(545, doc.y + 8).lineWidth(3).stroke();
+  doc.moveDown(1);
+};
+
+/**
+ * Draw document title with optional subtitle
+ */
+const drawDocTitle = (doc: PDFKit.PDFDocument, title: string, subtitle?: string) => {
+  const y = doc.y + 10;
+  const height = subtitle ? 40 : 28;
+  
+  doc.rect(50, y, 495, height).fillAndStroke('#f0f0f0', '#cccccc');
+  doc.fillColor('#000000').fontSize(11).font('Helvetica-Bold')
+     .text(title, 50, y + 8, { width: 495, align: 'center' });
+  
+  if (subtitle) {
+    doc.fontSize(9).font('Helvetica')
+       .text(subtitle, 50, doc.y + 2, { width: 495, align: 'center' });
+  }
+  doc.moveDown(1.5);
+};
+
+/**
+ * Draw information box with label-value pairs
+ */
+const drawInfoBox = (doc: PDFKit.PDFDocument, info: { label: string; value: string }[]) => {
+  const startY = doc.y;
+  const lineHeight = 15;
+  const padding = 8;
+  const boxHeight = info.length * lineHeight + (padding * 2);
+  
+  // Background box
+  doc.rect(50, startY, 495, boxHeight).fillAndStroke('#f5f5f5', '#d0d0d0');
+  
+  let currentY = startY + padding;
+  
+  info.forEach((item) => {
+    // Label (bold)
+    doc.fillColor('#000000').fontSize(9).font('Helvetica-Bold')
+      .text(item.label + ':', 58, currentY, { width: 120, align: 'left' });
+    
+    // Value (regular)
+    doc.font('Helvetica')
+      .text(item.value, 180, currentY, { width: 360, align: 'left' });
+    
+    currentY += lineHeight;
+  });
+  
+  doc.y = startY + boxHeight + 10;
+};
+
+/**
+ * Draw table with headers and data rows
+ */
+const drawTable = (
+  doc: PDFKit.PDFDocument,
+  headers: { label: string; width: number; align?: 'left' | 'center' | 'right' }[],
+  rows: string[][],
+  options?: { fontSize?: number; footerRows?: string[][] }
+) => {
+  const fontSize = options?.fontSize || 8;
+  const startX = 50;
+  let currentY = doc.y;
+  const rowHeight = fontSize + 8;
+  const totalWidth = headers.reduce((sum, h) => sum + h.width, 0);
+  
+  // Thin lines for cleaner look
+  doc.lineWidth(0.5);
+
+  // Header row
+  let currentX = startX;
+  doc.rect(startX, currentY, totalWidth, rowHeight).fillAndStroke('#e0e0e0', '#333333');
+  
+  headers.forEach((header) => {
+    doc.fillColor('#000000').fontSize(fontSize).font('Helvetica-Bold')
+      .text(header.label, currentX + 5, currentY + 5, { 
+        width: header.width - 10, 
+        align: header.align || 'center' 
+      });
+    
+    if (currentX !== startX) {
+      doc.moveTo(currentX, currentY).lineTo(currentX, currentY + rowHeight).stroke();
+    }
+    currentX += header.width;
+  });
+  
+  currentY += rowHeight;
+
+  // Data rows with alternating colors
+  rows.forEach((row, rowIndex) => {
+    currentX = startX;
+    
+    // Pagination
+    if (currentY + rowHeight > doc.page.height - 80) {
+      doc.addPage();
+      currentY = 50;
+    }
+
+    const rowBg = rowIndex % 2 === 0 ? '#ffffff' : '#fafafa';
+    doc.rect(startX, currentY, totalWidth, rowHeight).fillAndStroke(rowBg, '#333333');
+    
+    row.forEach((cell, cellIndex) => {
+      const header = headers[cellIndex];
+      doc.fillColor('#000000').fontSize(fontSize - 1).font('Helvetica')
+        .text(cell || '-', currentX + 5, currentY + 5, { 
+          width: header.width - 10, 
+          align: header.align || 'left',
+          height: rowHeight - 10
+        });
+      
+      if (currentX !== startX) {
+        doc.moveTo(currentX, currentY).lineTo(currentX, currentY + rowHeight).stroke();
+      }
+      currentX += header.width;
+    });
+    
+    currentY += rowHeight;
+  });
+
+  // Footer rows (totals, etc.)
+  if (options?.footerRows) {
+    options.footerRows.forEach((footerRow) => {
+      currentX = startX;
+      doc.rect(startX, currentY, totalWidth, rowHeight).fillAndStroke('#f0f0f0', '#333333');
+      
+      footerRow.forEach((cell, cellIndex) => {
+        const header = headers[cellIndex];
+        doc.fillColor('#000000').fontSize(fontSize).font('Helvetica-Bold')
+          .text(cell || '', currentX + 5, currentY + 5, { 
+            width: header.width - 10, 
+            align: header.align || 'left' 
+          });
+        
+        if (currentX !== startX) {
+          doc.moveTo(currentX, currentY).lineTo(currentX, currentY + rowHeight).stroke();
+        }
+        currentX += header.width;
+      });
+      
+      currentY += rowHeight;
+    });
+  }
+
+  doc.y = currentY + 10;
+  
+  // Reset line width
+  doc.lineWidth(1);
+};
+
+/**
+ * Draw summary box with label-value pairs
+ */
+const drawSummaryBox = (
+  doc: PDFKit.PDFDocument,
+  data: { label: string; value: string }[],
+  height: number = 80
+) => {
+  const summaryY = doc.y + 15;
+  doc.rect(50, summaryY, 495, height).fillAndStroke('#f0f0f0', '#d0d0d0');
+  
+  let currentY = summaryY + 10;
+  
+  data.forEach((item) => {
+    doc.fillColor('#000000').fontSize(9).font('Helvetica-Bold')
+       .text(item.label, 60, currentY, { width: 150, align: 'left' });
+    doc.font('Helvetica')
+       .text(item.value, 215, currentY, { width: 300, align: 'left' });
+    currentY += 13;
+  });
+};
+
+/**
+ * Draw stat cards (for reports)
+ */
+const drawStatCards = (
+  doc: PDFKit.PDFDocument,
+  stats: { label: string; value: any; color: string; small?: boolean }[]
+) => {
+  const statsY = doc.y + 10;
+  const cardWidth = Math.floor((495 - (stats.length - 1) * 5) / stats.length);
+  
+  stats.forEach((stat, i) => {
+    const x = 50 + (i * (cardWidth + 5));
+    doc.rect(x, statsY, cardWidth, 35).fillAndStroke(stat.color, '#cccccc');
+    
+    doc.fillColor('#666666').fontSize(7).font('Helvetica')
+       .text(stat.label, x + 5, statsY + 5, { width: cardWidth - 10, align: 'center' });
+    
+    doc.fillColor('#000000').fontSize(stat.small ? 8 : 14).font('Helvetica-Bold')
+       .text(String(stat.value), x + 5, statsY + 15, { width: cardWidth - 10, align: 'center' });
+  });
+  
+  doc.y = statsY + 50;
+};
+
+// ===========================================
+// MAIN EXPORT: generatePDF
+// ===========================================
+
 export const generatePDF = async (
   html: string,
   filename: string,
   res: Response
 ) => {
-  let browser;
-  
   try {
-    console.log('🚀 Starting PDF generation...');
+    console.log('🚀 Starting PDF generation with PDFKit...');
     
-    // ✅ Try to use system Chrome if puppeteer Chrome not available
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      executablePath: getChromeExecutablePath(), // Use system Chrome
-    });
-
-    const page = await browser.newPage();
+    // Parse embedded data from HTML
+    const dataMatch = html.match(/<!--PDF_DATA:(.+?)-->/s);
+    if (!dataMatch) {
+      throw new Error('No PDF data found in HTML');
+    }
     
-    console.log('📄 Setting page content...');
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-
-    console.log('🖨️ Generating PDF...');
-    const pdf = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: {
-        top: '20mm',
-        right: '15mm',
-        bottom: '20mm',
-        left: '15mm',
-      },
-    });
-
-    await browser.close();
-    console.log('✅ PDF generated successfully');
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(pdf);
+    const { type, data } = JSON.parse(dataMatch[1]);
+    
+    // Route to appropriate generator
+    switch (type) {
+      case 'KRS':
+        return await generateKRS(data, filename, res);
+      case 'KHS':
+        return await generateKHS(data, filename, res);
+      case 'TRANSKRIP':
+        return await generateTranskrip(data, filename, res);
+      case 'PEMBAYARAN_REPORT':
+        return await generatePembayaranReport(data, filename, res);
+      case 'JADWAL_DOSEN':
+        return await generateJadwalDosen(data, filename, res);
+      case 'JADWAL_MAHASISWA':
+        return await generateJadwalMahasiswa(data, filename, res);
+      case 'PRESENSI_PERTEMUAN':
+        return await generatePresensiPertemuan(data, filename, res);
+      case 'NILAI_KELAS':
+        return await generateNilaiKelas(data, filename, res);
+      case 'REKAP_PRESENSI':
+        return await generateRekapPresensi(data, filename, res);
+      case 'BERITA_ACARA':
+        return await generateBeritaAcara(data, filename, res);
+      case 'KRS_BIMBINGAN':
+        return await generateKRSBimbingan(data, filename, res);
+      default:
+        throw new Error(`Unknown PDF type: ${type}`);
+    }
   } catch (error) {
     console.error('❌ PDF generation error:', error);
-    if (browser) {
-      await browser.close();
-    }
     throw error;
   }
 };
 
-/**
- * KRS HTML Template - COMPACT SINGLE PAGE VERSION
- */
+// ===========================================
+// TEMPLATE FUNCTIONS - RETURN HTML WITH EMBEDDED DATA
+// ===========================================
+
 export const getKRSHTMLTemplate = (data: any) => {
-  const logoBase64 = getLogoBase64();
-  
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        ${getCommonPDFStyles()}
-        
-        .info { 
-          margin-bottom: 12px;
-          background: #f5f5f5;
-          padding: 8px;
-        }
-        .info-row {
-          display: grid;
-          grid-template-columns: 120px 1fr;
-          margin-bottom: 4px;
-        }
-        .info-label { 
-          font-weight: bold;
-        }
-        table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          margin-top: 10px;
-          font-size: 8px;
-        }
-        th, td { 
-          border: 1px solid #333; 
-          padding: 5px; 
-          text-align: left;
-        }
-        th { 
-          background: #e0e0e0; 
-          font-weight: bold;
-          text-align: center;
-          font-size: 8px;
-        }
-        td.center { text-align: center; }
-        .footer { 
-          margin-top: 15px;
-          padding-top: 10px;
-          border-top: 1px solid #ccc;
-          font-size: 9px;
-        }
-        .footer-row {
-          display: grid;
-          grid-template-columns: 120px 1fr;
-          margin-bottom: 4px;
-        }
-        .footer-label {
-          font-weight: bold;
-        }
-        .signature {
-          margin-top: 20px;
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 20px;
-        }
-        .signature-box {
-          text-align: center;
-        }
-        .signature-line {
-          margin-top: 40px;
-          border-top: 1px solid #000;
-          padding-top: 5px;
-          font-weight: bold;
-        }
-        tfoot tr {
-          background: #f0f0f0;
-          font-weight: bold;
-        }
-      </style>
-    </head>
-    <body>
-      ${getPDFHeader(logoBase64)}
-      
-      <div class="doc-title">
-        <h2>KARTU RENCANA STUDI (KRS)</h2>
-        <p>Semester ${data.semester?.periode || ''} ${data.semester?.tahunAkademik || ''}</p>
-      </div>
-      
-      <div class="info">
-        <div class="info-row">
-          <div class="info-label">NIM</div>
-          <div>: ${data.mahasiswa?.nim || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Nama Mahasiswa</div>
-          <div>: ${data.mahasiswa?.namaLengkap || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Program Studi</div>
-          <div>: ${data.mahasiswa?.prodi?.nama || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Angkatan</div>
-          <div>: ${data.mahasiswa?.angkatan || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Kelas</div>
-          <div>: ___________________________</div>
-        </div>
-      </div>
-      
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 4%;">No</th>
-            <th style="width: 10%;">Kode MK</th>
-            <th style="width: 32%;">Mata Kuliah</th>
-            <th style="width: 5%;">SKS</th>
-            <th style="width: 24%;">Dosen</th>
-            <th style="width: 25%;">Jadwal</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${(data.detail || []).map((d: any, i: number) => `
-            <tr>
-              <td class="center">${i + 1}</td>
-              <td>${d.kelasMK?.mataKuliah?.kodeMK || '-'}</td>
-              <td>${d.kelasMK?.mataKuliah?.namaMK || '-'}</td>
-              <td class="center">${d.kelasMK?.mataKuliah?.sks || 0}</td>
-              <td>${d.kelasMK?.dosen?.namaLengkap || '-'}</td>
-              <td>${d.kelasMK?.hari || '-'}, ${d.kelasMK?.jamMulai || ''}-${d.kelasMK?.jamSelesai || ''}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="3" style="text-align: right;">Total SKS:</td>
-            <td class="center">${data.totalSKS || 0}</td>
-            <td colspan="2"></td>
-          </tr>
-        </tfoot>
-      </table>
-      
-      <div class="footer">
-        <div class="footer-row">
-          <div class="footer-label">Status</div>
-          <div>: ${data.status || 'DRAFT'}</div>
-        </div>
-        ${data.approvedBy ? `
-          <div class="footer-row">
-            <div class="footer-label">Disetujui oleh</div>
-            <div>: ${data.approvedBy.dosen?.namaLengkap || '-'}</div>
-          </div>
-          <div class="footer-row">
-            <div class="footer-label">Tanggal Approval</div>
-            <div>: ${data.tanggalApproval ? new Date(data.tanggalApproval).toLocaleDateString('id-ID', { 
-              day: 'numeric', 
-              month: 'long', 
-              year: 'numeric' 
-            }) : '-'}</div>
-          </div>
-        ` : ''}
-      </div>
-      
-      <div class="signature">
-        <div class="signature-box">
-          <p>Mahasiswa</p>
-          <div class="signature-line">${data.mahasiswa?.namaLengkap || '-'}</div>
-        </div>
-        ${data.approvedBy ? `
-          <div class="signature-box">
-            <p>Dosen Wali</p>
-            <div class="signature-line">${data.approvedBy.dosen?.namaLengkap || '-'}</div>
-          </div>
-        ` : ''}
-      </div>
-    </body>
-    </html>
-  `;
+  const payload = { type: 'KRS', data };
+  return `<!--PDF_DATA:${JSON.stringify(payload)}-->`;
 };
 
-/**
- * KHS HTML Template
- */
 export const getKHSHTMLTemplate = (data: any) => {
-  const logoBase64 = getLogoBase64();
-  const predikat = data.predikat || '-';
-  
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        ${getCommonPDFStyles()}
-        
-        .info { 
-          margin-bottom: 15px;
-          background: #f9f9f9;
-          padding: 12px;
-        }
-        .info p {
-          margin-bottom: 5px;
-        }
-        table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          margin-top: 15px;
-          font-size: 9px;
-        }
-        th, td { 
-          border: 1px solid #333; 
-          padding: 8px; 
-          text-align: left;
-        }
-        th { 
-          background: #e0e0e0; 
-          font-weight: bold; 
-          text-align: center;
-        }
-        td.center { text-align: center; }
-        .summary {
-          margin-top: 20px;
-          background: #f0f0f0;
-          padding: 12px;
-          border-radius: 4px;
-        }
-        .summary-row {
-          display: grid;
-          grid-template-columns: 200px 1fr;
-          margin-bottom: 6px;
-        }
-        .summary-label { font-weight: bold; }
-      </style>
-    </head>
-    <body>
-      ${getPDFHeader(logoBase64)}
-      
-      <div class="doc-title">
-        <h2>KARTU HASIL STUDI (KHS)</h2>
-        <p>Semester ${data.semester?.periode || ''} ${data.semester?.tahunAkademik || ''}</p>
-      </div>
-      
-      <div class="info">
-        <p><strong>NIM:</strong> ${data.mahasiswa?.nim || '-'}</p>
-        <p><strong>Nama:</strong> ${data.mahasiswa?.namaLengkap || '-'}</p>
-        <p><strong>Program Studi:</strong> ${data.mahasiswa?.prodi?.nama || '-'}</p>
-        <p><strong>Angkatan:</strong> ${data.mahasiswa?.angkatan || '-'}</p>
-      </div>
-      
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 5%;">No</th>
-            <th style="width: 12%;">Kode MK</th>
-            <th style="width: 40%;">Mata Kuliah</th>
-            <th style="width: 7%;">SKS</th>
-            <th style="width: 12%;">Nilai</th>
-            <th style="width: 12%;">Huruf</th>
-            <th style="width: 12%;">Bobot</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${(data.nilai || []).map((n: any, i: number) => `
-            <tr>
-              <td class="center">${i + 1}</td>
-              <td>${n.kelasMK?.mataKuliah?.kodeMK || '-'}</td>
-              <td>${n.kelasMK?.mataKuliah?.namaMK || '-'}</td>
-              <td class="center">${n.kelasMK?.mataKuliah?.sks || 0}</td>
-              <td class="center">${formatNumber(n.nilaiAngka)}</td>
-              <td class="center">${n.nilaiHuruf || '-'}</td>
-              <td class="center">${formatNumber(n.bobot)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-      
-      <div class="summary">
-        <div class="summary-row">
-          <div class="summary-label">SKS Semester:</div>
-          <div>${data.totalSKS || 0}</div>
-        </div>
-        <div class="summary-row">
-          <div class="summary-label">IPS (IP Semester):</div>
-          <div>${formatNumber(data.ips)}</div>
-        </div>
-        <div class="summary-row">
-          <div class="summary-label">SKS Kumulatif:</div>
-          <div>${data.totalSKSKumulatif || 0}</div>
-        </div>
-        <div class="summary-row">
-          <div class="summary-label">IPK (IP Kumulatif):</div>
-          <div>${formatNumber(data.ipk)}</div>
-        </div>
-        <div class="summary-row">
-          <div class="summary-label">Predikat:</div>
-          <div><strong>${predikat}</strong></div>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
+  const payload = { type: 'KHS', data };
+  return `<!--PDF_DATA:${JSON.stringify(payload)}-->`;
 };
 
-/**
- * Transkrip HTML Template
- */
 export const getTranskripHTMLTemplate = (data: any) => {
-  const logoBase64 = getLogoBase64();
+  const payload = { type: 'TRANSKRIP', data };
+  return `<!--PDF_DATA:${JSON.stringify(payload)}-->`;
+};
+
+export const getPembayaranReportHTMLTemplate = (data: any) => {
+  const payload = { type: 'PEMBAYARAN_REPORT', data };
+  return `<!--PDF_DATA:${JSON.stringify(payload)}-->`;
+};
+
+export const getJadwalDosenHTMLTemplate = (data: any) => {
+  const payload = { type: 'JADWAL_DOSEN', data };
+  return `<!--PDF_DATA:${JSON.stringify(payload)}-->`;
+};
+
+export const getJadwalMahasiswaHTMLTemplate = (data: any) => {
+  const payload = { type: 'JADWAL_MAHASISWA', data };
+  return `<!--PDF_DATA:${JSON.stringify(payload)}-->`;
+};
+
+export const getPresensiPertemuanHTMLTemplate = (data: any) => {
+  const payload = { type: 'PRESENSI_PERTEMUAN', data };
+  return `<!--PDF_DATA:${JSON.stringify(payload)}-->`;
+};
+
+export const getNilaiKelasHTMLTemplate = (data: any) => {
+  const payload = { type: 'NILAI_KELAS', data };
+  return `<!--PDF_DATA:${JSON.stringify(payload)}-->`;
+};
+
+export const getRekapPresensiHTMLTemplate = (data: any) => {
+  const payload = { type: 'REKAP_PRESENSI', data };
+  return `<!--PDF_DATA:${JSON.stringify(payload)}-->`;
+};
+
+export const getBeritaAcaraHTMLTemplate = (data: any) => {
+  const payload = { type: 'BERITA_ACARA', data };
+  return `<!--PDF_DATA:${JSON.stringify(payload)}-->`;
+};
+
+export const getKRSBimbinganHTMLTemplate = (data: any) => {
+  const payload = { type: 'KRS_BIMBINGAN', data };
+  return `<!--PDF_DATA:${JSON.stringify(payload)}-->`;
+};
+
+// ===========================================
+// PDF GENERATORS
+// ===========================================
+
+/**
+ * Generate KRS (Kartu Rencana Studi)
+ */
+const generateKRS = async (data: any, filename: string, res: Response) => {
+  const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  doc.pipe(res);
   
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        ${getCommonPDFStyles()}
-        
-        .info { 
-          margin-bottom: 15px;
-          background: #f9f9f9;
-          padding: 12px;
-        }
-        .info p {
-          margin-bottom: 5px;
-        }
-        table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          margin-top: 12px;
-          font-size: 8px;
-        }
-        th, td { 
-          border: 1px solid #333; 
-          padding: 6px; 
-          text-align: left;
-        }
-        th { 
-          background: #e0e0e0; 
-          font-weight: bold; 
-          text-align: center;
-        }
-        td.center { text-align: center; }
-        .semester-header {
-          background: #d0d0d0;
-          font-weight: bold;
-          padding: 8px;
-          margin-top: 12px;
-          font-size: 10px;
-        }
-        .summary {
-          margin-top: 20px;
-          background: #f0f0f0;
-          padding: 12px;
-        }
-        .summary h3 {
-          margin-bottom: 8px;
-          font-size: 11px;
-        }
-        .summary p {
-          margin-bottom: 4px;
-        }
-      </style>
-    </head>
-    <body>
-      ${getPDFHeader(logoBase64)}
-      
-      <div class="doc-title">
-        <h2>TRANSKRIP AKADEMIK</h2>
-      </div>
-      
-      <div class="info">
-        <p><strong>NIM:</strong> ${data.mahasiswa?.nim || '-'}</p>
-        <p><strong>Nama:</strong> ${data.mahasiswa?.namaLengkap || '-'}</p>
-        <p><strong>Program Studi:</strong> ${data.mahasiswa?.prodi?.nama || '-'}</p>
-        <p><strong>Angkatan:</strong> ${data.mahasiswa?.angkatan || '-'}</p>
-      </div>
-      
-      ${(data.khs || []).map((semester: any) => `
-        <div class="semester-header">
-          Semester ${semester.semester?.periode || ''} ${semester.semester?.tahunAkademik || ''}
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 5%;">No</th>
-              <th style="width: 12%;">Kode</th>
-              <th style="width: 45%;">Mata Kuliah</th>
-              <th style="width: 7%;">SKS</th>
-              <th style="width: 10%;">Nilai</th>
-              <th style="width: 10%;">Huruf</th>
-              <th style="width: 11%;">Bobot</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${(data.nilai || [])
-              .filter((n: any) => n.kelasMK?.semester?.id === semester.semesterId)
-              .map((n: any, i: number) => `
-                <tr>
-                  <td class="center">${i + 1}</td>
-                  <td>${n.kelasMK?.mataKuliah?.kodeMK || '-'}</td>
-                  <td>${n.kelasMK?.mataKuliah?.namaMK || '-'}</td>
-                  <td class="center">${n.kelasMK?.mataKuliah?.sks || 0}</td>
-                  <td class="center">${formatNumber(n.nilaiAngka)}</td>
-                  <td class="center">${n.nilaiHuruf || '-'}</td>
-                  <td class="center">${formatNumber(n.bobot)}</td>
-                </tr>
-              `).join('')}
-          </tbody>
-        </table>
-        <p style="margin-top: 5px; font-size: 9px;"><strong>IPS: ${formatNumber(semester.ips)} | IPK: ${formatNumber(semester.ipk)}</strong></p>
-      `).join('')}
-      
-      <div class="summary">
-        <h3>Ringkasan Akademik</h3>
-        <p><strong>Total SKS:</strong> ${data.summary?.totalSKS || 0}</p>
-        <p><strong>IPK Akhir:</strong> ${formatNumber(data.summary?.finalIPK)}</p>
-        <p><strong>Predikat:</strong> ${data.summary?.predikat || '-'}</p>
-        <p><strong>Total Semester:</strong> ${data.summary?.totalSemester || 0}</p>
-      </div>
-    </body>
-    </html>
-  `;
+  const logoPath = getLogoPath();
+  drawPDFHeader(doc, logoPath);
+  drawDocTitle(doc, 'KARTU RENCANA STUDI (KRS)', `Semester ${data.semester?.periode || ''} ${data.semester?.tahunAkademik || ''}`);
+  
+  drawInfoBox(doc, [
+    { label: 'NIM', value: data.mahasiswa?.nim || '-' },
+    { label: 'Nama Mahasiswa', value: data.mahasiswa?.namaLengkap || '-' },
+    { label: 'Program Studi', value: data.mahasiswa?.prodi?.nama || '-' },
+    { label: 'Angkatan', value: data.mahasiswa?.angkatan || '-' },
+    { label: 'Kelas', value: '___________________________' }
+  ]);
+  
+  const headers = [
+    { label: 'No', width: 30, align: 'center' as const },
+    { label: 'Kode MK', width: 60, align: 'center' as const },
+    { label: 'Mata Kuliah', width: 160, align: 'left' as const },
+    { label: 'SKS', width: 35, align: 'center' as const },
+    { label: 'Dosen', width: 110, align: 'left' as const },
+    { label: 'Jadwal', width: 100, align: 'left' as const }
+  ];
+  
+  const rows = (data.detail || []).map((d: any, i: number) => [
+    String(i + 1),
+    d.kelasMK?.mataKuliah?.kodeMK || '-',
+    d.kelasMK?.mataKuliah?.namaMK || '-',
+    String(d.kelasMK?.mataKuliah?.sks || 0),
+    d.kelasMK?.dosen?.namaLengkap || '-',
+    `${d.kelasMK?.hari || '-'}, ${d.kelasMK?.jamMulai || ''}-${d.kelasMK?.jamSelesai || ''}`
+  ]);
+  
+  const footerRows = [['', '', 'Total SKS:', String(data.totalSKS || 0), '', '']];
+  drawTable(doc, headers, rows, { fontSize: 8, footerRows });
+  
+  doc.fontSize(9).font('Helvetica-Bold').text(`Status: ${data.status || 'DRAFT'}`, 50, doc.y + 10);
+  
+  if (data.approvedBy) {
+    doc.font('Helvetica').text(`Disetujui oleh: ${data.approvedBy.dosen?.namaLengkap || '-'}`, 50, doc.y + 5);
+    if (data.tanggalApproval) {
+      const approvalDate = new Date(data.tanggalApproval).toLocaleDateString('id-ID', {
+        day: 'numeric', month: 'long', year: 'numeric'
+      });
+      doc.text(`Tanggal Approval: ${approvalDate}`, 50, doc.y + 5);
+    }
+  }
+  
+  doc.moveDown(2);
+  const sigY = doc.y;
+  doc.fontSize(9).text('Mahasiswa', 80, sigY, { width: 150, align: 'center' });
+  doc.text(data.mahasiswa?.namaLengkap || '-', 80, sigY + 60, { width: 150, align: 'center' });
+  doc.moveTo(80, sigY + 55).lineTo(230, sigY + 55).stroke();
+  
+  if (data.approvedBy) {
+    doc.text('Dosen Wali', 365, sigY, { width: 150, align: 'center' });
+    doc.text(data.approvedBy.dosen?.namaLengkap || '-', 365, sigY + 60, { width: 150, align: 'center' });
+    doc.moveTo(365, sigY + 55).lineTo(515, sigY + 55).stroke();
+  }
+  
+  doc.end();
 };
 
 /**
- * Pembayaran Report HTML Template
+ * Generate KHS (Kartu Hasil Studi)
  */
-export const getPembayaranReportHTMLTemplate = (data: {
-  pembayaranList: any[];
-  filters: {
-    jenisPembayaran?: string;
-    status?: string;
-    search?: string;
-    semesterId?: number;
-    semester?: string;
-  };
-  stats: {
-    total: number;
-    pending: number;
-    approved: number;
-    rejected: number;
-    totalNominal: number;
-  };
-  generatedAt: string;
-}) => {
-  const logoBase64 = getLogoBase64();
+const generateKHS = async (data: any, filename: string, res: Response) => {
+  const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  doc.pipe(res);
+  
+  const logoPath = getLogoPath();
+  drawPDFHeader(doc, logoPath);
+  drawDocTitle(doc, 'KARTU HASIL STUDI (KHS)', `Semester ${data.semester?.periode || ''} ${data.semester?.tahunAkademik || ''}`);
+  
+  drawInfoBox(doc, [
+    { label: 'NIM', value: data.mahasiswa?.nim || '-' },
+    { label: 'Nama', value: data.mahasiswa?.namaLengkap || '-' },
+    { label: 'Program Studi', value: data.mahasiswa?.prodi?.nama || '-' },
+    { label: 'Angkatan', value: data.mahasiswa?.angkatan || '-' }
+  ]);
+  
+  const headers = [
+    { label: 'No', width: 30, align: 'center' as const },
+    { label: 'Kode MK', width: 60, align: 'center' as const },
+    { label: 'Mata Kuliah', width: 180, align: 'left' as const },
+    { label: 'SKS', width: 35, align: 'center' as const },
+    { label: 'Nilai', width: 50, align: 'center' as const },
+    { label: 'Huruf', width: 50, align: 'center' as const },
+    { label: 'Bobot', width: 50, align: 'center' as const }
+  ];
+  
+  const rows = (data.nilai || []).map((n: any, i: number) => [
+    String(i + 1),
+    n.kelasMK?.mataKuliah?.kodeMK || '-',
+    n.kelasMK?.mataKuliah?.namaMK || '-',
+    String(n.kelasMK?.mataKuliah?.sks || 0),
+    formatNumber(n.nilaiAngka),
+    n.nilaiHuruf || '-',
+    formatNumber(n.bobot)
+  ]);
+  
+  drawTable(doc, headers, rows, { fontSize: 8 });
+  
+  drawSummaryBox(doc, [
+    { label: 'SKS Semester:', value: String(data.totalSKS || 0) },
+    { label: 'IPS (IP Semester):', value: formatNumber(data.ips) },
+    { label: 'SKS Kumulatif:', value: String(data.totalSKSKumulatif || 0) },
+    { label: 'IPK (IP Kumulatif):', value: formatNumber(data.ipk) },
+    { label: 'Predikat:', value: data.predikat || '-' }
+  ], 80);
+  
+  doc.end();
+};
+
+/**
+ * Generate Transkrip Akademik
+ */
+const generateTranskrip = async (data: any, filename: string, res: Response) => {
+  const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  doc.pipe(res);
+  
+  const logoPath = getLogoPath();
+  drawPDFHeader(doc, logoPath);
+  drawDocTitle(doc, 'TRANSKRIP AKADEMIK');
+  
+  drawInfoBox(doc, [
+    { label: 'NIM', value: data.mahasiswa?.nim || '-' },
+    { label: 'Nama', value: data.mahasiswa?.namaLengkap || '-' },
+    { label: 'Program Studi', value: data.mahasiswa?.prodi?.nama || '-' },
+    { label: 'Angkatan', value: data.mahasiswa?.angkatan || '-' }
+  ]);
+  
+  const headers = [
+    { label: 'No', width: 25, align: 'center' as const },
+    { label: 'Kode', width: 50, align: 'center' as const },
+    { label: 'Mata Kuliah', width: 200, align: 'left' as const },
+    { label: 'SKS', width: 30, align: 'center' as const },
+    { label: 'Nilai', width: 45, align: 'center' as const },
+    { label: 'Huruf', width: 45, align: 'center' as const },
+    { label: 'Bobot', width: 50, align: 'center' as const }
+  ];
+  
+  (data.khs || []).forEach((semester: any, semIndex: number) => {
+    if (semIndex > 0) doc.addPage();
+    
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#000000')
+       .text(`Semester ${semester.semester?.periode || ''} ${semester.semester?.tahunAkademik || ''}`, 50, doc.y + 10);
+    doc.moveDown(0.5);
+    
+    const semesterNilai = (data.nilai || []).filter(
+      (n: any) => n.kelasMK?.semester?.id === semester.semesterId
+    );
+    
+    const rows = semesterNilai.map((n: any, i: number) => [
+      String(i + 1),
+      n.kelasMK?.mataKuliah?.kodeMK || '-',
+      n.kelasMK?.mataKuliah?.namaMK || '-',
+      String(n.kelasMK?.mataKuliah?.sks || 0),
+      formatNumber(n.nilaiAngka),
+      n.nilaiHuruf || '-',
+      formatNumber(n.bobot)
+    ]);
+    
+    drawTable(doc, headers, rows, { fontSize: 7 });
+    
+    doc.fontSize(9).font('Helvetica-Bold')
+       .text(`IPS: ${formatNumber(semester.ips)} | IPK: ${formatNumber(semester.ipk)}`, 50, doc.y + 5);
+  });
+  
+  // Summary box (CLEAN VERSION)
+  if (doc.y > 600) {
+    doc.addPage();
+  }
+
+  const summaryY = doc.y + 20;
+  const boxHeight = 60;
+  doc.rect(50, summaryY, 495, boxHeight).fillAndStroke('#f0f0f0', '#d0d0d0');
+
+  let currentY = summaryY + 10;
+
+  const summaryData = [
+    { label: 'Total SKS', value: String(data.summary?.totalSKS || 0) },
+    { label: 'IPK Akhir', value: formatNumber(data.summary?.finalIPK) },
+    { label: 'Predikat', value: data.summary?.predikat || '-' },
+    { label: 'Total Semester', value: String(data.summary?.totalSemester || 0) }
+  ];
+
+  summaryData.forEach((item) => {
+    doc.fillColor('#000000').fontSize(9).font('Helvetica-Bold')
+      .text(item.label + ':', 60, currentY, { width: 100, align: 'left' });
+    
+    doc.font('Helvetica')
+      .text(item.value, 165, currentY, { width: 300, align: 'left' });
+    
+    currentY += 13;
+  });
+
+  doc.end();
+};
+
+/**
+ * Generate Laporan Pembayaran
+ */
+const generatePembayaranReport = async (data: any, filename: string, res: Response) => {
+  const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  doc.pipe(res);
+  
+  const logoPath = getLogoPath();
   const { pembayaranList, filters, stats, generatedAt } = data;
-
-  // Payment type labels
-  const paymentTypeLabels: Record<string, string> = {
-    KRS: 'Pembayaran KRS',
-    TENGAH_SEMESTER: 'Tengah Semester',
-    PPL: 'PPL',
-    SKRIPSI: 'Skripsi',
-    WISUDA: 'Wisuda',
-    KOMITMEN_BULANAN: 'Komitmen Bulanan',
-  };
-
-  // Status labels
-  const statusLabels: Record<string, string> = {
-    PENDING: 'Pending',
-    APPROVED: 'Disetujui',
-    REJECTED: 'Ditolak',
-  };
-
-  // Format currency
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  // Format date
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('id-ID', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        ${getCommonPDFStyles()}
-        
-        .filters {
-          margin-bottom: 12px;
-          background: #f5f5f5;
-          padding: 8px;
-          border-radius: 4px;
-        }
-        .filter-row {
-          display: grid;
-          grid-template-columns: 80px 1fr;
-          margin-bottom: 3px;
-          font-size: 8px;
-        }
-        .filter-label { 
-          font-weight: bold;
-        }
-        .stats {
-          display: grid;
-          grid-template-columns: repeat(5, 1fr);
-          gap: 8px;
-          margin-bottom: 12px;
-        }
-        .stat-card {
-          background: #e8f5e9;
-          padding: 8px;
-          border-radius: 4px;
-          text-align: center;
-        }
-        .stat-card.pending { background: #fff9c4; }
-        .stat-card.approved { background: #c8e6c9; }
-        .stat-card.rejected { background: #ffcdd2; }
-        .stat-card.total-nominal { background: #bbdefb; }
-        .stat-label {
-          font-size: 7px;
-          color: #666;
-          margin-bottom: 3px;
-        }
-        .stat-value {
-          font-size: 14px;
-          font-weight: bold;
-        }
-        table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          margin-top: 10px;
-          font-size: 7px;
-        }
-        th, td { 
-          border: 1px solid #333; 
-          padding: 4px; 
-          text-align: left;
-        }
-        th { 
-          background: #e0e0e0; 
-          font-weight: bold;
-          text-align: center;
-          font-size: 7px;
-        }
-        td.center { text-align: center; }
-        td.right { text-align: right; }
-        .badge {
-          display: inline-block;
-          padding: 2px 6px;
-          border-radius: 3px;
-          font-size: 7px;
-          font-weight: bold;
-        }
-        .badge-pending {
-          background: #fff9c4;
-          color: #f57f17;
-        }
-        .badge-approved {
-          background: #c8e6c9;
-          color: #2e7d32;
-        }
-        .badge-rejected {
-          background: #ffcdd2;
-          color: #c62828;
-        }
-        .badge-type {
-          background: #e3f2fd;
-          color: #1565c0;
-        }
-        .pdf-footer {
-          margin-top: 15px;
-          padding-top: 10px;
-          border-top: 1px solid #ccc;
-          font-size: 7px;
-          text-align: center;
-          color: #666;
-        }
-        tfoot tr {
-          background: #f0f0f0;
-          font-weight: bold;
-        }
-      </style>
-    </head>
-    <body>
-      ${getPDFHeader(logoBase64)}
-      
-      <div class="doc-title">
-        <h2>LAPORAN PEMBAYARAN MAHASISWA</h2>
-        <p>Dicetak pada: ${generatedAt}</p>
-      </div>
-      
-      <div class="filters">
-        <h3 style="font-size: 10px; margin-bottom: 5px;">Filter Laporan:</h3>
-        ${filters.jenisPembayaran && filters.jenisPembayaran !== 'ALL' ? `
-          <div class="filter-row">
-            <div class="filter-label">Jenis:</div>
-            <div>${paymentTypeLabels[filters.jenisPembayaran] || filters.jenisPembayaran}</div>
-          </div>
-        ` : ''}
-        ${filters.status && filters.status !== 'ALL' ? `
-          <div class="filter-row">
-            <div class="filter-label">Status:</div>
-            <div>${statusLabels[filters.status] || filters.status}</div>
-          </div>
-        ` : ''}
-        ${filters.semester ? `
-          <div class="filter-row">
-            <div class="filter-label">Semester:</div>
-            <div>${filters.semester}</div>
-          </div>
-        ` : ''}
-        ${filters.search ? `
-          <div class="filter-row">
-            <div class="filter-label">Pencarian:</div>
-            <div>${filters.search}</div>
-          </div>
-        ` : ''}
-        ${!filters.jenisPembayaran && !filters.status && !filters.semester && !filters.search ? `
-          <div style="font-size: 8px; font-style: italic; color: #666;">
-            Semua data pembayaran (tanpa filter)
-          </div>
-        ` : ''}
-      </div>
-
-      <div class="stats">
-        <div class="stat-card">
-          <div class="stat-label">Total Data</div>
-          <div class="stat-value">${stats.total}</div>
-        </div>
-        <div class="stat-card pending">
-          <div class="stat-label">Pending</div>
-          <div class="stat-value">${stats.pending}</div>
-        </div>
-        <div class="stat-card approved">
-          <div class="stat-label">Disetujui</div>
-          <div class="stat-value">${stats.approved}</div>
-        </div>
-        <div class="stat-card rejected">
-          <div class="stat-label">Ditolak</div>
-          <div class="stat-value">${stats.rejected}</div>
-        </div>
-        <div class="stat-card total-nominal">
-          <div class="stat-label">Total Nominal</div>
-          <div class="stat-value" style="font-size: 10px;">${formatCurrency(stats.totalNominal)}</div>
-        </div>
-      </div>
-      
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 3%;">No</th>
-            <th style="width: 9%;">NIM</th>
-            <th style="width: 17%;">Nama</th>
-            <th style="width: 12%;">Jenis</th>
-            <th style="width: 13%;">Semester/Bulan</th>
-            <th style="width: 12%;">Nominal</th>
-            <th style="width: 13%;">Tgl Upload</th>
-            <th style="width: 13%;">Tgl Verifikasi</th>
-            <th style="width: 8%;">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${pembayaranList.length === 0 ? `
-            <tr>
-              <td colspan="9" style="text-align: center; padding: 20px; font-style: italic; color: #666;">
-                Tidak ada data pembayaran
-              </td>
-            </tr>
-          ` : pembayaranList.map((p: any, i: number) => `
-            <tr>
-              <td class="center">${i + 1}</td>
-              <td>${p.mahasiswa?.nim || '-'}</td>
-              <td>${p.mahasiswa?.namaLengkap || '-'}</td>
-              <td>
-                <span class="badge badge-type">
-                  ${paymentTypeLabels[p.jenisPembayaran] || p.jenisPembayaran}
-                </span>
-              </td>
-              <td class="center">
-                ${p.jenisPembayaran === 'KOMITMEN_BULANAN' && p.bulanPembayaran
-                  ? new Date(p.bulanPembayaran).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
-                  : p.semester
-                  ? `${p.semester.tahunAkademik} ${p.semester.periode}`
-                  : '-'
-                }
-              </td>
-              <td class="right">${formatCurrency(p.nominal)}</td>
-              <td class="center">${formatDate(p.uploadedAt)}</td>
-              <td class="center">${p.verifiedAt ? formatDate(p.verifiedAt) : '-'}</td>
-              <td class="center">
-                <span class="badge badge-${p.status.toLowerCase()}">
-                  ${statusLabels[p.status] || p.status}
-                </span>
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
-        ${pembayaranList.length > 0 ? `
-          <tfoot>
-            <tr>
-              <td colspan="5" style="text-align: right; padding-right: 10px;">Total Keseluruhan:</td>
-              <td class="right">${formatCurrency(pembayaranList.reduce((sum, p) => sum + p.nominal, 0))}</td>
-              <td colspan="3"></td>
-            </tr>
-          </tfoot>
-        ` : ''}
-      </table>
-
-      <div class="pdf-footer">
-        <p>Laporan ini dicetak otomatis oleh sistem dan sah tanpa tanda tangan</p>
-        <p>STT Diakonos - Sistem Informasi Akademik</p>
-      </div>
-    </body>
-    </html>
-  `;
+  
+  drawPDFHeader(doc, logoPath);
+  drawDocTitle(doc, 'LAPORAN PEMBAYARAN MAHASISWA', `Dicetak pada: ${generatedAt}`);
+  
+  // Filters info
+  const filterInfo: string[] = [];
+  if (filters.jenisPembayaran && filters.jenisPembayaran !== 'ALL') {
+    filterInfo.push(`Jenis: ${filters.jenisPembayaran}`);
+  }
+  if (filters.status && filters.status !== 'ALL') {
+    filterInfo.push(`Status: ${filters.status}`);
+  }
+  if (filters.semester) {
+    filterInfo.push(`Semester: ${filters.semester}`);
+  }
+  if (filters.search) {
+    filterInfo.push(`Pencarian: ${filters.search}`);
+  }
+  
+  if (filterInfo.length > 0) {
+    doc.fontSize(8).font('Helvetica')
+       .text(`Filter: ${filterInfo.join(', ')}`, 50, doc.y + 5);
+    doc.moveDown(0.5);
+  }
+  
+  // Stats cards
+  drawStatCards(doc, [
+    { label: 'Total', value: stats.total, color: '#e8f5e9' },
+    { label: 'Pending', value: stats.pending, color: '#fff9c4' },
+    { label: 'Disetujui', value: stats.approved, color: '#c8e6c9' },
+    { label: 'Ditolak', value: stats.rejected, color: '#ffcdd2' },
+    { label: 'Nominal', value: formatCurrency(stats.totalNominal), color: '#bbdefb', small: true }
+  ]);
+  
+  // Table
+  const headers = [
+    { label: 'No', width: 20, align: 'center' as const },
+    { label: 'NIM', width: 45, align: 'left' as const },
+    { label: 'Nama', width: 90, align: 'left' as const },
+    { label: 'Jenis', width: 60, align: 'left' as const },
+    { label: 'Semester', width: 55, align: 'center' as const },
+    { label: 'Nominal', width: 60, align: 'right' as const },
+    { label: 'Tgl Upload', width: 55, align: 'center' as const },
+    { label: 'Tgl Verif', width: 55, align: 'center' as const },
+    { label: 'Status', width: 40, align: 'center' as const }
+  ];
+  
+  const rows = pembayaranList.map((p: any, i: number) => {
+    const semesterInfo = p.jenisPembayaran === 'KOMITMEN_BULANAN' && p.bulanPembayaran
+      ? new Date(p.bulanPembayaran).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })
+      : p.semester ? `${p.semester.tahunAkademik} ${p.semester.periode}` : '-';
+    
+    return [
+      String(i + 1),
+      p.mahasiswa?.nim || '-',
+      p.mahasiswa?.namaLengkap || '-',
+      p.jenisPembayaran || '-',
+      semesterInfo,
+      formatCurrency(p.nominal),
+      formatDate(p.uploadedAt).split(',')[0],
+      p.verifiedAt ? formatDate(p.verifiedAt).split(',')[0] : '-',
+      p.status || '-'
+    ];
+  });
+  
+  const footerRows = pembayaranList.length > 0 ? [[
+    '', '', '', '', 'Total:',
+    formatCurrency(pembayaranList.reduce((sum: number, p: any) => sum + p.nominal, 0)),
+    '', '', ''
+  ]] : undefined;
+  
+  drawTable(doc, headers, rows, { fontSize: 7, footerRows });
+  
+  doc.fontSize(7).fillColor('#666666')
+     .text('STT Diakonos - Sistem Informasi Akademik', 50, doc.page.height - 50, {
+       width: 495, align: 'center'
+     });
+  
+  doc.end();
 };
 
 /**
- * JADWAL DOSEN PDF Template
+ * Generate Jadwal Mengajar Dosen
  */
-export const getJadwalDosenHTMLTemplate = (data: {
-  dosen: any;
-  jadwal: any[];
-  semester: any;
-  generatedAt: string;
-}) => {
-  const logoBase64 = getLogoBase64();
+const generateJadwalDosen = async (data: any, filename: string, res: Response) => {
+  const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  doc.pipe(res);
+  
+  const logoPath = getLogoPath();
   const { dosen, jadwal, semester, generatedAt } = data;
-
+  
+  drawPDFHeader(doc, logoPath);
+  drawDocTitle(doc, 'JADWAL MENGAJAR DOSEN', `Semester ${semester?.periode || ''} ${semester?.tahunAkademik || ''}`);
+  
+  drawInfoBox(doc, [
+    { label: 'NIDN', value: dosen?.nidn || '-' },
+    { label: 'Nama Dosen', value: dosen?.namaLengkap || '-' },
+    { label: 'Program Studi', value: dosen?.prodi?.nama || '-' }
+  ]);
+  
   // Group by day
   const groupedByDay = jadwal.reduce((acc: any, j: any) => {
     if (!acc[j.hari]) acc[j.hari] = [];
     acc[j.hari].push(j);
     return acc;
   }, {});
-
+  
   const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        ${getCommonPDFStyles()}
-        
-        .info { 
-          margin-bottom: 12px;
-          background: #f5f5f5;
-          padding: 8px;
-        }
-        .info-row {
-          display: grid;
-          grid-template-columns: 120px 1fr;
-          margin-bottom: 4px;
-        }
-        .info-label { 
-          font-weight: bold;
-        }
-        table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          margin-top: 10px;
-          font-size: 8px;
-        }
-        th, td { 
-          border: 1px solid #333; 
-          padding: 5px; 
-          text-align: left;
-        }
-        th { 
-          background: #e0e0e0; 
-          font-weight: bold;
-          text-align: center;
-          font-size: 8px;
-        }
-        td.center { text-align: center; }
-        .day-header {
-          background: #d0d0d0;
-          font-weight: bold;
-          padding: 6px;
-          margin-top: 10px;
-          font-size: 9px;
-        }
-        .summary {
-          margin-top: 15px;
-          padding: 8px;
-          background: #f0f0f0;
-          font-size: 9px;
-        }
-        .pdf-footer {
-          margin-top: 15px;
-          padding-top: 10px;
-          border-top: 1px solid #ccc;
-          font-size: 7px;
-          text-align: center;
-          color: #666;
-        }
-      </style>
-    </head>
-    <body>
-      ${getPDFHeader(logoBase64)}
-      
-      <div class="doc-title">
-        <h2>JADWAL MENGAJAR DOSEN</h2>
-        <p>Semester ${semester?.periode || ''} ${semester?.tahunAkademik || ''}</p>
-      </div>
-      
-      <div class="info">
-        <div class="info-row">
-          <div class="info-label">NIDN</div>
-          <div>: ${dosen?.nidn || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Nama Dosen</div>
-          <div>: ${dosen?.namaLengkap || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Program Studi</div>
-          <div>: ${dosen?.prodi?.nama || '-'}</div>
-        </div>
-      </div>
-      
-      ${days.map(day => {
-        const daySchedule = groupedByDay[day] || [];
-        if (daySchedule.length === 0) return '';
-        
-        return `
-          <div class="day-header">${day}</div>
-          <table>
-            <thead>
-              <tr>
-                <th style="width: 15%;">Waktu</th>
-                <th style="width: 12%;">Kode MK</th>
-                <th style="width: 35%;">Mata Kuliah</th>
-                <th style="width: 8%;">SKS</th>
-                <th style="width: 15%;">Ruangan</th>
-                <th style="width: 15%;">Jumlah Mhs</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${daySchedule.map((j: any) => `
-                <tr>
-                  <td class="center">${j.jamMulai}-${j.jamSelesai}</td>
-                  <td>${j.mataKuliah?.kodeMK || '-'}</td>
-                  <td>${j.mataKuliah?.namaMK || '-'}</td>
-                  <td class="center">${j.mataKuliah?.sks || 0}</td>
-                  <td class="center">${j.ruangan?.nama || '-'}</td>
-                  <td class="center">${j._count?.krsDetail || 0} / ${j.kuotaMax || 0}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        `;
-      }).join('')}
-      
-      <div class="summary">
-        <p><strong>Total Mata Kuliah:</strong> ${jadwal.length}</p>
-        <p><strong>Total SKS:</strong> ${jadwal.reduce((sum, j) => sum + (j.mataKuliah?.sks || 0), 0)}</p>
-        <p><strong>Total Mahasiswa:</strong> ${jadwal.reduce((sum, j) => sum + (j._count?.krsDetail || 0), 0)}</p>
-      </div>
-
-      <div class="pdf-footer">
-        <p>Dicetak pada: ${generatedAt}</p>
-        <p>STT Diakonos - Sistem Informasi Akademik</p>
-      </div>
-    </body>
-    </html>
-  `;
+  
+  days.forEach(day => {
+    const daySchedule = groupedByDay[day] || [];
+    if (daySchedule.length === 0) return;
+    
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000')
+       .text(day, 50, doc.y + 10);
+    doc.moveDown(0.5);
+    
+    const headers = [
+      { label: 'Waktu', width: 75, align: 'center' as const },
+      { label: 'Kode MK', width: 60, align: 'center' as const },
+      { label: 'Mata Kuliah', width: 170, align: 'left' as const },
+      { label: 'SKS', width: 35, align: 'center' as const },
+      { label: 'Ruangan', width: 70, align: 'center' as const },
+      { label: 'Jml Mhs', width: 75, align: 'center' as const }
+    ];
+    
+    const rows = daySchedule.map((j: any) => [
+      `${j.jamMulai}-${j.jamSelesai}`,
+      j.mataKuliah?.kodeMK || '-',
+      j.mataKuliah?.namaMK || '-',
+      String(j.mataKuliah?.sks || 0),
+      j.ruangan?.nama || '-',
+      `${j._count?.krsDetail || 0} / ${j.kuotaMax || 0}`
+    ]);
+    
+    drawTable(doc, headers, rows, { fontSize: 8 });
+  });
+  
+  // Summary
+  drawSummaryBox(doc, [
+    { label: 'Total Mata Kuliah:', value: String(jadwal.length) },
+    { label: 'Total SKS:', value: String(jadwal.reduce((sum: number, j: any) => sum + (j.mataKuliah?.sks || 0), 0)) },
+    { label: 'Total Mahasiswa:', value: String(jadwal.reduce((sum: number, j: any) => sum + (j._count?.krsDetail || 0), 0)) }
+  ], 50);
+  
+  doc.fontSize(7).fillColor('#666666')
+     .text(`Dicetak pada: ${generatedAt}`, 50, doc.page.height - 50, { width: 495, align: 'center' });
+  
+  doc.end();
 };
 
 /**
- * JADWAL MAHASISWA PDF Template
+ * Generate Jadwal Kuliah Mahasiswa
  */
-/**
- * JADWAL MAHASISWA PDF Template
- */
-export const getJadwalMahasiswaHTMLTemplate = (data: {
-  mahasiswa: any;
-  jadwal: any[];
-  semester: any;
-  generatedAt: string;
-}) => {
-  const logoBase64 = getLogoBase64();
+const generateJadwalMahasiswa = async (data: any, filename: string, res: Response) => {
+  const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  doc.pipe(res);
+  
+  const logoPath = getLogoPath();
   const { mahasiswa, jadwal, semester, generatedAt } = data;
-
+  
+  drawPDFHeader(doc, logoPath);
+  drawDocTitle(doc, 'JADWAL KULIAH MAHASISWA', `Semester ${semester?.periode || ''} ${semester?.tahunAkademik || ''}`);
+  
+  drawInfoBox(doc, [
+    { label: 'NIM', value: mahasiswa?.nim || '-' },
+    { label: 'Nama', value: mahasiswa?.namaLengkap || '-' },
+    { label: 'Program Studi', value: mahasiswa?.prodi?.nama || '-' },
+    { label: 'Angkatan', value: mahasiswa?.angkatan || '-' }
+  ]);
+  
   // Group by day
   const groupedByDay = jadwal.reduce((acc: any, j: any) => {
-    const hari = j.hari;
-    if (!acc[hari]) acc[hari] = [];
-    acc[hari].push(j);
+    if (!acc[j.hari]) acc[j.hari] = [];
+    acc[j.hari].push(j);
     return acc;
   }, {});
-
+  
   const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-
-  // Calculate stats
-  const totalSKS = jadwal.reduce((sum, j) => sum + (j.mataKuliah?.sks || 0), 0);
-
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        ${getCommonPDFStyles()}
-        
-        .info { 
-          margin-bottom: 12px;
-          background: #f5f5f5;
-          padding: 8px;
-        }
-        .info-row {
-          display: grid;
-          grid-template-columns: 120px 1fr;
-          margin-bottom: 4px;
-        }
-        .info-label { 
-          font-weight: bold;
-        }
-        table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          margin-top: 10px;
-          font-size: 8px;
-        }
-        th, td { 
-          border: 1px solid #333; 
-          padding: 5px; 
-          text-align: left;
-        }
-        th { 
-          background: #e0e0e0; 
-          font-weight: bold;
-          text-align: center;
-          font-size: 8px;
-        }
-        td.center { text-align: center; }
-        .day-header {
-          background: #d0d0d0;
-          font-weight: bold;
-          padding: 6px;
-          margin-top: 10px;
-          font-size: 9px;
-        }
-        .summary {
-          margin-top: 15px;
-          padding: 8px;
-          background: #f0f0f0;
-          font-size: 9px;
-        }
-        .pdf-footer {
-          margin-top: 15px;
-          padding-top: 10px;
-          border-top: 1px solid #ccc;
-          font-size: 7px;
-          text-align: center;
-          color: #666;
-        }
-      </style>
-    </head>
-    <body>
-      ${getPDFHeader(logoBase64)}
-      
-      <div class="doc-title">
-        <h2>JADWAL KULIAH MAHASISWA</h2>
-        <p>Semester ${semester?.periode || ''} ${semester?.tahunAkademik || ''}</p>
-      </div>
-      
-      <div class="info">
-        <div class="info-row">
-          <div class="info-label">NIM</div>
-          <div>: ${mahasiswa?.nim || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Nama</div>
-          <div>: ${mahasiswa?.namaLengkap || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Program Studi</div>
-          <div>: ${mahasiswa?.prodi?.nama || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Angkatan</div>
-          <div>: ${mahasiswa?.angkatan || '-'}</div>
-        </div>
-      </div>
-      
-      ${days.map(day => {
-        const daySchedule = groupedByDay[day] || [];
-        if (daySchedule.length === 0) return '';
-        
-        return `
-          <div class="day-header">${day}</div>
-          <table>
-            <thead>
-              <tr>
-                <th style="width: 15%;">Waktu</th>
-                <th style="width: 12%;">Kode MK</th>
-                <th style="width: 30%;">Mata Kuliah</th>
-                <th style="width: 8%;">SKS</th>
-                <th style="width: 20%;">Dosen</th>
-                <th style="width: 15%;">Ruangan</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${daySchedule
-                .sort((a: any, b: any) => a.jamMulai.localeCompare(b.jamMulai))
-                .map((j: any) => `
-                  <tr>
-                    <td class="center">${j.jamMulai}-${j.jamSelesai}</td>
-                    <td>${j.mataKuliah?.kodeMK || '-'}</td>
-                    <td>${j.mataKuliah?.namaMK || '-'}</td>
-                    <td class="center">${j.mataKuliah?.sks || 0}</td>
-                    <td>${j.dosen?.namaLengkap || '-'}</td>
-                    <td class="center">${j.ruangan?.nama || '-'}</td>
-                  </tr>
-                `).join('')}
-            </tbody>
-          </table>
-        `;
-      }).join('')}
-      
-      <div class="summary">
-        <p><strong>Total Mata Kuliah:</strong> ${jadwal.length}</p>
-        <p><strong>Total SKS:</strong> ${totalSKS}</p>
-      </div>
-
-      <div class="pdf-footer">
-        <p>Dicetak pada: ${generatedAt}</p>
-        <p>STT Diakonos - Sistem Informasi Akademik</p>
-      </div>
-    </body>
-    </html>
-  `;
+  
+  days.forEach(day => {
+    const daySchedule = (groupedByDay[day] || []).sort((a: any, b: any) => 
+      a.jamMulai.localeCompare(b.jamMulai)
+    );
+    if (daySchedule.length === 0) return;
+    
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000')
+       .text(day, 50, doc.y + 10);
+    doc.moveDown(0.5);
+    
+    const headers = [
+      { label: 'Waktu', width: 75, align: 'center' as const },
+      { label: 'Kode MK', width: 60, align: 'center' as const },
+      { label: 'Mata Kuliah', width: 145, align: 'left' as const },
+      { label: 'SKS', width: 35, align: 'center' as const },
+      { label: 'Dosen', width: 100, align: 'left' as const },
+      { label: 'Ruangan', width: 70, align: 'center' as const }
+    ];
+    
+    const rows = daySchedule.map((j: any) => [
+      `${j.jamMulai}-${j.jamSelesai}`,
+      j.mataKuliah?.kodeMK || '-',
+      j.mataKuliah?.namaMK || '-',
+      String(j.mataKuliah?.sks || 0),
+      j.dosen?.namaLengkap || '-',
+      j.ruangan?.nama || '-'
+    ]);
+    
+    drawTable(doc, headers, rows, { fontSize: 8 });
+  });
+  
+  // Summary
+  const totalSKS = jadwal.reduce((sum: number, j: any) => sum + (j.mataKuliah?.sks || 0), 0);
+  
+  drawSummaryBox(doc, [
+    { label: 'Total Mata Kuliah:', value: String(jadwal.length) },
+    { label: 'Total SKS:', value: String(totalSKS) }
+  ], 35);
+  
+  doc.fontSize(7).fillColor('#666666')
+     .text(`Dicetak pada: ${generatedAt}`, 50, doc.page.height - 50, { width: 495, align: 'center' });
+  
+  doc.end();
 };
 
-
 /**
- * PRESENSI PER PERTEMUAN PDF Template
+ * Generate Daftar Hadir Perkuliahan
  */
-export const getPresensiPertemuanHTMLTemplate = (data: {
-  presensi: any;
-  detail: any[];
-  kelasMK: any;
-  generatedAt: string;
-}) => {
-  const logoBase64 = getLogoBase64();
+const generatePresensiPertemuan = async (data: any, filename: string, res: Response) => {
+  const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  doc.pipe(res);
+  
+  const logoPath = getLogoPath();
   const { presensi, detail, kelasMK, generatedAt } = data;
-
+  
+  drawPDFHeader(doc, logoPath);
+  drawDocTitle(doc, 'DAFTAR HADIR PERKULIAHAN', `Pertemuan ke-${presensi?.pertemuan || '-'}`);
+  
+  drawInfoBox(doc, [
+    { label: 'Mata Kuliah', value: `${kelasMK?.mataKuliah?.namaMK || '-'} (${kelasMK?.mataKuliah?.kodeMK || '-'})` },
+    { label: 'SKS', value: String(kelasMK?.mataKuliah?.sks || 0) },
+    { label: 'Dosen', value: kelasMK?.dosen?.namaLengkap || '-' },
+    { label: 'Hari/Jam', value: `${kelasMK?.hari || '-'}, ${kelasMK?.jamMulai || ''}-${kelasMK?.jamSelesai || ''}` },
+    { label: 'Ruangan', value: kelasMK?.ruangan?.nama || '-' },
+    { label: 'Tanggal', value: presensi?.tanggal ? new Date(presensi.tanggal).toLocaleDateString('id-ID', {
+        day: '2-digit', month: 'long', year: 'numeric'
+      }) : '-' },
+    { label: 'Materi', value: presensi?.materi || '-' }
+  ]);
+  
+  // Stats
   const statusCount = {
-    HADIR: detail.filter(d => d.status === 'HADIR').length,
-    TIDAK_HADIR: detail.filter(d => d.status === 'TIDAK_HADIR').length,
-    IZIN: detail.filter(d => d.status === 'IZIN').length,
-    SAKIT: detail.filter(d => d.status === 'SAKIT').length,
-    ALPHA: detail.filter(d => d.status === 'ALPHA').length,
+    HADIR: detail.filter((d: any) => d.status === 'HADIR').length,
+    IZIN: detail.filter((d: any) => d.status === 'IZIN').length,
+    SAKIT: detail.filter((d: any) => d.status === 'SAKIT').length,
+    ALPHA: detail.filter((d: any) => d.status === 'ALPHA').length,
+    TIDAK_HADIR: detail.filter((d: any) => d.status === 'TIDAK_HADIR').length
   };
-
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        ${getCommonPDFStyles()}
-        
-        .info { 
-          margin-bottom: 12px;
-          background: #f5f5f5;
-          padding: 8px;
-        }
-        .info-row {
-          display: grid;
-          grid-template-columns: 120px 1fr;
-          margin-bottom: 4px;
-        }
-        .info-label { 
-          font-weight: bold;
-        }
-        table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          margin-top: 10px;
-          font-size: 8px;
-        }
-        th, td { 
-          border: 1px solid #333; 
-          padding: 5px; 
-          text-align: left;
-        }
-        th { 
-          background: #e0e0e0; 
-          font-weight: bold;
-          text-align: center;
-          font-size: 8px;
-        }
-        td.center { text-align: center; }
-        .badge {
-          display: inline-block;
-          padding: 2px 6px;
-          border-radius: 3px;
-          font-size: 7px;
-          font-weight: bold;
-        }
-        .badge-hadir { background: #c8e6c9; color: #2e7d32; }
-        .badge-tidak-hadir { background: #ffcdd2; color: #c62828; }
-        .badge-izin { background: #fff9c4; color: #f57f17; }
-        .badge-sakit { background: #e1bee7; color: #6a1b9a; }
-        .badge-alpha { background: #cfd8dc; color: #37474f; }
-        .stats {
-          display: grid;
-          grid-template-columns: repeat(5, 1fr);
-          gap: 8px;
-          margin-bottom: 12px;
-        }
-        .stat-card {
-          padding: 6px;
-          border-radius: 4px;
-          text-align: center;
-        }
-        .stat-label {
-          font-size: 7px;
-          margin-bottom: 3px;
-        }
-        .stat-value {
-          font-size: 14px;
-          font-weight: bold;
-        }
-        .pdf-footer {
-          margin-top: 15px;
-          padding-top: 10px;
-          border-top: 1px solid #ccc;
-          font-size: 7px;
-          text-align: center;
-          color: #666;
-        }
-      </style>
-    </head>
-    <body>
-      ${getPDFHeader(logoBase64)}
-      
-      <div class="doc-title">
-        <h2>DAFTAR HADIR PERKULIAHAN</h2>
-        <p>Pertemuan ke-${presensi?.pertemuan || '-'}</p>
-      </div>
-      
-      <div class="info">
-        <div class="info-row">
-          <div class="info-label">Mata Kuliah</div>
-          <div>: ${kelasMK?.mataKuliah?.namaMK || '-'} (${kelasMK?.mataKuliah?.kodeMK || '-'})</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">SKS</div>
-          <div>: ${kelasMK?.mataKuliah?.sks || 0}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Dosen</div>
-          <div>: ${kelasMK?.dosen?.namaLengkap || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Hari/Jam</div>
-          <div>: ${kelasMK?.hari || '-'}, ${kelasMK?.jamMulai || ''}-${kelasMK?.jamSelesai || ''}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Ruangan</div>
-          <div>: ${kelasMK?.ruangan?.nama || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Tanggal</div>
-          <div>: ${presensi?.tanggal ? new Date(presensi.tanggal).toLocaleDateString('id-ID', {
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric'
-          }) : '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Materi</div>
-          <div>: ${presensi?.materi || '-'}</div>
-        </div>
-      </div>
-
-      <div class="stats">
-        <div class="stat-card" style="background: #c8e6c9;">
-          <div class="stat-label">Hadir</div>
-          <div class="stat-value">${statusCount.HADIR}</div>
-        </div>
-        <div class="stat-card" style="background: #fff9c4;">
-          <div class="stat-label">Izin</div>
-          <div class="stat-value">${statusCount.IZIN}</div>
-        </div>
-        <div class="stat-card" style="background: #e1bee7;">
-          <div class="stat-label">Sakit</div>
-          <div class="stat-value">${statusCount.SAKIT}</div>
-        </div>
-        <div class="stat-card" style="background: #cfd8dc;">
-          <div class="stat-label">Alpha</div>
-          <div class="stat-value">${statusCount.ALPHA}</div>
-        </div>
-        <div class="stat-card" style="background: #ffcdd2;">
-          <div class="stat-label">Tidak Hadir</div>
-          <div class="stat-value">${statusCount.TIDAK_HADIR}</div>
-        </div>
-      </div>
-      
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 5%;">No</th>
-            <th style="width: 12%;">NIM</th>
-            <th style="width: 35%;">Nama Mahasiswa</th>
-            <th style="width: 15%;">Status</th>
-            <th style="width: 33%;">Keterangan</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${detail.map((d: any, i: number) => `
-            <tr>
-              <td class="center">${i + 1}</td>
-              <td>${d.mahasiswa?.nim || '-'}</td>
-              <td>${d.mahasiswa?.namaLengkap || '-'}</td>
-              <td class="center">
-                <span class="badge badge-${d.status?.toLowerCase().replace('_', '-')}">
-                  ${d.status?.replace('_', ' ') || '-'}
-                </span>
-              </td>
-              <td>${d.keterangan || '-'}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-
-      ${presensi?.catatan ? `
-        <div style="margin-top: 12px; padding: 8px; background: #f5f5f5; border-left: 3px solid #666;">
-          <strong style="font-size: 9px;">Catatan:</strong>
-          <p style="font-size: 8px; margin-top: 4px;">${presensi.catatan}</p>
-        </div>
-      ` : ''}
-
-      <div class="pdf-footer">
-        <p>Dicetak pada: ${generatedAt}</p>
-        <p>STT Diakonos - Sistem Informasi Akademik</p>
-      </div>
-    </body>
-    </html>
-  `;
+  
+  drawStatCards(doc, [
+    { label: 'Hadir', value: statusCount.HADIR, color: '#c8e6c9' },
+    { label: 'Izin', value: statusCount.IZIN, color: '#fff9c4' },
+    { label: 'Sakit', value: statusCount.SAKIT, color: '#e1bee7' },
+    { label: 'Alpha', value: statusCount.ALPHA, color: '#cfd8dc' },
+    { label: 'Tdk Hadir', value: statusCount.TIDAK_HADIR, color: '#ffcdd2' }
+  ]);
+  
+  // Table
+  const headers = [
+    { label: 'No', width: 25, align: 'center' as const },
+    { label: 'NIM', width: 60, align: 'left' as const },
+    { label: 'Nama Mahasiswa', width: 170, align: 'left' as const },
+    { label: 'Status', width: 75, align: 'center' as const },
+    { label: 'Keterangan', width: 155, align: 'left' as const }
+  ];
+  
+  const rows = detail.map((d: any, i: number) => [
+    String(i + 1),
+    d.mahasiswa?.nim || '-',
+    d.mahasiswa?.namaLengkap || '-',
+    d.status?.replace('_', ' ') || '-',
+    d.keterangan || '-'
+  ]);
+  
+  drawTable(doc, headers, rows, { fontSize: 8 });
+  
+  if (presensi?.catatan) {
+    const noteY = doc.y + 10;
+    doc.rect(50, noteY, 495, 30).fillAndStroke('#f5f5f5', '#666666');
+    doc.fillColor('#000000').fontSize(9).font('Helvetica-Bold')
+       .text('Catatan:', 55, noteY + 5);
+    doc.font('Helvetica').fontSize(8)
+       .text(presensi.catatan, 55, noteY + 17, { width: 485 });
+    doc.y = noteY + 35;
+  }
+  
+  doc.fontSize(7).fillColor('#666666')
+     .text(`Dicetak pada: ${generatedAt}`, 50, doc.page.height - 50, { width: 495, align: 'center' });
+  
+  doc.end();
 };
 
 /**
- * NILAI KELAS (UNTUK DOSEN) PDF Template
+ * Generate Daftar Nilai Mahasiswa
  */
-export const getNilaiKelasHTMLTemplate = (data: {
-  kelasMK: any;
-  nilaiList: any[];
-  semester: any;
-  generatedAt: string;
-}) => {
-  const logoBase64 = getLogoBase64();
+const generateNilaiKelas = async (data: any, filename: string, res: Response) => {
+  const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  doc.pipe(res);
+  
+  const logoPath = getLogoPath();
   const { kelasMK, nilaiList, semester, generatedAt } = data;
-
+  
+  drawPDFHeader(doc, logoPath);
+  drawDocTitle(doc, 'DAFTAR NILAI MAHASISWA', `Semester ${semester?.periode || ''} ${semester?.tahunAkademik || ''}`);
+  
+  drawInfoBox(doc, [
+    { label: 'Mata Kuliah', value: `${kelasMK?.mataKuliah?.namaMK || '-'} (${kelasMK?.mataKuliah?.kodeMK || '-'})` },
+    { label: 'SKS', value: String(kelasMK?.mataKuliah?.sks || 0) },
+    { label: 'Dosen', value: kelasMK?.dosen?.namaLengkap || '-' },
+    { label: 'Hari/Jam', value: `${kelasMK?.hari || '-'}, ${kelasMK?.jamMulai || ''}-${kelasMK?.jamSelesai || ''}` },
+    { label: 'Ruangan', value: kelasMK?.ruangan?.nama || '-' }
+  ]);
+  
+  // Stats
   const stats = {
     total: nilaiList.length,
-    finalized: nilaiList.filter(n => n.isFinalized).length,
-    draft: nilaiList.filter(n => !n.isFinalized).length,
-    lulus: nilaiList.filter(n => n.nilaiHuruf && !['E', 'DE'].includes(n.nilaiHuruf)).length,
+    finalized: nilaiList.filter((n: any) => n.isFinalized).length,
+    draft: nilaiList.filter((n: any) => !n.isFinalized).length,
+    lulus: nilaiList.filter((n: any) => n.nilaiHuruf && !['E', 'DE'].includes(n.nilaiHuruf)).length
+  };
+  
+  drawStatCards(doc, [
+    { label: 'Total Mahasiswa', value: stats.total, color: '#e3f2fd' },
+    { label: 'Finalized', value: stats.finalized, color: '#c8e6c9' },
+    { label: 'Draft', value: stats.draft, color: '#fff9c4' },
+    { label: 'Lulus', value: stats.lulus, color: '#b3e5fc' }
+  ]);
+  
+  // Table
+  const headers = [
+    { label: 'No', width: 25, align: 'center' as const },
+    { label: 'NIM', width: 55, align: 'left' as const },
+    { label: 'Nama Mahasiswa', width: 140, align: 'left' as const },
+    { label: 'Nilai Angka', width: 50, align: 'center' as const },
+    { label: 'Nilai Huruf', width: 50, align: 'center' as const },
+    { label: 'Bobot', width: 45, align: 'center' as const },
+    { label: 'Status', width: 50, align: 'center' as const },
+    { label: 'Input Oleh', width: 70, align: 'left' as const }
+  ];
+  
+  const rows = nilaiList.map((n: any, i: number) => [
+    String(i + 1),
+    n.mahasiswa?.nim || '-',
+    n.mahasiswa?.namaLengkap || '-',
+    formatNumber(n.nilaiAngka),
+    n.nilaiHuruf || '-',
+    formatNumber(n.bobot),
+    n.isFinalized ? 'Finalized' : 'Draft',
+    n.inputBy?.dosen?.namaLengkap || '-'
+  ]);
+  
+  drawTable(doc, headers, rows, { fontSize: 7 });
+  
+  doc.fontSize(7).fillColor('#666666')
+     .text(`Dicetak pada: ${generatedAt}`, 50, doc.page.height - 50, { width: 495, align: 'center' });
+  
+  doc.end();
+};
+
+/**
+ * Generate Rekap Presensi Mahasiswa
+ */
+const generateRekapPresensi = async (data: any, filename: string, res: Response) => {
+  const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  doc.pipe(res);
+  
+  const logoPath = getLogoPath();
+  const { kelasMK, mahasiswaList, pertemuanList, semester, generatedAt } = data;
+  
+  drawPDFHeader(doc, logoPath);
+  drawDocTitle(doc, 'REKAP PRESENSI MAHASISWA', `Semester ${semester?.periode || ''} ${semester?.tahunAkademik || ''}`);
+  
+  drawInfoBox(doc, [
+    { label: 'Mata Kuliah', value: `${kelasMK?.mataKuliah?.namaMK || '-'} (${kelasMK?.mataKuliah?.kodeMK || '-'})` },
+    { label: 'Dosen', value: kelasMK?.dosen?.namaLengkap || '-' }
+  ]);
+  
+  // Create custom table for attendance recap
+  const fontSize = 6;
+  const startX = 50;
+  let currentY = doc.y;
+  const rowHeight = fontSize + 6;
+  
+  // Column widths
+  const noWidth = 20;
+  const nimWidth = 50;
+  const namaWidth = 130;
+  const pertemuanWidth = Math.min(15, Math.floor(200 / pertemuanList.length));
+  const totalPertemuanWidth = pertemuanWidth * pertemuanList.length;
+  const statsWidth = 25;
+  const totalWidth = noWidth + nimWidth + namaWidth + totalPertemuanWidth + (statsWidth * 5);
+  
+  doc.lineWidth(0.5);
+  
+  // Header row 1
+  doc.rect(startX, currentY, totalWidth, rowHeight).fillAndStroke('#e0e0e0', '#333333');
+  doc.fillColor('#000000').fontSize(fontSize).font('Helvetica-Bold');
+  
+  let currentX = startX;
+  doc.text('No', currentX + 2, currentY + 3, { width: noWidth - 4, align: 'center' });
+  currentX += noWidth;
+  doc.text('NIM', currentX + 2, currentY + 3, { width: nimWidth - 4, align: 'center' });
+  currentX += nimWidth;
+  doc.text('Nama', currentX + 2, currentY + 3, { width: namaWidth - 4, align: 'center' });
+  currentX += namaWidth;
+  doc.text('Pertemuan', currentX + 2, currentY + 3, { width: totalPertemuanWidth - 4, align: 'center' });
+  currentX += totalPertemuanWidth;
+  doc.text('H', currentX + 2, currentY + 3, { width: statsWidth - 4, align: 'center' });
+  currentX += statsWidth;
+  doc.text('I', currentX + 2, currentY + 3, { width: statsWidth - 4, align: 'center' });
+  currentX += statsWidth;
+  doc.text('S', currentX + 2, currentY + 3, { width: statsWidth - 4, align: 'center' });
+  currentX += statsWidth;
+  doc.text('A', currentX + 2, currentY + 3, { width: statsWidth - 4, align: 'center' });
+  currentX += statsWidth;
+  doc.text('%', currentX + 2, currentY + 3, { width: statsWidth - 4, align: 'center' });
+  
+  currentY += rowHeight;
+  
+  // Header row 2 (pertemuan numbers)
+  doc.rect(startX, currentY, totalWidth, rowHeight).fillAndStroke('#e0e0e0', '#333333');
+  currentX = startX + noWidth + nimWidth + namaWidth;
+  
+  pertemuanList.forEach((p: any) => {
+    doc.fillColor('#000000').fontSize(fontSize - 1).font('Helvetica-Bold')
+       .text(String(p.pertemuan), currentX + 1, currentY + 3, { width: pertemuanWidth - 2, align: 'center' });
+    doc.moveTo(currentX, currentY).lineTo(currentX, currentY + rowHeight).stroke();
+    currentX += pertemuanWidth;
+  });
+  
+  currentY += rowHeight;
+  
+  // Data rows
+  mahasiswaList.forEach((mhs: any, index: number) => {
+    if (currentY + rowHeight > doc.page.height - 80) {
+      doc.addPage();
+      currentY = 50;
+    }
+    
+    const stats = { hadir: 0, izin: 0, sakit: 0, alpha: 0 };
+    
+    const rowBg = index % 2 === 0 ? '#ffffff' : '#fafafa';
+    doc.rect(startX, currentY, totalWidth, rowHeight).fillAndStroke(rowBg, '#333333');
+    
+    currentX = startX;
+    
+    // No
+    doc.fillColor('#000000').fontSize(fontSize).font('Helvetica')
+       .text(String(index + 1), currentX + 2, currentY + 3, { width: noWidth - 4, align: 'center' });
+    currentX += noWidth;
+    
+    // NIM
+    doc.text(mhs.mahasiswa?.nim || '-', currentX + 2, currentY + 3, { width: nimWidth - 4, align: 'left' });
+    currentX += nimWidth;
+    
+    // Nama
+    doc.text(mhs.mahasiswa?.namaLengkap || '-', currentX + 2, currentY + 3, { width: namaWidth - 4, align: 'left' });
+    currentX += namaWidth;
+    
+    // Pertemuan status
+    pertemuanList.forEach((p: any) => {
+      const presensi = mhs.presensi?.find((pr: any) => pr.presensiId === p.id);
+      const status: string = presensi?.status || 'ALPHA';
+      
+      if (status === 'HADIR') stats.hadir++;
+      else if (status === 'IZIN') stats.izin++;
+      else if (status === 'SAKIT') stats.sakit++;
+      else stats.alpha++;
+      
+      const statusSymbolMap: Record<string, string> = {
+        'HADIR': '✓',
+        'IZIN': 'I',
+        'SAKIT': 'S',
+        'ALPHA': 'A',
+        'TIDAK_HADIR': '✗'
+      };
+      const statusSymbol = statusSymbolMap[status] || '-';
+      
+      const statusColorMap: Record<string, string> = {
+        'HADIR': '#c8e6c9',
+        'IZIN': '#fff9c4',
+        'SAKIT': '#e1bee7',
+        'ALPHA': '#cfd8dc',
+        'TIDAK_HADIR': '#ffcdd2'
+      };
+      const bgColor = statusColorMap[status] || '#ffffff';
+      
+      doc.rect(currentX, currentY, pertemuanWidth, rowHeight).fillAndStroke(bgColor, '#333333');
+      doc.fillColor('#000000').fontSize(fontSize - 1).font('Helvetica')
+         .text(statusSymbol, currentX + 1, currentY + 3, { width: pertemuanWidth - 2, align: 'center' });
+      
+      currentX += pertemuanWidth;
+    });
+    
+    // Summary stats
+    doc.font('Helvetica-Bold');
+    doc.text(String(stats.hadir), currentX + 2, currentY + 3, { width: statsWidth - 4, align: 'center' });
+    currentX += statsWidth;
+    doc.text(String(stats.izin), currentX + 2, currentY + 3, { width: statsWidth - 4, align: 'center' });
+    currentX += statsWidth;
+    doc.text(String(stats.sakit), currentX + 2, currentY + 3, { width: statsWidth - 4, align: 'center' });
+    currentX += statsWidth;
+    doc.text(String(stats.alpha), currentX + 2, currentY + 3, { width: statsWidth - 4, align: 'center' });
+    currentX += statsWidth;
+    const percentage = Math.round((stats.hadir / pertemuanList.length) * 100);
+    doc.text(`${percentage}%`, currentX + 2, currentY + 3, { width: statsWidth - 4, align: 'center' });
+    
+    currentY += rowHeight;
+  });
+  
+  doc.lineWidth(1);
+  doc.y = currentY + 10;
+  
+  // Legend
+  doc.fontSize(7).font('Helvetica')
+     .text('Keterangan: H = Hadir | I = Izin | S = Sakit | A = Alpha (Tidak Hadir Tanpa Keterangan)', 50, doc.y);
+  
+  doc.fontSize(7).fillColor('#666666')
+     .text(`Dicetak pada: ${generatedAt}`, 50, doc.page.height - 50, { width: 495, align: 'center' });
+  
+  doc.end();
+};
+
+/**
+ * Generate Berita Acara Perkuliahan
+ */
+const generateBeritaAcara = async (data: any, filename: string, res: Response) => {
+  const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  doc.pipe(res);
+  
+  const logoPath = getLogoPath();
+  const { presensiList, kelasMK, semester, generatedAt } = data;
+  
+  const currentYear = new Date().getFullYear();
+  const location = 'Banyumas';
+  const programStudi = kelasMK?.mataKuliah?.prodi?.nama || kelasMK?.dosen?.prodi?.nama || '-';
+  
+  drawPDFHeader(doc, logoPath);
+  drawDocTitle(doc, 'BERITA ACARA PERKULIAHAN', 
+    `Semester ${semester?.periode || ''} Tahun Akademik ${semester?.tahunAkademik || ''}\nProgram Studi ${programStudi}`);
+  
+  drawInfoBox(doc, [
+    { label: 'Mata Kuliah', value: kelasMK?.mataKuliah?.namaMK || '-' },
+    { label: 'Semester/Beban', value: `${kelasMK?.mataKuliah?.semesterIdeal || '-'} (${kelasMK?.mataKuliah?.sks || 0} SKS)` },
+    { label: 'Dosen', value: kelasMK?.dosen?.namaLengkap || '-' },
+    { label: 'Hari / Waktu', value: `${kelasMK?.hari || '-'} / Pukul ${kelasMK?.jamMulai || ''}-${kelasMK?.jamSelesai || ''}` }
+  ]);
+  
+  // Custom table for Berita Acara
+  const fontSize = 7;
+  const startX = 50;
+  let currentY = doc.y;
+  const rowHeight = fontSize + 8;
+
+  const colWidths = {
+    pertemuan: 35,
+    tanggal: 50,
+    model: 50,
+    materi: 170,
+    hadir: 35,
+    tidakHadir: 40,
+    ttdDosen: 60,
+    ttdKetua: 55,
   };
 
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        ${getCommonPDFStyles()}
-        
-        .info { 
-          margin-bottom: 12px;
-          background: #f5f5f5;
-          padding: 8px;
-        }
-        .info-row {
-          display: grid;
-          grid-template-columns: 120px 1fr;
-          margin-bottom: 4px;
-        }
-        .info-label { 
-          font-weight: bold;
-        }
-        table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          margin-top: 10px;
-          font-size: 8px;
-        }
-        th, td { 
-          border: 1px solid #333; 
-          padding: 5px; 
-          text-align: left;
-        }
-        th { 
-          background: #e0e0e0; 
-          font-weight: bold;
-          text-align: center;
-          font-size: 8px;
-        }
-        td.center { text-align: center; }
-        .badge {
-          display: inline-block;
-          padding: 2px 6px;
-          border-radius: 3px;
-          font-size: 7px;
-          font-weight: bold;
-        }
-        .badge-finalized { background: #c8e6c9; color: #2e7d32; }
-        .badge-draft { background: #fff9c4; color: #f57f17; }
-        .stats {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 8px;
-          margin-bottom: 12px;
-        }
-        .stat-card {
-          padding: 6px;
-          border-radius: 4px;
-          text-align: center;
-          background: #e3f2fd;
-        }
-        .stat-label {
-          font-size: 7px;
-          margin-bottom: 3px;
-        }
-        .stat-value {
-          font-size: 14px;
-          font-weight: bold;
-        }
-        .pdf-footer {
-          margin-top: 15px;
-          padding-top: 10px;
-          border-top: 1px solid #ccc;
-          font-size: 7px;
-          text-align: center;
-          color: #666;
-        }
-      </style>
-    </head>
-    <body>
-      ${getPDFHeader(logoBase64)}
-      
-      <div class="doc-title">
-        <h2>DAFTAR NILAI MAHASISWA</h2>
-        <p>Semester ${semester?.periode || ''} ${semester?.tahunAkademik || ''}</p>
-      </div>
-      
-      <div class="info">
-        <div class="info-row">
-          <div class="info-label">Mata Kuliah</div>
-          <div>: ${kelasMK?.mataKuliah?.namaMK || '-'} (${kelasMK?.mataKuliah?.kodeMK || '-'})</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">SKS</div>
-          <div>: ${kelasMK?.mataKuliah?.sks || 0}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Dosen</div>
-          <div>: ${kelasMK?.dosen?.namaLengkap || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Hari/Jam</div>
-          <div>: ${kelasMK?.hari || '-'}, ${kelasMK?.jamMulai || ''}-${kelasMK?.jamSelesai || ''}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Ruangan</div>
-          <div>: ${kelasMK?.ruangan?.nama || '-'}</div>
-        </div>
-      </div>
+  const totalWidth = Object.values(colWidths).reduce((a, b) => a + b, 0);
 
-      <div class="stats">
-        <div class="stat-card">
-          <div class="stat-label">Total Mahasiswa</div>
-          <div class="stat-value">${stats.total}</div>
-        </div>
-        <div class="stat-card" style="background: #c8e6c9;">
-          <div class="stat-label">Finalized</div>
-          <div class="stat-value">${stats.finalized}</div>
-        </div>
-        <div class="stat-card" style="background: #fff9c4;">
-          <div class="stat-label">Draft</div>
-          <div class="stat-value">${stats.draft}</div>
-        </div>
-        <div class="stat-card" style="background: #b3e5fc;">
-          <div class="stat-label">Lulus</div>
-          <div class="stat-value">${stats.lulus}</div>
-        </div>
-      </div>
-      
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 5%;">No</th>
-            <th style="width: 12%;">NIM</th>
-            <th style="width: 30%;">Nama Mahasiswa</th>
-            <th style="width: 10%;">Nilai Angka</th>
-            <th style="width: 10%;">Nilai Huruf</th>
-            <th style="width: 10%;">Bobot</th>
-            <th style="width: 10%;">Status</th>
-            <th style="width: 13%;">Input Oleh</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${nilaiList.map((n: any, i: number) => `
-            <tr>
-              <td class="center">${i + 1}</td>
-              <td>${n.mahasiswa?.nim || '-'}</td>
-              <td>${n.mahasiswa?.namaLengkap || '-'}</td>
-              <td class="center">${formatNumber(n.nilaiAngka)}</td>
-              <td class="center">${n.nilaiHuruf || '-'}</td>
-              <td class="center">${formatNumber(n.bobot)}</td>
-              <td class="center">
-                <span class="badge badge-${n.isFinalized ? 'finalized' : 'draft'}">
-                  ${n.isFinalized ? 'Finalized' : 'Draft'}
-                </span>
-              </td>
-              <td>${n.inputBy?.dosen?.namaLengkap || '-'}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
+  doc.lineWidth(0.5);
 
-      <div class="pdf-footer">
-        <p>Dicetak pada: ${generatedAt}</p>
-        <p>STT Diakonos - Sistem Informasi Akademik</p>
-      </div>
-    </body>
-    </html>
-  `;
+  // Header row (complex merged cells)
+  doc.rect(startX, currentY, totalWidth, rowHeight * 2).fillAndStroke('#e0e0e0', '#333333');
+  
+  let currentX = startX;
+  doc.fillColor('#000000').fontSize(fontSize).font('Helvetica-Bold');
+
+  // Pertemuan (rowspan 2)
+  doc.text('Perte-\nmuan', currentX + 2, currentY + 5, { 
+    width: colWidths.pertemuan - 4, 
+    align: 'center' 
+  });
+  doc.moveTo(currentX + colWidths.pertemuan, currentY)
+     .lineTo(currentX + colWidths.pertemuan, currentY + rowHeight * 2)
+     .stroke();
+  currentX += colWidths.pertemuan;
+
+  // Tanggal (rowspan 2)
+  doc.text('Tanggal', currentX + 2, currentY + 8, { 
+    width: colWidths.tanggal - 4, 
+    align: 'center' 
+  });
+  doc.moveTo(currentX + colWidths.tanggal, currentY)
+     .lineTo(currentX + colWidths.tanggal, currentY + rowHeight * 2)
+     .stroke();
+  currentX += colWidths.tanggal;
+
+  // Model (rowspan 2)
+  doc.text('Model\n(Luring/\nDaring)', currentX + 2, currentY + 2, { 
+    width: colWidths.model - 4, 
+    align: 'center' 
+  });
+  doc.moveTo(currentX + colWidths.model, currentY)
+     .lineTo(currentX + colWidths.model, currentY + rowHeight * 2)
+     .stroke();
+  currentX += colWidths.model;
+
+  // Materi (rowspan 2)
+  doc.text('Pokok Materi', currentX + 2, currentY + 8, { 
+    width: colWidths.materi - 4, 
+    align: 'center' 
+  });
+  doc.moveTo(currentX + colWidths.materi, currentY)
+     .lineTo(currentX + colWidths.materi, currentY + rowHeight * 2)
+     .stroke();
+  currentX += colWidths.materi;
+
+  // Mahasiswa (colspan 2)
+  doc.text('Mahasiswa', currentX + 2, currentY + 3, { 
+    width: colWidths.hadir + colWidths.tidakHadir - 4, 
+    align: 'center' 
+  });
+  doc.moveTo(currentX, currentY + rowHeight)
+     .lineTo(currentX + colWidths.hadir + colWidths.tidakHadir, currentY + rowHeight)
+     .stroke();
+
+  // Hadir
+  doc.text('Hadir', currentX + 2, currentY + rowHeight + 3, { 
+    width: colWidths.hadir - 4, 
+    align: 'center' 
+  });
+  doc.moveTo(currentX + colWidths.hadir, currentY + rowHeight)
+     .lineTo(currentX + colWidths.hadir, currentY + rowHeight * 2)
+     .stroke();
+  currentX += colWidths.hadir;
+
+  // Tidak Hadir
+  doc.text('Tdk Har', currentX + 2, currentY + rowHeight + 3, { 
+    width: colWidths.tidakHadir - 4, 
+    align: 'center' 
+  });
+  doc.moveTo(currentX + colWidths.tidakHadir, currentY)
+     .lineTo(currentX + colWidths.tidakHadir, currentY + rowHeight * 2)
+     .stroke();
+  currentX += colWidths.tidakHadir;
+
+  // TTD Dosen (rowspan 2)
+  doc.text('TTD\nDosen', currentX + 2, currentY + 5, { 
+    width: colWidths.ttdDosen - 4, 
+    align: 'center' 
+  });
+  doc.moveTo(currentX + colWidths.ttdDosen, currentY)
+     .lineTo(currentX + colWidths.ttdDosen, currentY + rowHeight * 2)
+     .stroke();
+  currentX += colWidths.ttdDosen;
+
+  // TTD Ketua (rowspan 2)
+  doc.text('TTD\nKetua\nKelas', currentX + 2, currentY + 3, { 
+    width: colWidths.ttdKetua - 4, 
+    align: 'center' 
+  });
+
+  currentY += rowHeight * 2;
+
+  // Data rows (16 rows total)
+  for (let i = 0; i < 16; i++) {
+    const p = presensiList[i];
+    
+    if (currentY + rowHeight > doc.page.height - 100) {
+      doc.addPage();
+      currentY = 50;
+    }
+
+    doc.rect(startX, currentY, totalWidth, rowHeight).fillAndStroke('#ffffff', '#333333');
+    currentX = startX;
+    
+    doc.fillColor('#000000').fontSize(fontSize).font('Helvetica');
+
+    // Pertemuan
+    doc.text(String(i + 1), currentX + 2, currentY + 3, { 
+      width: colWidths.pertemuan - 4, 
+      align: 'center' 
+    });
+    doc.moveTo(currentX + colWidths.pertemuan, currentY)
+       .lineTo(currentX + colWidths.pertemuan, currentY + rowHeight)
+       .stroke();
+    currentX += colWidths.pertemuan;
+
+    if (p) {
+      const hadirCount = p.detail?.filter((d: any) => d.status === 'HADIR').length || 0;
+      const tidakHadirCount = p.detail?.filter((d: any) => 
+        d.status === 'TIDAKHADIR' || d.status === 'ALPHA' || d.status === 'IZIN' || d.status === 'SAKIT'
+      ).length || 0;
+
+      // Tanggal
+      const tanggalText = p.tanggal 
+        ? new Date(p.tanggal).toLocaleDateString('id-ID', { 
+            day: '2-digit', 
+            month: '2-digit', 
+            year: 'numeric' 
+          })
+        : '';
+      doc.text(tanggalText, currentX + 2, currentY + 3, { 
+        width: colWidths.tanggal - 4, 
+        align: 'center' 
+      });
+      doc.moveTo(currentX + colWidths.tanggal, currentY)
+         .lineTo(currentX + colWidths.tanggal, currentY + rowHeight)
+         .stroke();
+      currentX += colWidths.tanggal;
+
+      // Model
+      doc.text(p.modePembelajaran || 'Luring', currentX + 2, currentY + 3, { 
+        width: colWidths.model - 4, 
+        align: 'center' 
+      });
+      doc.moveTo(currentX + colWidths.model, currentY)
+         .lineTo(currentX + colWidths.model, currentY + rowHeight)
+         .stroke();
+      currentX += colWidths.model;
+
+      // Materi
+      const materiText = p.materi || '';
+      doc.text(materiText, currentX + 2, currentY + 3, { 
+        width: colWidths.materi - 4, 
+        align: 'left' 
+      });
+      doc.moveTo(currentX + colWidths.materi, currentY)
+         .lineTo(currentX + colWidths.materi, currentY + rowHeight)
+         .stroke();
+      currentX += colWidths.materi;
+
+      // Hadir
+      doc.text(String(hadirCount), currentX + 2, currentY + 3, { 
+        width: colWidths.hadir - 4, 
+        align: 'center' 
+      });
+      doc.moveTo(currentX + colWidths.hadir, currentY)
+         .lineTo(currentX + colWidths.hadir, currentY + rowHeight)
+         .stroke();
+      currentX += colWidths.hadir;
+
+      // Tidak Hadir
+      doc.text(tidakHadirCount > 0 ? String(tidakHadirCount) : '', currentX + 2, currentY + 3, { 
+        width: colWidths.tidakHadir - 4, 
+        align: 'center' 
+      });
+      doc.moveTo(currentX + colWidths.tidakHadir, currentY)
+         .lineTo(currentX + colWidths.tidakHadir, currentY + rowHeight)
+         .stroke();
+      currentX += colWidths.tidakHadir;
+    } else {
+      // Empty cells with vertical lines
+      currentX += colWidths.tanggal + colWidths.model + colWidths.materi + colWidths.hadir + colWidths.tidakHadir;
+      
+      let tempX = startX + colWidths.pertemuan;
+      doc.moveTo(tempX, currentY).lineTo(tempX, currentY + rowHeight).stroke();
+      tempX += colWidths.tanggal;
+      doc.moveTo(tempX, currentY).lineTo(tempX, currentY + rowHeight).stroke();
+      tempX += colWidths.model;
+      doc.moveTo(tempX, currentY).lineTo(tempX, currentY + rowHeight).stroke();
+      tempX += colWidths.materi;
+      doc.moveTo(tempX, currentY).lineTo(tempX, currentY + rowHeight).stroke();
+      tempX += colWidths.hadir;
+      doc.moveTo(tempX, currentY).lineTo(tempX, currentY + rowHeight).stroke();
+      tempX += colWidths.tidakHadir;
+      doc.moveTo(tempX, currentY).lineTo(tempX, currentY + rowHeight).stroke();
+    }
+
+    // TTD columns (empty)
+    doc.moveTo(currentX + colWidths.ttdDosen, currentY)
+       .lineTo(currentX + colWidths.ttdDosen, currentY + rowHeight)
+       .stroke();
+    currentX += colWidths.ttdDosen + colWidths.ttdKetua;
+
+    currentY += rowHeight;
+  }
+
+  doc.lineWidth(1);
+  doc.y = currentY + 15;
+  
+  // Signature section
+  doc.fontSize(9).font('Helvetica')
+     .text(`${location}, ................................ ${currentYear}`, 50, doc.y, { width: 495, align: 'center' });
+  doc.text('Sekolah Tinggi Teologi Diakonos', 50, doc.y + 5, { width: 495, align: 'center' });
+  doc.text('Biro Administrasi Akademik Kemahasiswaan,', 50, doc.y + 5, { width: 495, align: 'center' });
+  
+  const sigY = doc.y + 60;
+  doc.moveTo(220, sigY).lineTo(370, sigY).stroke();
+  doc.fontSize(9).font('Helvetica-Bold')
+     .text(kelasMK?.dosen?.namaLengkap || 'Nama Dosen', 220, sigY + 5, { width: 150, align: 'center' });
+  
+  doc.fontSize(7).fillColor('#666666')
+     .text(`Dicetak pada: ${generatedAt}`, 50, doc.page.height - 50, { width: 495, align: 'center' });
+  
+  doc.end();
 };
 
 /**
- * REKAP PRESENSI (ALL PERTEMUAN) PDF Template
+ * Generate Daftar KRS Mahasiswa Bimbingan
  */
-export const getRekapPresensiHTMLTemplate = (data: {
-  kelasMK: any;
-  mahasiswaList: any[];
-  pertemuanList: any[];
-  semester: any;
-  generatedAt: string;
-}) => {
-  const logoBase64 = getLogoBase64();
-  const { kelasMK, mahasiswaList, pertemuanList, semester, generatedAt } = data;
-
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        ${getCommonPDFStyles()}
-        
-        body { font-size: 7px; }
-        
-        .info { 
-          margin-bottom: 10px;
-          background: #f5f5f5;
-          padding: 6px;
-        }
-        .info-row {
-          display: grid;
-          grid-template-columns: 100px 1fr;
-          margin-bottom: 3px;
-        }
-        .info-label { 
-          font-weight: bold;
-        }
-        table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          margin-top: 8px;
-          font-size: 6px;
-        }
-        th, td { 
-          border: 1px solid #333; 
-          padding: 3px; 
-          text-align: center;
-        }
-        th { 
-          background: #e0e0e0; 
-          font-weight: bold;
-          font-size: 6px;
-        }
-        .rotate {
-          writing-mode: vertical-rl;
-          text-orientation: mixed;
-          padding: 4px 2px;
-        }
-        .hadir { background: #c8e6c9; }
-        .izin { background: #fff9c4; }
-        .sakit { background: #e1bee7; }
-        .alpha { background: #cfd8dc; }
-        .tidak-hadir { background: #ffcdd2; }
-        .pdf-footer {
-          margin-top: 12px;
-          padding-top: 8px;
-          border-top: 1px solid #ccc;
-          font-size: 6px;
-          text-align: center;
-          color: #666;
-        }
-      </style>
-    </head>
-    <body>
-      ${getPDFHeader(logoBase64)}
-      
-      <div class="doc-title">
-        <h2>REKAP PRESENSI MAHASISWA</h2>
-        <p>Semester ${semester?.periode || ''} ${semester?.tahunAkademik || ''}</p>
-      </div>
-      
-      <div class="info">
-        <div class="info-row">
-          <div class="info-label">Mata Kuliah</div>
-          <div>: ${kelasMK?.mataKuliah?.namaMK || '-'} (${kelasMK?.mataKuliah?.kodeMK || '-'})</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Dosen</div>
-          <div>: ${kelasMK?.dosen?.namaLengkap || '-'}</div>
-        </div>
-      </div>
-      
-      <table>
-        <thead>
-          <tr>
-            <th rowspan="2" style="width: 4%;">No</th>
-            <th rowspan="2" style="width: 10%;">NIM</th>
-            <th rowspan="2" style="width: 26%;">Nama</th>
-            <th colspan="${pertemuanList.length}">Pertemuan</th>
-            <th rowspan="2" style="width: 5%;">H</th>
-            <th rowspan="2" style="width: 5%;">I</th>
-            <th rowspan="2" style="width: 5%;">S</th>
-            <th rowspan="2" style="width: 5%;">A</th>
-            <th rowspan="2" style="width: 5%;">%</th>
-          </tr>
-          <tr>
-            ${pertemuanList.map((p: any) => `
-              <th class="rotate" style="width: ${Math.floor(40 / pertemuanList.length)}%;">${p.pertemuan}</th>
-            `).join('')}
-          </tr>
-        </thead>
-        <tbody>
-          ${mahasiswaList.map((mhs: any, i: number) => {
-            const stats = {
-              hadir: 0,
-              izin: 0,
-              sakit: 0,
-              alpha: 0,
-            };
-
-            return `
-              <tr>
-                <td>${i + 1}</td>
-                <td>${mhs.mahasiswa?.nim || '-'}</td>
-                <td style="text-align: left; padding-left: 4px;">${mhs.mahasiswa?.namaLengkap || '-'}</td>
-                ${pertemuanList.map((p: any) => {
-                  const presensi = mhs.presensi?.find((pr: any) => pr.presensiId === p.id);
-                  const status: string = presensi?.status || 'ALPHA';
-                  
-                  if (status === 'HADIR') stats.hadir++;
-                  else if (status === 'IZIN') stats.izin++;
-                  else if (status === 'SAKIT') stats.sakit++;
-                  else stats.alpha++;
-
-                  const statusClass = status.toLowerCase().replace('_', '-');
-                  const statusSymbolMap: Record<string, string> = {
-                    'HADIR': '✓',
-                    'IZIN': 'I',
-                    'SAKIT': 'S',
-                    'ALPHA': 'A',
-                    'TIDAK_HADIR': '✗'
-                  };
-                  const statusSymbol = statusSymbolMap[status] || '-';
-
-                  return `<td class="${statusClass}">${statusSymbol}</td>`;
-                }).join('')}
-                <td><strong>${stats.hadir}</strong></td>
-                <td>${stats.izin}</td>
-                <td>${stats.sakit}</td>
-                <td>${stats.alpha}</td>
-                <td><strong>${Math.round((stats.hadir / pertemuanList.length) * 100)}%</strong></td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-
-      <div style="margin-top: 10px; font-size: 7px;">
-        <p><strong>Keterangan:</strong></p>
-        <p>H = Hadir | I = Izin | S = Sakit | A = Alpha (Tidak Hadir Tanpa Keterangan)</p>
-      </div>
-
-      <div class="pdf-footer">
-        <p>Dicetak pada: ${generatedAt}</p>
-        <p>STT Diakonos - Sistem Informasi Akademik</p>
-      </div>
-    </body>
-    </html>
-  `;
-};
-
-/**
- * BERITA ACARA PERTEMUAN PDF Template
- */
-
-export const getBeritaAcaraHTMLTemplate = (data: {
-  presensiList: any[];
-  kelasMK: any;
-  semester: any;
-  generatedAt: string;
-}) => {
-  const logoBase64 = getLogoBase64();
-  const { presensiList, kelasMK, semester, generatedAt } = data;
-
-  // ✅ Dynamic values
-  const currentYear = new Date().getFullYear();
-  const location = 'Banyumas'; // TODO: Move to config if needed
-  const programStudi = kelasMK?.mataKuliah?.prodi?.nama || 
-                      kelasMK?.dosen?.prodi?.nama || 
-                      '-';
-
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        ${getCommonPDFStyles()}
-        
-        .info { 
-          margin-bottom: 8px;
-          background: #f5f5f5;
-          padding: 8px;
-          font-size: 9px;
-        }
-        .info-row {
-          display: grid;
-          grid-template-columns: 100px 1fr;
-          margin-bottom: 3px;
-        }
-        .info-label { 
-          font-weight: bold;
-        }
-        
-        /* Table Styles */
-        table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          margin-top: 10px;
-          font-size: 7px;
-        }
-        th, td { 
-          border: 1px solid #000; 
-          padding: 4px; 
-          text-align: center;
-          vertical-align: middle;
-        }
-        th { 
-          background: #e0e0e0; 
-          font-weight: bold;
-          font-size: 7px;
-          line-height: 1.2;
-        }
-        td.left { text-align: left; }
-        td.center { text-align: center; }
-        
-        /* Signature Section */
-        .signature-section {
-          margin-top: 20px;
-          text-align: center;
-        }
-        .signature-box {
-          display: inline-block;
-          text-align: center;
-          margin: 0 20px;
-        }
-        .signature-line {
-          margin-top: 50px;
-          border-bottom: 1px solid #000;
-          width: 200px;
-          display: inline-block;
-        }
-        .signature-name {
-          margin-top: 5px;
-          font-weight: bold;
-        }
-        
-        .pdf-footer {
-          margin-top: 15px;
-          padding-top: 10px;
-          border-top: 1px solid #ccc;
-          font-size: 7px;
-          text-align: center;
-          color: #666;
-        }
-      </style>
-    </head>
-    <body>
-      ${getPDFHeader(logoBase64)}
-      
-      <div class="doc-title">
-        <h2>BERITA ACARA PERKULIAHAN</h2>
-        <p>Semester ${semester?.periode || ''} Tahun Akademik ${semester?.tahunAkademik || ''}<br/>Program Studi ${programStudi}</p>
-      </div>
-      
-      <div class="info">
-        <div class="info-row">
-          <div class="info-label">Mata Kuliah</div>
-          <div>: ${kelasMK?.mataKuliah?.namaMK || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Semester/Beban</div>
-          <div>: ${kelasMK?.mataKuliah?.semesterIdeal || '-'} (${kelasMK?.mataKuliah?.sks || 0} SKS)</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Dosen</div>
-          <div>: ${kelasMK?.dosen?.namaLengkap || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Hari / Waktu</div>
-          <div>: ${kelasMK?.hari || '-'} / Pukul ${kelasMK?.jamMulai || ''}-${kelasMK?.jamSelesai || ''}</div>
-        </div>
-      </div>
-      
-      <table>
-        <thead>
-          <tr>
-            <th rowspan="2" style="width: 5%;">Perte-<br/>muan</th>
-            <th rowspan="2" style="width: 10%;">Tanggal</th>
-            <th rowspan="2" style="width: 10%;">Model dan Media<br/>Perkuliahan<br/>(Daring/Luring)</th>
-            <th rowspan="2" style="width: 35%;">Pokok Materi</th>
-            <th colspan="2" style="width: 15%;">Mahasiswa</th>
-            <th rowspan="2" style="width: 12%;">TTD<br/>Dosen</th>
-            <th rowspan="2" style="width: 13%;">TTD<br/>Ketua<br/>Kelas</th>
-          </tr>
-          <tr>
-            <th style="width: 7%;">Hadir</th>
-            <th style="width: 8%;">Tdk Har</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${presensiList.length === 0 ? `
-            <tr>
-              <td colspan="8" style="padding: 20px; font-style: italic; color: #666;">
-                Belum ada data pertemuan
-              </td>
-            </tr>
-          ` : presensiList.map((p: any) => {
-            const hadirCount = p.detail?.filter((d: any) => d.status === 'HADIR').length || 0;
-            const tidakHadirCount = p.detail?.filter((d: any) => 
-              d.status === 'TIDAK_HADIR' || d.status === 'ALPHA' || d.status === 'IZIN' || d.status === 'SAKIT'
-            ).length || 0;
-            
-            // ✅ DYNAMIC: Get mode pembelajaran from presensi or default to Luring
-            const modePembelajaran = p.modePembelajaran || 'Luring';
-            
-            return `
-              <tr>
-                <td class="center">${p.pertemuan}</td>
-                <td class="center">${p.tanggal ? new Date(p.tanggal).toLocaleDateString('id-ID', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric'
-                }) : '-'}</td>
-                <td class="center">${modePembelajaran}</td>
-                <td class="left" style="padding-left: 6px;">
-                  ${p.materi || '-'}
-                  ${p.catatan ? `<br/><small style="font-style: italic; color: #666;">Catatan: ${p.catatan}</small>` : ''}
-                </td>
-                <td class="center">${hadirCount}</td>
-                <td class="center">${tidakHadirCount > 0 ? tidakHadirCount : '-'}</td>
-                <td class="center"></td>
-                <td class="center"></td>
-              </tr>
-            `;
-          }).join('')}
-          
-          ${/* Fill empty rows to make 16 rows total */''}
-          ${Array.from({ length: Math.max(0, 16 - presensiList.length) }, (_, i) => `
-            <tr>
-              <td class="center">${presensiList.length + i + 1}</td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-      
-      <div class="signature-section">
-        <p style="margin-bottom: 5px; font-size: 9px;">${location}, ................................ ${currentYear}</p>
-        <p style="font-size: 9px; margin-bottom: 10px;">
-          Sekolah Tinggi Teologi Diakonos<br/>
-          Biro Administrasi Akademik Kemahasiswaan,
-        </p>
-        
-        <div style="margin-top: 60px;">
-          <div class="signature-box">
-            <div class="signature-line"></div>
-            <div class="signature-name" style="font-size: 9px;">
-              ${kelasMK?.dosen?.namaLengkap || 'Nama Dosen'}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="pdf-footer">
-        <p>Dicetak pada: ${generatedAt}</p>
-        <p>STT Diakonos - Sistem Informasi Akademik</p>
-      </div>
-    </body>
-    </html>
-  `;
-};
-// backend/config/pdfConfig.ts
-export const PDF_CONFIG = {
-  institution: {
-    name: 'Sekolah Tinggi Teologi Diakonos',
-    shortName: 'STT Diakonos',
-    location: 'Banyumas',
-    address: 'Desa Pajerukan RT 004 RW 003 Kec. Kalibagor, Kab. Banyumas',
-    province: 'Jawa Tengah',
-    website: 'sttdiakonos.ac.id',
-    email: 'sttd_banyumas@yahoo.com',
-  },
-  defaults: {
-    modePembelajaran: 'Luring',
-  },
-};
-
-
-/**
- * KRS DETAIL (UNTUK DOSEN PEMBIMBING) PDF Template
- */
-export const getKRSBimbinganHTMLTemplate = (data: {
-  mahasiswaList: any[];
-  semester: any;
-  dosenWali: any;
-  generatedAt: string;
-}) => {
-  const logoBase64 = getLogoBase64();
+const generateKRSBimbingan = async (data: any, filename: string, res: Response) => {
+  const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  doc.pipe(res);
+  
+  const logoPath = getLogoPath();
   const { mahasiswaList, semester, dosenWali, generatedAt } = data;
-
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        ${getCommonPDFStyles()}
-        
-        body { font-size: 8px; }
-        
-        .info { 
-          margin-bottom: 12px;
-          background: #f5f5f5;
-          padding: 8px;
-        }
-        .info-row {
-          display: grid;
-          grid-template-columns: 120px 1fr;
-          margin-bottom: 4px;
-        }
-        .info-label { 
-          font-weight: bold;
-        }
-        .mahasiswa-section {
-          margin-bottom: 20px;
-          page-break-inside: avoid;
-        }
-        .mhs-header {
-          background: #e0e0e0;
-          padding: 6px;
-          font-weight: bold;
-          font-size: 9px;
-          margin-bottom: 8px;
-        }
-        table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          font-size: 7px;
-        }
-        th, td { 
-          border: 1px solid #333; 
-          padding: 4px; 
-          text-align: left;
-        }
-        th { 
-          background: #f0f0f0; 
-          font-weight: bold;
-          text-align: center;
-          font-size: 7px;
-        }
-        td.center { text-align: center; }
-        .badge {
-          display: inline-block;
-          padding: 2px 5px;
-          border-radius: 3px;
-          font-size: 6px;
-          font-weight: bold;
-        }
-        .badge-approved { background: #c8e6c9; color: #2e7d32; }
-        .badge-submitted { background: #fff9c4; color: #f57f17; }
-        .badge-draft { background: #cfd8dc; color: #37474f; }
-        .badge-rejected { background: #ffcdd2; color: #c62828; }
-        tfoot tr {
-          background: #f0f0f0;
-          font-weight: bold;
-        }
-        .pdf-footer {
-          margin-top: 15px;
-          padding-top: 10px;
-          border-top: 1px solid #ccc;
-          font-size: 6px;
-          text-align: center;
-          color: #666;
-        }
-      </style>
-    </head>
-    <body>
-      ${getPDFHeader(logoBase64)}
+  
+  drawPDFHeader(doc, logoPath);
+  drawDocTitle(doc, 'DAFTAR KRS MAHASISWA BIMBINGAN', `Semester ${semester?.periode || ''} ${semester?.tahunAkademik || ''}`);
+  
+  drawInfoBox(doc, [
+    { label: 'Dosen Wali', value: dosenWali?.namaLengkap || '-' },
+    { label: 'NIDN', value: dosenWali?.nidn || '-' },
+    { label: 'Program Studi', value: dosenWali?.prodi?.nama || '-' },
+    { label: 'Jumlah Mahasiswa', value: `${mahasiswaList.length} mahasiswa` }
+  ]);
+  
+  // Process each student
+  mahasiswaList.forEach((mhs: any, mhsIndex: number) => {
+    if (mhsIndex > 0) {
+      // Pagination
+      if (doc.y > doc.page.height - 300) {
+        doc.addPage();
+      } else {
+        doc.moveDown(1.5);
+      }
+    }
+    
+    const krs = mhs.krs;
+    
+    // Student header
+    const headerY = doc.y + 10;
+    const statusColors: Record<string, string> = {
+      'APPROVED': '#c8e6c9',
+      'SUBMITTED': '#fff9c4',
+      'DRAFT': '#cfd8dc',
+      'REJECTED': '#ffcdd2'
+    };
+    const statusColor = statusColors[krs?.status || 'DRAFT'] || '#cfd8dc';
+    
+    doc.rect(50, headerY, 495, 20).fillAndStroke(statusColor, '#333333');
+    doc.fillColor('#000000').fontSize(9).font('Helvetica-Bold')
+       .text(`${mhs.nim} - ${mhs.namaLengkap} (Angkatan ${mhs.angkatan}) - Status: ${krs?.status || 'DRAFT'}`, 
+             55, headerY + 6, { width: 485 });
+    
+    doc.y = headerY + 25;
+    
+    if (krs) {
+      // KRS table
+      const headers = [
+        { label: 'No', width: 20, align: 'center' as const },
+        { label: 'Kode MK', width: 55, align: 'center' as const },
+        { label: 'Mata Kuliah', width: 170, align: 'left' as const },
+        { label: 'SKS', width: 30, align: 'center' as const },
+        { label: 'Dosen', width: 110, align: 'left' as const },
+        { label: 'Jadwal', width: 110, align: 'left' as const }
+      ];
       
-      <div class="doc-title">
-        <h2>DAFTAR KRS MAHASISWA BIMBINGAN</h2>
-        <p>Semester ${semester?.periode || ''} ${semester?.tahunAkademik || ''}</p>
-      </div>
+      const rows = (krs.detail || []).map((d: any, i: number) => [
+        String(i + 1),
+        d.kelasMK?.mataKuliah?.kodeMK || '-',
+        d.kelasMK?.mataKuliah?.namaMK || '-',
+        String(d.kelasMK?.mataKuliah?.sks || 0),
+        d.kelasMK?.dosen?.namaLengkap || '-',
+        `${d.kelasMK?.hari || '-'}, ${d.kelasMK?.jamMulai || ''}-${d.kelasMK?.jamSelesai || ''}`
+      ]);
       
-      <div class="info">
-        <div class="info-row">
-          <div class="info-label">Dosen Wali</div>
-          <div>: ${dosenWali?.namaLengkap || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">NIDN</div>
-          <div>: ${dosenWali?.nidn || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Program Studi</div>
-          <div>: ${dosenWali?.prodi?.nama || '-'}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Jumlah Mahasiswa</div>
-          <div>: ${mahasiswaList.length} mahasiswa</div>
-        </div>
-      </div>
-
-      ${mahasiswaList.map((mhs: any) => {
-        const krs = mhs.krs;
-        const statusMap: Record<string, string> = {
-          'APPROVED': 'approved',
-          'SUBMITTED': 'submitted',
-          'DRAFT': 'draft',
-          'REJECTED': 'rejected'
-        };
-        const statusBadge = statusMap[krs?.status || 'DRAFT'] || 'draft';
-
-        return `
-          <div class="mahasiswa-section">
-            <div class="mhs-header">
-              ${mhs.nim} - ${mhs.namaLengkap} (Angkatan ${mhs.angkatan}) - 
-              <span class="badge badge-${statusBadge}">${krs?.status || 'DRAFT'}</span>
-            </div>
-            
-            ${krs ? `
-              <table>
-                <thead>
-                  <tr>
-                    <th style="width: 4%;">No</th>
-                    <th style="width: 11%;">Kode MK</th>
-                    <th style="width: 35%;">Mata Kuliah</th>
-                    <th style="width: 6%;">SKS</th>
-                    <th style="width: 22%;">Dosen</th>
-                    <th style="width: 22%;">Jadwal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${(krs.detail || []).map((d: any, i: number) => `
-                    <tr>
-                      <td class="center">${i + 1}</td>
-                      <td>${d.kelasMK?.mataKuliah?.kodeMK || '-'}</td>
-                      <td>${d.kelasMK?.mataKuliah?.namaMK || '-'}</td>
-                      <td class="center">${d.kelasMK?.mataKuliah?.sks || 0}</td>
-                      <td>${d.kelasMK?.dosen?.namaLengkap || '-'}</td>
-                      <td>${d.kelasMK?.hari || '-'}, ${d.kelasMK?.jamMulai || ''}-${d.kelasMK?.jamSelesai || ''}</td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td colspan="3" style="text-align: right;">Total SKS:</td>
-                    <td class="center">${krs.totalSKS || 0}</td>
-                    <td colspan="2"></td>
-                  </tr>
-                </tfoot>
-              </table>
-            ` : `
-              <div style="padding: 15px; text-align: center; font-style: italic; color: #666; background: #f9f9f9;">
-                Mahasiswa belum mengisi KRS untuk semester ini
-              </div>
-            `}
-          </div>
-        `;
-      }).join('')}
-
-      <div class="pdf-footer">
-        <p>Dicetak pada: ${generatedAt}</p>
-        <p>STT Diakonos - Sistem Informasi Akademik</p>
-      </div>
-    </body>
-    </html>
-  `;
+      const footerRows = [['', '', 'Total SKS:', String(krs.totalSKS || 0), '', '']];
+      
+      drawTable(doc, headers, rows, { fontSize: 7, footerRows });
+    } else {
+      // No KRS message
+      const msgY = doc.y;
+      doc.rect(50, msgY, 495, 30).fillAndStroke('#f9f9f9', '#d0d0d0');
+      doc.fillColor('#666666').fontSize(8).font('Helvetica-Oblique')
+         .text('Mahasiswa belum mengisi KRS untuk semester ini', 55, msgY + 10, { width: 485, align: 'center' });
+      doc.y = msgY + 35;
+    }
+  });
+  
+  doc.fontSize(7).fillColor('#666666')
+     .text(`Dicetak pada: ${generatedAt}`, 50, doc.page.height - 50, { width: 495, align: 'center' });
+  
+  doc.end();
 };

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import ErrorState from '@/components/shared/ErrorState';
@@ -19,13 +19,64 @@ import {
   Clock,
   CheckCircle 
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { id } from 'date-fns/locale';
 import { toast } from 'sonner';
 import Link from 'next/link';
 
 import { dashboardAPI } from '@/lib/api';
 import { MahasiswaDashboardStats } from '@/types/model';
+
+// ✅ Helper functions di luar component (tidak recreate setiap render)
+const toNumber = (value: any): number | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'object' && 'toNumber' in value) {
+    return value.toNumber();
+  }
+  const num = Number(value);
+  return isNaN(num) ? null : num;
+};
+
+const formatScore = (value: any): string => {
+  const num = toNumber(value);
+  return num !== null ? num.toFixed(2) : '-';
+};
+
+const getKRSStatusInfo = (status?: string) => {
+  switch (status) {
+    case 'DRAFT':
+      return {
+        label: 'KRS Belum Disubmit',
+        description: 'Lengkapi dan submit KRS Anda',
+        variant: 'warning' as const,
+      };
+    case 'SUBMITTED':
+      return {
+        label: 'Menunggu Approval',
+        description: 'KRS sedang ditinjau dosen wali',
+        variant: 'info' as const,
+      };
+    case 'APPROVED':
+      return {
+        label: 'KRS Disetujui',
+        description: 'KRS Anda sudah disetujui',
+        variant: 'success' as const,
+      };
+    case 'REJECTED':
+      return {
+        label: 'KRS Ditolak',
+        description: 'Revisi KRS Anda',
+        variant: 'error' as const,
+      };
+    default:
+      return {
+        label: 'Belum Ada KRS',
+        description: 'Buat KRS untuk semester ini',
+        variant: 'default' as const,
+      };
+  }
+};
+
+const DAYS = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 
 export default function MahasiswaDashboardPage() {
   // ============================================
@@ -37,33 +88,11 @@ export default function MahasiswaDashboardPage() {
   const [currentDay, setCurrentDay] = useState<string>('');
 
   // ============================================
-  // HELPERS - Convert Decimal to Number
-  // ============================================
-  const toNumber = (value: any): number | null => {
-    if (value === null || value === undefined) return null;
-    if (typeof value === 'number') return value;
-    // Handle Prisma Decimal
-    if (typeof value === 'object' && 'toNumber' in value) {
-      return value.toNumber();
-    }
-    // Try to convert to number
-    const num = Number(value);
-    return isNaN(num) ? null : num;
-  };
-
-  const formatScore = (value: any): string => {
-    const num = toNumber(value);
-    return num !== null ? num.toFixed(2) : '-';
-  };
-
-  // ============================================
   // FETCH DATA
   // ============================================
   useEffect(() => {
-    // Get current day in Indonesian
-    const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     const today = new Date().getDay();
-    setCurrentDay(days[today]);
+    setCurrentDay(DAYS[today]);
 
     const fetchData = async () => {
       try {
@@ -94,46 +123,39 @@ export default function MahasiswaDashboardPage() {
   }, []);
 
   // ============================================
-  // HELPERS
+  // MEMOIZED COMPUTED VALUES
   // ============================================
-  const getKRSStatusInfo = (status?: string) => {
-    switch (status) {
-      case 'DRAFT':
-        return {
-          label: 'KRS Belum Disubmit',
-          description: 'Lengkapi dan submit KRS Anda',
-          variant: 'warning' as const,
-        };
-      case 'SUBMITTED':
-        return {
-          label: 'Menunggu Approval',
-          description: 'KRS sedang ditinjau dosen wali',
-          variant: 'info' as const,
-        };
-      case 'APPROVED':
-        return {
-          label: 'KRS Disetujui',
-          description: 'KRS Anda sudah disetujui',
-          variant: 'success' as const,
-        };
-      case 'REJECTED':
-        return {
-          label: 'KRS Ditolak',
-          description: 'Revisi KRS Anda',
-          variant: 'error' as const,
-        };
-      default:
-        return {
-          label: 'Belum Ada KRS',
-          description: 'Buat KRS untuk semester ini',
-          variant: 'default' as const,
-        };
-    }
-  };
+  const krsInfo = useMemo(() => getKRSStatusInfo(stats?.krsStatus), [stats?.krsStatus]);
 
-  const handleRetry = () => {
+  const hasJadwalToday = useMemo(
+    () => stats?.jadwalHariIni && stats.jadwalHariIni.length > 0,
+    [stats?.jadwalHariIni]
+  );
+
+  const ipsNum = useMemo(() => toNumber(stats?.ips), [stats?.ips]);
+  const ipkNum = useMemo(() => toNumber(stats?.ipk), [stats?.ipk]);
+
+  const formattedIPS = useMemo(() => formatScore(stats?.ips), [stats?.ips]);
+  const formattedIPK = useMemo(() => formatScore(stats?.ipk), [stats?.ipk]);
+
+  const predikat = useMemo(() => {
+    if (ipkNum === null) return '-';
+    if (ipkNum >= 3.5) return 'Cum Laude';
+    if (ipkNum >= 3.0) return 'Memuaskan';
+    return 'Baik';
+  }, [ipkNum]);
+
+  const showAcademicProgress = useMemo(
+    () => ipkNum !== null || ipsNum !== null,
+    [ipkNum, ipsNum]
+  );
+
+  // ============================================
+  // MEMOIZED HANDLERS
+  // ============================================
+  const handleRetry = useCallback(() => {
     window.location.reload();
-  };
+  }, []);
 
   // ============================================
   // LOADING STATE
@@ -158,14 +180,6 @@ export default function MahasiswaDashboardPage() {
       />
     );
   }
-
-  // ============================================
-  // COMPUTED VALUES
-  // ============================================
-  const krsInfo = getKRSStatusInfo(stats.krsStatus);
-  const hasJadwalToday = stats.jadwalHariIni && stats.jadwalHariIni.length > 0;
-  const ipsNum = toNumber(stats.ips);
-  const ipkNum = toNumber(stats.ipk);
 
   // ============================================
   // RENDER
@@ -260,7 +274,7 @@ export default function MahasiswaDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
-              {formatScore(stats.ips)}
+              {formattedIPS}
             </div>
             <p className="text-xs text-muted-foreground">Indeks Prestasi Semester</p>
           </CardContent>
@@ -273,7 +287,7 @@ export default function MahasiswaDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {formatScore(stats.ipk)}
+              {formattedIPK}
             </div>
             <p className="text-xs text-muted-foreground">Indeks Prestasi Kumulatif</p>
           </CardContent>
@@ -405,7 +419,7 @@ export default function MahasiswaDashboardPage() {
       </div>
 
       {/* Academic Progress */}
-      {(ipkNum !== null || ipsNum !== null) && (
+      {showAcademicProgress && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -425,20 +439,14 @@ export default function MahasiswaDashboardPage() {
               <div className="text-center p-4 rounded-lg bg-green-50">
                 <p className="text-sm text-muted-foreground mb-1">IPK</p>
                 <p className="text-2xl font-bold text-green-600">
-                  {formatScore(stats.ipk)}
+                  {formattedIPK}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">Kumulatif</p>
               </div>
               <div className="text-center p-4 rounded-lg bg-purple-50">
                 <p className="text-sm text-muted-foreground mb-1">Predikat</p>
                 <p className="text-2xl font-bold text-purple-600">
-                  {ipkNum !== null
-                    ? ipkNum >= 3.5
-                      ? 'Cum Laude'
-                      : ipkNum >= 3.0
-                      ? 'Memuaskan'
-                      : 'Baik'
-                    : '-'}
+                  {predikat}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Berdasarkan IPK
